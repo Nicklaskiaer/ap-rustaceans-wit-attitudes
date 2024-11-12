@@ -10,10 +10,10 @@ pub struct MessageData {
     content: MessageContent,
 }
 
-pub struct ServerType {
-    is_chat_server: bool,
-    is_text_server: bool,
-    is_media_server: bool,
+pub enum ServerType {
+    Chat,
+    Text,
+    Media
 }
 
 pub enum MessageContent {
