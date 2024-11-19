@@ -1,5 +1,5 @@
 [package]
-name = "ap-project-rustaceans-wit-attitudes"
+name = "packet"
 version = "0.1.0"
 edition = "2021"
 
