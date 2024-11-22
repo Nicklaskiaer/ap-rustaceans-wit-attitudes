@@ -17,7 +17,7 @@ pub struct DroneHandle {
 pub fn main(){
     let c = parse_toml();
     let drone_handles = initialize_drones(c.drone);
-
+    
     // find a drone by ID and send it a Command:
     let drone_id = 1;
     if let Some(drone) = drone_handles.iter().find(|d| d.id == drone_id) {
@@ -25,6 +25,11 @@ pub fn main(){
             .expect(&format!("Failed to send command to drone {}", drone_id));
     }
 
+    // Join all drone threads to ensure they complete before exiting
+    for drone_handle in drone_handles {
+        drone_handle.thread_handle.join().expect("Failed to join drone thread");
+    }
+    
     // let cloned_handler = drone_threads[0].clone();
     // handles.push((handler, cloned_handler));
 
@@ -41,7 +46,7 @@ fn initialize_drones(drones: Vec<ConfigDrone>) -> Vec<DroneHandle>{
 
         let (sim_contr_send, sim_contr_recv) = crossbeam_channel::unbounded();
         let (packet_send, packet_recv) = crossbeam_channel::unbounded();
-        
+
         let simulation_controller = (sim_contr_send.clone(), sim_contr_recv.clone());
 
         let handler:JoinHandle<()> = thread::spawn(move || {
