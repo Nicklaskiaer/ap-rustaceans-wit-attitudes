@@ -55,6 +55,13 @@ impl MyDrone {
                 recv(self.sim_contr_recv) -> command_res => {
                     if let Ok(_command) = command_res {
                         // handle the simulation controller's command
+                        match _command{
+                           Command::AddChannel(id, sender) => {self.add_channel(id, sender);}
+                            Command::RemoveChannel(_) => {}
+                            Command::Crash => {
+                                println!("boom! (drone n.{} crashed)", self.id);
+                            }
+                        }
                     }
                 }
             }
@@ -64,7 +71,6 @@ impl MyDrone {
     fn add_channel(&mut self, id: NodeId, sender: Sender<Packet>) {
         self.packet_send.insert(id, sender);
     }
-
     // fn remove_channel(...) {...}
 }
 
