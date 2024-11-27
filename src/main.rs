@@ -1,4 +1,5 @@
 mod network_initializer;
+mod simulation_controller;
 mod types;
 
 fn main() {
