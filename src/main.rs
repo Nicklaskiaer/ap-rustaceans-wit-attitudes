@@ -69,7 +69,7 @@ impl eframe::App for MyApp {
                         .inner_margin(10.0) // Optional padding for the heading area
                         .show(ui, |ui| {
                             ui.heading("Events Log");
-                        });;
+                        });
 
                     // Scroll area for logs
                     egui::ScrollArea::vertical().show(ui, |ui| {
