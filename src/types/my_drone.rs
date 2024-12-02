@@ -1,21 +1,22 @@
 #![allow(unused)]
 
-use crossbeam_channel::{select, Receiver, Sender};
+use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use std::collections::HashMap;
-use std::thread;
-use wg_2024::controller::Command;
+use std::{fs, thread};
+use wg_2024::config::Config;
+use wg_2024::controller::{DroneCommand, NodeEvent};
 use wg_2024::drone::Drone;
+use wg_2024::network::{NodeId, SourceRoutingHeader};
+use wg_2024::packet::{NackType, Packet, PacketType};
 use wg_2024::drone::DroneOptions;
-use wg_2024::network::NodeId;
-use wg_2024::packet::{Packet, PacketType};
+use wg_2024::packet::Nack;
 
-/// Example of drone implementation
-pub struct MyDrone {
+struct MyDrone {
     id: NodeId,
-    sim_contr_send: Sender<Command>,
-    sim_contr_recv: Receiver<Command>,
+    controller_send: Sender<NodeEvent>,
+    controller_recv: Receiver<DroneCommand>,
     packet_recv: Receiver<Packet>,
-    pdr: u8,
+    pdr: f32,
     packet_send: HashMap<NodeId, Sender<Packet>>,
 }
 
@@ -23,73 +24,118 @@ impl Drone for MyDrone {
     fn new(options: DroneOptions) -> Self {
         Self {
             id: options.id,
-            sim_contr_send: options.sim_contr_send,
-            sim_contr_recv: options.sim_contr_recv,
+            controller_send: options.controller_send,
+            controller_recv: options.controller_recv,
             packet_recv: options.packet_recv,
-            pdr: (options.pdr * 100.0) as u8,
+            pdr: options.pdr,
             packet_send: HashMap::new(),
         }
     }
 
     fn run(&mut self) {
-        self.run_internal();
-    }
-}
-
-impl MyDrone {
-    fn run_internal(&mut self) {
         loop {
-            select! {
-                recv(self.packet_recv) -> packet_res => {
-                    if let Ok(packet) = packet_res {
-                    // each match branch may call a function to handle it to make it more readable
-            match packet.pack_type {
-                            PacketType::Nack(_nack) => unimplemented!(),
-                            PacketType::Ack(_ack) => unimplemented!(),
-                            PacketType::MsgFragment(_fragment) => unimplemented!(),
-                            PacketType::FloodRequest(_) => unimplemented!(),
-                            PacketType::FloodResponse(_) => unimplemented!(),
-                        }
-                    }
-                },
-                recv(self.sim_contr_recv) -> command_res => {
-                    if let Ok(_command) = command_res {
-                        // handle the simulation controller's command
-                        match _command{
-                           Command::AddChannel(id, sender) => {self.add_channel(id, sender);}
-                            Command::RemoveChannel(_) => {}
-                            Command::Crash => {
-                                println!("boom! (drone n.{} crashed)", self.id);
-                            }
-                        }
+            select_biased! {
+                recv(self.controller_recv) -> command => {
+                    if let Ok(command) = command {
+                        // if let DroneCommand::Crash = command {
+                        //     println!("drone {} crashed", self.id);
+                        //     break;
+                        // }
+                        self.handle_command(command);
                     }
                 }
+                recv(self.packet_recv) -> packet => {
+                    if let Ok(packet) = packet {
+                        self.handle_packet(packet);
+                    }
+                },
             }
         }
     }
+}
 
+// nack acknowledgement, floodResponse (non si perdono)
+impl MyDrone {
+    fn handle_packet(&mut self, mut packet: Packet) {
+        // step 1-2
+        if self.id == packet.routing_header.hops[packet.routing_header.hop_index] {
+            packet.routing_header.hop_index += 1;
+        } else {
+            Packet{
+                pack_type: PacketType::Nack(Nack { 
+                    fragment_index: match packet.pack_type {
+                        PacketType::MsgFragment(_fragment) => {_fragment.fragment_index}
+                        _ => 0,
+                    }, 
+                    nack_type: NackType::UnexpectedRecipient(self.id) 
+                }),
+                routing_header: SourceRoutingHeader { 
+                    hop_index: packet.routing_header.hop_index, 
+                    hops: packet.routing_header.hops 
+                },
+                session_id: 0,
+            };
+            // Todo: send it and terminate
+            return;
+        };
+        
+        // step 3
+        if packet.routing_header.hops.len() == packet.routing_header.hop_index {
+            Packet {
+                pack_type: PacketType::Nack(Nack {
+                    fragment_index: match packet.pack_type {
+                        PacketType::MsgFragment(_fragment) => { _fragment.fragment_index }
+                        _ => 0,
+                    },
+                    nack_type: NackType::DestinationIsDrone
+                }),
+                routing_header: SourceRoutingHeader {
+                    hop_index: packet.routing_header.hop_index,
+                    hops: packet.routing_header.hops
+                },
+                session_id: 0,
+            };
+            // Todo: send it and terminate
+            return;
+        }
+        
+        // step 4
+        if !self.packet_send.contains_key(&packet.routing_header.hops[packet.routing_header.hop_index + 1]) {
+            Packet {
+                pack_type: PacketType::Nack(Nack {
+                    fragment_index: match packet.pack_type {
+                        PacketType::MsgFragment(_fragment) => { _fragment.fragment_index }
+                        _ => 0,
+                    },
+                    nack_type: NackType::ErrorInRouting(packet.routing_header.hops[packet.routing_header.hop_index + 1])
+                }),
+                routing_header: SourceRoutingHeader {
+                    hop_index: packet.routing_header.hop_index,
+                    hops: packet.routing_header.hops
+                },
+                session_id: 0,
+            };
+            // Todo: send it and terminate
+            return;
+        }
+        
+        // step 5
+        match packet.pack_type {
+            PacketType::Nack(_nack) => todo!(),
+            PacketType::Ack(_ack) => todo!(),
+            PacketType::MsgFragment(_fragment) => todo!() //also check drop rate,
+            PacketType::FloodRequest(_flood_request) => todo!(),
+            PacketType::FloodResponse(_flood_response) => todo!(),
+        }
+    }
+    fn handle_command(&mut self, command: DroneCommand) {
+        match command {
+            DroneCommand::AddSender(_node_id, _sender) => todo!(),
+            DroneCommand::SetPacketDropRate(_pdr) => todo!(),
+            DroneCommand::Crash => unreachable!(),
+        }
+    }
     fn add_channel(&mut self, id: NodeId, sender: Sender<Packet>) {
         self.packet_send.insert(id, sender);
     }
-    // fn remove_channel(...) {...}
 }
-
-// fn main() {
-//     // Something like this will be done
-//     // by the initialization controller
-//     let handler = thread::spawn(move || {
-//         let id = 1;
-//         let (sim_contr_send, sim_contr_recv) = crossbeam_channel::unbounded();
-//         let (_packet_send, packet_recv) = crossbeam_channel::unbounded();
-//         let mut drone = MyDrone::new(DroneOptions {
-//             id,
-//             sim_contr_recv,
-//             sim_contr_send,
-//             packet_recv,
-//             pdr: 0.1,
-//         });
-
-//         drone.run();
-//     });
-//     handler.join().ok();
-// }
