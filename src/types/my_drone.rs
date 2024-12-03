@@ -11,7 +11,7 @@ use wg_2024::packet::{NackType, Packet, PacketType};
 use wg_2024::drone::DroneOptions;
 use wg_2024::packet::Nack;
 
-struct MyDrone {
+pub struct MyDrone {
     id: NodeId,
     controller_send: Sender<NodeEvent>,
     controller_recv: Receiver<DroneCommand>,
@@ -62,23 +62,23 @@ impl MyDrone {
             packet.routing_header.hop_index += 1;
         } else {
             Packet{
-                pack_type: PacketType::Nack(Nack { 
+                pack_type: PacketType::Nack(Nack {
                     fragment_index: match packet.pack_type {
                         PacketType::MsgFragment(_fragment) => {_fragment.fragment_index}
                         _ => 0,
-                    }, 
-                    nack_type: NackType::UnexpectedRecipient(self.id) 
+                    },
+                    nack_type: NackType::UnexpectedRecipient(self.id)
                 }),
-                routing_header: SourceRoutingHeader { 
-                    hop_index: packet.routing_header.hop_index, 
-                    hops: packet.routing_header.hops 
+                routing_header: SourceRoutingHeader {
+                    hop_index: packet.routing_header.hop_index,
+                    hops: packet.routing_header.hops
                 },
                 session_id: 0,
             };
             // Todo: send it and terminate
             return;
         };
-        
+
         // step 3
         if packet.routing_header.hops.len() == packet.routing_header.hop_index {
             Packet {
@@ -98,7 +98,7 @@ impl MyDrone {
             // Todo: send it and terminate
             return;
         }
-        
+
         // step 4
         if !self.packet_send.contains_key(&packet.routing_header.hops[packet.routing_header.hop_index + 1]) {
             Packet {
@@ -118,12 +118,12 @@ impl MyDrone {
             // Todo: send it and terminate
             return;
         }
-        
+
         // step 5
         match packet.pack_type {
             PacketType::Nack(_nack) => todo!(),
             PacketType::Ack(_ack) => todo!(),
-            PacketType::MsgFragment(_fragment) => todo!() //also check drop rate,
+            PacketType::MsgFragment(_fragment) => todo!(), //also check drop rate,
             PacketType::FloodRequest(_flood_request) => todo!(),
             PacketType::FloodResponse(_flood_response) => todo!(),
         }

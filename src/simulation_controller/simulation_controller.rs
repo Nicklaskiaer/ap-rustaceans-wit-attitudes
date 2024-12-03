@@ -1,34 +1,24 @@
 use std::collections::HashMap;
-use wg_2024::controller::SimulationController;
-use wg_2024::drone::DroneOptions;
-use wg_2024::network::topology::Node;
+use crossbeam_channel::{Receiver, Sender};
+use wg_2024::controller::{DroneCommand, NodeEvent};
+use wg_2024::network::NodeId;
 
-struct SimController{
-    
+pub struct SimulationController {
+    drones: HashMap<NodeId, Sender<DroneCommand>>,
+    node_event_recv: Receiver<NodeEvent>,
 }
 
-// impl SimController {
-//     fn new() -> Self {
-//         Self {
-//             id: options.id,
-//             sim_contr_send: options.sim_contr_send,
-//             sim_contr_recv: options.sim_contr_recv,
-//             packet_recv: options.packet_recv,
-//             pdr: (options.pdr * 100.0) as u8,
-//             packet_send: HashMap::new(),
-//         }
-// }
-// 
-// impl SimulationController for SimController {
-//     fn crash(&mut self, crashed: &str) {
-//         todo!()
-//     }
-// 
-//     fn spawn_node(&mut self, new_node: Node) {
-//         todo!()
-//     }
-// 
-//     fn message_sent(source: &str, target: &str) {
-//         todo!()
-//     }
-// }
+impl SimulationController {
+    pub fn new(drones: HashMap<NodeId, Sender<DroneCommand>>, node_event_recv: Receiver<NodeEvent>)->Self{
+        SimulationController{
+            drones,
+            node_event_recv
+        }
+    }
+    
+    pub fn crash_all(&mut self) {
+        for (_, sender) in self.drones.iter() {
+            sender.send(DroneCommand::Crash).unwrap();
+        }
+    }
+}
