@@ -130,8 +130,8 @@ impl MyDrone {
     }
     fn handle_command(&mut self, command: DroneCommand) {
         match command {
-            DroneCommand::AddSender(_node_id, _sender) => todo!(),
-            DroneCommand::SetPacketDropRate(_pdr) => todo!(),
+            DroneCommand::AddSender(_node_id, _sender) => {self.add_channel(_node_id, _sender)},
+            DroneCommand::SetPacketDropRate(_pdr) =>{self.pdr = _pdr},
             DroneCommand::Crash => unreachable!(),
         }
     }
