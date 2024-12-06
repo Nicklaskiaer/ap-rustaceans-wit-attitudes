@@ -21,7 +21,7 @@ impl SimulationController {
             sender.send(DroneCommand::Crash).unwrap();
         }
     }
-    
+
     pub fn send_command(command: DroneCommand, sender: &Sender<DroneCommand>){
         sender.send(command).unwrap()
     }

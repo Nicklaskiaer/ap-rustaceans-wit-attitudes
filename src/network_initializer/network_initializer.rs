@@ -14,13 +14,13 @@ use crate::types::my_drone::MyDrone;
 use crate::simulation_controller::simulation_controller::SimulationController;
 
 
-pub fn main(){
+pub fn main() {
     // let current_path = env::current_dir().expect("Unable to get current directory");
     // println!("Current path: {:?}", current_path);
     let config = parse_config("src/config.toml");
-    
+
     // check for errors in the toml
-    // check_toml_validity(&config);
+    check_toml_validity(&config);
 
     let mut controller_drones = HashMap::new();
     let (node_event_send, node_event_recv) = unbounded();
@@ -63,86 +63,16 @@ pub fn main(){
             drone.run();
         }));
     }
-    let mut controller = SimulationController::new(controller_drones, node_event_recv);
+    let mut controller = SimulationController::new(
+        controller_drones, 
+        node_event_recv
+    );
     controller.crash_all();
 
     while let Some(handle) = handles.pop() {
         handle.join().unwrap();
     }
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    /*
-    
-    
-    
-    let c = parse_toml();
-    
-    // will panic if the toml is not valid 
-    check_toml_validity(&c);
-    
-    
-    
-    let drone_handles = initialize_drones(c.drone);
-    
-    // find a drone by ID and send it a Command:
-    let drone_id = 1;
-    if let Some(drone) = drone_handles.iter().find(|d| d.id == drone_id) {
-        drone.simulation_controller.0.send(Command::Crash)
-            .expect(&format!("Failed to send command to drone {}", drone_id));
-    }
-
-    // Join all drone threads to ensure they complete before exiting
-    for drone_handle in drone_handles {
-        drone_handle.thread_handle.join().expect("Failed to join drone thread");
-    }
-    
-    // let cloned_handler = drone_threads[0].clone();
-    // handles.push((handler, cloned_handler));
-
-    // let servers_threads = initialize_servers(&c.drone);
-    // let clients_threads = initialize_clients(&c.drone);
-    // fn topology_setup(&drone_threads, &servers_threads, &clients_threads)
-    // fn crash_handle()*/
 }
-
-/*fn initialize_drones(drones: Vec<ConfigDrone>) -> Vec<DroneHandle>{
-    let mut handles = Vec::new();
-
-    for d in drones {
-
-        let (sim_contr_send, sim_contr_recv) = crossbeam_channel::unbounded();
-        let (packet_send, packet_recv) = crossbeam_channel::unbounded();
-
-        let simulation_controller = (sim_contr_send.clone(), sim_contr_recv.clone());
-
-        let handler:JoinHandle<()> = thread::spawn(move || {
-            let mut drone = MyDrone::new(DroneOptions {
-                id: d.id as u8,
-                sim_contr_recv,
-                sim_contr_send,
-                packet_recv,
-                pdr: d.pdr,
-            });
-
-            drone.run();
-        });
-
-        handles.push(DroneHandle {
-            id: d.id as u8,
-            simulation_controller,
-            thread_handle: handler,
-        });
-    }
-
-    handles
-}*/
 
 fn parse_config(file: &str) -> Config {
     let file_str = fs::read_to_string(file).unwrap();
@@ -251,7 +181,7 @@ fn check_toml_validity(config: &Config){
         }
     }
     // </editor-fold>
-    
-    
+
+
     // todo: is a bidirectional graph?
 }
