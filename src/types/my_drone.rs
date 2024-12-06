@@ -3,12 +3,15 @@
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
 use std::collections::HashMap;
 use std::{fs, thread};
+use rand::{random, Rng};
+
 use wg_2024::config::Config;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{NackType, Packet, PacketType};
+use wg_2024::packet::{Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType};
 use wg_2024::packet::Nack;
+use wg_2024::packet::PacketType::MsgFragment;
 
 pub struct MyDrone {
     id: NodeId,
@@ -65,7 +68,13 @@ impl MyDrone {
     fn handle_packet(&mut self, mut packet: Packet) {
         // step 1-2
         if self.id == packet.routing_header.hops[packet.routing_header.hop_index] {
-            packet.routing_header.hop_index += 1;
+            // check if it's a flood response, if it's the hod index should go backwards
+            match packet.pack_type {
+                PacketType::FloodResponse(_) => {
+                    packet.routing_header.hop_index -= 1;
+                },
+                (_) => packet.routing_header.hop_index += {1}
+            };
         } else {
             Packet{
                 pack_type: PacketType::Nack(Nack {
@@ -79,7 +88,7 @@ impl MyDrone {
                     hop_index: packet.routing_header.hop_index,
                     hops: packet.routing_header.hops
                 },
-                session_id: 0,
+                session_id: packet.session_id,
             };
             // Todo: send it and terminate
             return;
@@ -99,7 +108,7 @@ impl MyDrone {
                     hop_index: packet.routing_header.hop_index,
                     hops: packet.routing_header.hops
                 },
-                session_id: 0,
+                session_id: packet.session_id,
             };
             // Todo: send it and terminate
             return;
@@ -119,7 +128,7 @@ impl MyDrone {
                     hop_index: packet.routing_header.hop_index,
                     hops: packet.routing_header.hops
                 },
-                session_id: 0,
+                session_id: packet.session_id,
             };
             // Todo: send it and terminate
             return;
@@ -127,22 +136,123 @@ impl MyDrone {
 
         // step 5
         match packet.pack_type {
-            PacketType::Nack(_nack) => todo!(),
-            PacketType::Ack(_ack) => todo!(),
-            PacketType::MsgFragment(_fragment) => todo!(), //also check drop rate,
-            PacketType::FloodRequest(_flood_request) => todo!(),
-            PacketType::FloodResponse(_flood_response) => todo!(),
+            PacketType::Nack(_nack) => {
+                let p = Packet {
+                    pack_type: PacketType::Nack(Nack {
+                        fragment_index: _nack.fragment_index,
+                        nack_type: _nack.nack_type
+                    }),
+                    routing_header: SourceRoutingHeader {
+                        hop_index: packet.routing_header.hop_index,
+                        hops: packet.routing_header.hops
+                    },
+                    session_id: packet.session_id,
+                };
+                // Todo: send it and terminate
+                return
+            },
+            PacketType::Ack(_ack) => {
+                let p = Packet {
+                    pack_type: PacketType::Ack(Ack {
+                        fragment_index: _ack.fragment_index,
+                    }),
+                    routing_header: SourceRoutingHeader {
+                        hop_index: packet.routing_header.hop_index,
+                        hops: packet.routing_header.hops
+                    },
+                    session_id: packet.session_id,
+                };
+                // Todo: send it and terminate
+                return
+            }
+            PacketType::MsgFragment(_fragment) => {
+                let mut rng = rand::thread_rng();
+                if rng.gen_range(0.0..=1.0) < self.pdr{
+                    // todo() drop
+                }
+                let p = Packet {
+                    pack_type: PacketType::MsgFragment(Fragment{
+                        fragment_index: _fragment.fragment_index,
+                        total_n_fragments: _fragment.total_n_fragments,
+                        length: _fragment.length,
+                        data: _fragment.data,
+                    }),
+                    routing_header: SourceRoutingHeader {
+                        hop_index: packet.routing_header.hop_index,
+                        hops: packet.routing_header.hops
+                    },
+                    session_id: packet.session_id,
+                };
+                // Todo: send it and terminate
+                return
+            }
+            PacketType::FloodRequest(_flood_request) => {
+                // check if it's the first it gets this flood request
+                if _flood_request.path_trace.contains(&(self.id, NodeType::Drone)){
+                    let p = Packet {
+                        pack_type: PacketType::FloodResponse(FloodResponse{
+                            flood_id: _flood_request.flood_id,
+                            path_trace: _flood_request.path_trace,
+                        }),
+                        routing_header: SourceRoutingHeader {
+                            hop_index: packet.routing_header.hop_index-2, // without the -2 it will try to go to the next drone before going backwards
+                            hops: packet.routing_header.hops
+                        },
+                        session_id: packet.session_id,
+                    };
+                    // Todo: send it backwards and terminate
+                    return
+                } else {
+                    let mut new_path_trace = _flood_request.path_trace;
+                    new_path_trace.push((self.id, NodeType::Drone));
+                    let p = Packet {
+                        pack_type: PacketType::FloodRequest(FloodRequest{
+                            flood_id: _flood_request.flood_id,
+                            initiator_id: _flood_request.initiator_id,
+                            path_trace: new_path_trace,
+                        }),
+                        routing_header: SourceRoutingHeader {
+                            hop_index: packet.routing_header.hop_index,
+                            hops: packet.routing_header.hops
+                        },
+                        session_id: packet.session_id,
+                    };
+                    // Todo: send it to drone neighbors (except the one from witch it received the packet) and terminate
+                    return
+                }
+            },
+            PacketType::FloodResponse(_flood_response) => {
+                let p = Packet {
+                    pack_type: PacketType::FloodResponse(FloodResponse{
+                        flood_id: _flood_response.flood_id,
+                        path_trace: _flood_response.path_trace,
+                    }),
+                    routing_header: SourceRoutingHeader {
+                        hop_index: packet.routing_header.hop_index,
+                        hops: packet.routing_header.hops
+                    },
+                    session_id: packet.session_id,
+                };
+                // Todo: keep sending it backwards and terminate
+                return
+            },
         }
     }
+    fn send_packet(&mut self, packet: Packet, senders: HashMap<NodeId, Sender<Packet>>){
+        for s in senders.iter(){
+            s.1.send(packet.clone()).unwrap()
+        }
+    }
+    
     fn handle_command(&mut self, command: DroneCommand) {
         match command {
-            DroneCommand::AddSender(_node_id, _sender) => {self.add_channel(_node_id, _sender)},
+            DroneCommand::AddSender(_node_id, _sender) => {self.add_sender(_node_id, _sender)},
             DroneCommand::SetPacketDropRate(_pdr) =>{self.pdr = _pdr},
             DroneCommand::Crash => unreachable!(),
             _ => {}
         }
     }
-    fn add_channel(&mut self, id: NodeId, sender: Sender<Packet>) {
+    fn add_sender(&mut self, id: NodeId, sender: Sender<Packet>) {
         self.packet_send.insert(id, sender);
     }
 }

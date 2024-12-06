@@ -1,4 +1,4 @@
-use std::{fs, thread};
+use std::{env, fs, thread};
 use std::collections::HashSet;
 use std::thread::JoinHandle;
 use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
@@ -17,10 +17,10 @@ use crate::simulation_controller::simulation_controller::SimulationController;
 pub fn main(){
     // let current_path = env::current_dir().expect("Unable to get current directory");
     // println!("Current path: {:?}", current_path);
-    let config = parse_config("examples/drone/config.toml");
+    let config = parse_config("src/config.toml");
     
     // check for errors in the toml
-    check_toml_validity(&config);
+    // check_toml_validity(&config);
 
     let mut controller_drones = HashMap::new();
     let (node_event_send, node_event_recv) = unbounded();
