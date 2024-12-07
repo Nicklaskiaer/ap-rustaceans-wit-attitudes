@@ -74,13 +74,65 @@ impl MyDrone {
         }
     }
     fn crash(&mut self){
-        //TODO: make the crash
+        // While in this loop the drone is in crashing state
+        println!("{} in crashing state", self.id);
+        loop {
+            select_biased! {
+                recv(self.controller_recv) -> command => {
+                    if let Ok(command) = command {
+                        match command {
+                            // If no senders are left, the drone can exit the crashing state and be considered as crashed
+                            DroneCommand::RemoveSender(_node_id) => {
+                                self.remove_sender(_node_id);
+                                if self.packet_send.is_empty() {
+                                    println!("{} finally crashed", self.id);
+                                    return;
+                                }
+                            }
+                            
+                            // Ignore other commands while crashing
+                            _ => {}
+                        }
+                    }
+                }
+                recv(self.packet_recv) -> packet => {
+                    if let Ok(packet) = packet {
+                        match packet.pack_type.clone() {
+                            // Lose FloodRequest
+                            PacketType::FloodRequest(_) => {
+                                // Do nothing 
+                            }
+                
+                            // Forward Ack, Nack, and FloodResponse
+                            PacketType::Ack(_ack) => {
+                                self.send_ack(packet, _ack);
+                            }
+                            PacketType::Nack(_nack) => {
+                                self.send_nack(packet, _nack.nack_type);
+                            }
+                            PacketType::FloodResponse(_flood_response) => {
+                                self.send_flood_response(packet, _flood_response);
+                            }
+                
+                            // Send Nack(ErrorInRouting) for other packet types
+                            PacketType::MsgFragment(_) => {
+                                self.send_nack(
+                                    packet,
+                                    NackType::ErrorInRouting(self.id)
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
     fn add_sender(&mut self, id: NodeId, sender: Sender<Packet>) {
         self.packet_send.insert(id, sender);
     }
     fn remove_sender(&mut self, id: NodeId) {
         self.packet_send.remove(&id);
+        println!("{} removed {}", self.id, id);
     }
     // </editor-fold>
 
@@ -139,11 +191,6 @@ impl MyDrone {
                         packet,
                         NackType::Dropped
                     );
-                    // continue to send the inverted hop_index
-                    // let next_node_id = p.routing_header.hops[p.routing_header.hop_index-1];
-                    // if let Some(drone) = self.packet_send.get(&next_node_id).cloned() {
-                    //     self.send_packet(p, vec![drone]);
-                    // }
                     return;
                 } else {
                     // send fragment
@@ -208,7 +255,6 @@ impl MyDrone {
         } else {
             panic!("Sender not found, cannot send: {:?}", nack_type);
         }
-        return;
     }
     fn send_ack(&mut self, packet: Packet, ack: Ack){
         let next_hop_index = packet.routing_header.hop_index - 1;
@@ -232,7 +278,6 @@ impl MyDrone {
         } else {
             panic!("Sender not found, cannot send: {:?}", ack);
         }
-        return;
     }
     fn send_msg_fragment(&mut self, packet: Packet, fragment: Fragment){
         let next_hop_index = packet.routing_header.hop_index + 1;
@@ -259,7 +304,6 @@ impl MyDrone {
         } else {
             panic!("Sender not found, cannot send: {:?}", fragment);
         }
-        return;
     }
     fn send_flood_request(&mut self, packet: Packet, flood_request: FloodRequest){
         let next_hop_index = packet.routing_header.hop_index + 1;
@@ -290,7 +334,6 @@ impl MyDrone {
                 sender.1.send(p.clone()).unwrap();
             }
         }
-        return;
     }
     fn send_flood_response(&mut self, packet: Packet, flood_response: FloodResponse){
         let next_hop_index = packet.routing_header.hop_index - 1;
@@ -315,7 +358,6 @@ impl MyDrone {
         } else {
             panic!("Sender not found, cannot send: {:?}", flood_response);
         }
-        return;
     }
     // </editor-fold>
 }

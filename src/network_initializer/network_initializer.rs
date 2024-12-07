@@ -1,17 +1,13 @@
-use std::{env, fs, thread};
+use crossbeam_channel::unbounded;
 use std::collections::HashSet;
-use std::thread::JoinHandle;
-use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
+use std::{fs, thread};
 
 use std::collections::HashMap;
 use wg_2024::config::Config;
-use wg_2024::controller::{DroneEvent};
-use wg_2024::drone::{Drone};
-use wg_2024::network::NodeId;
-use wg_2024::packet::{Packet, PacketType};
+use wg_2024::drone::Drone;
 
-use crate::types::my_drone::MyDrone;
 use crate::simulation_controller::simulation_controller::SimulationController;
+use crate::types::my_drone::MyDrone;
 
 
 pub fn main() {
@@ -67,7 +63,7 @@ pub fn main() {
         controller_drones, 
         node_event_recv
     );
-    controller.crash_all();
+    controller.crash(1, vec![2,3]);
 
     while let Some(handle) = handles.pop() {
         handle.join().unwrap();

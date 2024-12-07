@@ -15,14 +15,25 @@ impl SimulationController {
             node_event_recv
         }
     }
-    
-    pub fn crash_all(&mut self) {
-        for (_, sender) in self.drones.iter() {
-            sender.send(DroneCommand::Crash).unwrap();
+
+    pub fn crash(&mut self, drone_id: NodeId, neighbors: Vec<NodeId>) {
+        if let Some(crashed_drone_sender) = self.drones.get(&drone_id) {
+            // send crash command
+            crashed_drone_sender.send(DroneCommand::Crash).unwrap();
+
+            for neighbor in neighbors {
+                if let Some(neighbor_drone_sender) = self.drones.get(&neighbor) {
+                    // remove drone from neighbor
+                    neighbor_drone_sender.send(DroneCommand::RemoveSender(drone_id)).unwrap();
+
+                    // remove neighbor form drone
+                    crashed_drone_sender.send(DroneCommand::RemoveSender(neighbor)).unwrap();
+                }
+            }
         }
     }
 
-    pub fn send_command(command: DroneCommand, sender: &Sender<DroneCommand>){
-        sender.send(command).unwrap()
-    }
+    // pub fn send_command(command: DroneCommand, sender: &Sender<DroneCommand>){
+    //     sender.send(command).unwrap()
+    // }
 }
