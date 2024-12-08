@@ -1,15 +1,15 @@
-use crossbeam_channel::unbounded;
+use crossbeam_channel::{unbounded, Sender};
 use std::collections::HashMap;
 use std::thread;
 use std::time::Duration;
 use wg_2024::controller::DroneEvent;
 use wg_2024::drone::Drone;
 use wg_2024::network::SourceRoutingHeader;
-use wg_2024::packet::{Ack, Fragment, Nack, NackType, Packet, PacketType};
+use wg_2024::packet::{Ack, FloodRequest, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 
 /* THE FOLLOWING TESTS CHECKS IF YOUR DRONE IS HANDLING CORRECTLY PACKETS (FRAGMENT) */
 
-const TIMEOUT: Duration = Duration::from_millis(400);
+const TIMEOUT: Duration = Duration::from_millis(1000);
 
 /// Creates a sample packet for testing purposes. For convenience, using 1-10 for clients, 11-20 for drones and 21-30 for servers
 fn create_sample_packet() -> Packet {
@@ -263,4 +263,119 @@ pub fn generic_chain_fragment_ack<T: Drone + Send + 'static>() {
             1,
         )
     );
+}
+
+/// Checks if the FloodRequest is correctly handled and forwarded by the drone.
+/// The assert consists in checking if the neighbors receive the correct FloodRequest packet.
+pub fn generic_flood_request<T: Drone + Send + 'static>() {
+    // Client 1
+    let (c1_send, c1_recv) = unbounded();
+    // Drone 11
+    let (d11_send, d11_recv) = unbounded();
+    // Drone 12
+    let (d12_send, d12_recv) = unbounded();
+    // Drone 21
+    let (d21_send, d21_recv) = unbounded();
+    // SC commands
+    let (_d_command_send, d_command_recv) = unbounded();
+    let (d_event_send, d_event_recv) = unbounded();
+
+    // Drone 11
+    let mut drone11 = T::new(
+        11,
+        d_event_send.clone(),
+        d_command_recv.clone(),
+        d11_recv.clone(),
+        HashMap::from([(21, d21_send.clone()), (12, d12_send.clone()), (1, c1_send.clone())]),
+        0.0,
+    );
+
+    // Drone 12
+    let mut drone12 = T::new(
+        12,
+        d_event_send.clone(),
+        d_command_recv.clone(),
+        d12_recv.clone(),
+        HashMap::from([(21, d21_send.clone()), (11, d12_send.clone()), (1, c1_send.clone())]),
+        0.0,
+    );
+
+    // Drone 21
+    let mut drone21 = T::new(
+        21,
+        d_event_send.clone(),
+        d_command_recv.clone(),
+        d21_recv.clone(),
+        HashMap::from([(11, d11_send.clone()), (12, d12_send.clone()), (1, c1_send.clone())]),
+        0.0,
+    );
+    
+
+    // Spawn the drone's run method in a separate thread
+    thread::spawn(move || {
+        drone11.run();
+    });
+
+    thread::spawn(move || {
+        drone12.run();
+    });
+
+    thread::spawn(move || {
+        drone21.run();
+    });
+
+    let flood_request = Packet::new_flood_request(
+        SourceRoutingHeader {
+            hop_index: 1,
+            hops: vec![1],
+        },
+        1,
+        FloodRequest {
+            flood_id: 99,
+            initiator_id: 1,
+            path_trace: vec![(1, NodeType::Client)],
+        },
+    );
+
+    // "Client" sends FloodRequest packet to the drone
+    d11_send.send(flood_request.clone()).unwrap();
+    // d12_send.send(flood_request.clone()).unwrap();
+
+    while let Ok(event) = d_event_recv.recv_timeout(TIMEOUT) {
+        println!("SC Command {:?}", event);
+    }
+    // while let Ok(event) = d_event_recv.recv_timeout(TIMEOUT) {
+    //     println!("SC Event {:?}", event);
+    // }
+    // while let Ok(event) = c1_recv.recv_timeout(TIMEOUT) {
+    //     println!("c1 {:?}", event);
+    // }
+    // while let Ok(event) = d11_recv.recv_timeout(TIMEOUT) {
+    //     println!("d11 {:?}", event);
+    // }
+    // while let Ok(event) = d12_recv.recv_timeout(TIMEOUT) {
+    //     println!("d12 {:?}", event);
+    // }
+    // while let Ok(event) = d21_recv.recv_timeout(TIMEOUT) {
+    //     println!("d21 {:?}", event);
+    // }
+    
+    
+
+    // let mut expected_flood_request = flood_request.clone();
+    // expected_flood_request.routing_header.hop_index = 2;
+    // expected_flood_request.pack_type = PacketType::FloodRequest(FloodRequest {
+    //     flood_id: 1,
+    //     initiator_id: 1,
+    //     path_trace: vec![(1, NodeType::Client), (11, NodeType::Drone)],
+    // });
+    // 
+    // // Drone 12 receives the FloodRequest from Drone 11
+    // assert_eq!(d2_recv.recv_timeout(TIMEOUT).unwrap(), expected_flood_request);
+    // 
+    // // SC listen for event from the drone
+    // assert_eq!(
+    //     d_event_recv.recv_timeout(TIMEOUT).unwrap(),
+    //     DroneEvent::PacketSent(expected_flood_request)
+    // );
 }

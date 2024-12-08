@@ -159,43 +159,48 @@ impl MyDrone {
     // <editor-fold desc="Packets">
     fn handle_packet(&mut self, mut packet: Packet) {
 
-        // check for UnexpectedRecipient (will send the package backwards)
-        if self.id != packet.routing_header.hops[packet.routing_header.hop_index] {
-            let p = self.send_nack(
-                packet.clone(), 
-                NackType::UnexpectedRecipient(self.id)
-            );
-            match p{
-                Ok(_p) => {self.send_sent_to_sc(_p)}
-                Err(_p) => {self.send_shortcut_to_sc(_p.0)}
+        // first thing first check if it's a FloodRequest 
+        // if so, hop_index and hops will be ignored
+        if !matches!(packet.pack_type, PacketType::FloodRequest(_)){
+            
+            // check for UnexpectedRecipient (will send the package backwards)
+            if self.id != packet.routing_header.hops[packet.routing_header.hop_index]{
+                let p = self.send_nack(
+                    packet.clone(),
+                    NackType::UnexpectedRecipient(self.id)
+                );
+                match p{
+                    Ok(_p) => {self.send_sent_to_sc(_p)}
+                    Err(_p) => {self.send_shortcut_to_sc(_p.0)}
+                }
+                return;
             }
-            return;
-        }
 
-        // check for DestinationIsDrone (will send the package backwards)
-        if packet.routing_header.hops.len() == packet.routing_header.hop_index {
-            let p = self.send_nack(
-                packet.clone(), 
-                NackType::DestinationIsDrone
-            );
-            match p{
-                Ok(_p) => {self.send_sent_to_sc(_p)}
-                Err(_p) => {self.send_shortcut_to_sc(_p.0)}
+            // check for DestinationIsDrone (will send the package backwards)
+            if packet.routing_header.hops.len() == packet.routing_header.hop_index {
+                let p = self.send_nack(
+                    packet.clone(),
+                    NackType::DestinationIsDrone
+                );
+                match p{
+                    Ok(_p) => {self.send_sent_to_sc(_p)}
+                    Err(_p) => {self.send_shortcut_to_sc(_p.0)}
+                }
+                return;
             }
-            return;
-        }
 
-        // check for ErrorInRouting (will send the package backwards)
-        if !self.packet_send.contains_key(&packet.routing_header.hops[packet.routing_header.hop_index + 1]) {
-            let p = self.send_nack(
-                packet.clone(),
-                NackType::ErrorInRouting(packet.routing_header.hops[packet.routing_header.hop_index + 1]),
-            );
-            match p{
-                Ok(_p) => {self.send_sent_to_sc(_p)}
-                Err(_p) => {self.send_shortcut_to_sc(_p.0)}
+            // check for ErrorInRouting (will send the package backwards)
+            if !self.packet_send.contains_key(&packet.routing_header.hops[packet.routing_header.hop_index + 1]) {
+                let p = self.send_nack(
+                    packet.clone(),
+                    NackType::ErrorInRouting(packet.routing_header.hops[packet.routing_header.hop_index + 1]),
+                );
+                match p{
+                    Ok(_p) => {self.send_sent_to_sc(_p)}
+                    Err(_p) => {self.send_shortcut_to_sc(_p.0)}
+                }
+                return;
             }
-            return;
         }
 
         // match with all Packet Types
@@ -252,7 +257,7 @@ impl MyDrone {
                 // is it the first time the node receives this flood request?
                 let current_flood = self.flood_initiators.get_key_value(&_flood_request.flood_id);
                 let drone_flood = (&_flood_request.flood_id, &_flood_request.initiator_id);
-                if current_flood.unwrap() != drone_flood{
+                if current_flood.is_none() || current_flood.unwrap() != drone_flood{
                     // yes: send a flood request to all neighbors
                     let p = self.send_flood_request(
                         packet.clone(),
@@ -299,6 +304,7 @@ impl MyDrone {
             pack_type: PacketType::Nack(Nack {
                 fragment_index: match packet.pack_type {
                     PacketType::MsgFragment(_fragment) => _fragment.fragment_index,
+                    PacketType::Nack(_nack) => _nack.fragment_index,
                     _ => 0,
                 },
                 nack_type,
@@ -356,10 +362,13 @@ impl MyDrone {
     }
     fn send_flood_request(&mut self, packet: Packet, flood_request: FloodRequest)->Result<(Packet), SendError<Packet>>{
         let next_hop_index = packet.routing_header.hop_index + 1;
-        //let next_node_id = packet.routing_header.hops[next_hop_index];
 
+        // add node to the hops
+        let mut new_hops = packet.routing_header.hops.clone();
+        new_hops.push((self.id));
+        
         // add node to the path trace
-        let mut new_path_trace = flood_request.path_trace;
+        let mut new_path_trace = flood_request.path_trace.clone();
         new_path_trace.push((self.id, NodeType::Drone));
 
         // generate new packet
@@ -371,14 +380,14 @@ impl MyDrone {
             }),
             routing_header: SourceRoutingHeader {
                 hop_index: next_hop_index,
-                hops: packet.routing_header.hops.clone(),
+                hops: new_hops,
             },
             session_id: packet.session_id,
         };
 
         // send packet to neighbors (except for the previous drone)
         let prev_node_id = packet.routing_header.hops[packet.routing_header.hop_index-1];
-        for node_id in packet.routing_header.hops{
+        for (node_id, _) in self.packet_send.clone(){
             if prev_node_id != node_id{
                 // try to send packet
                 match self.try_send_packet(p.clone(), node_id){
