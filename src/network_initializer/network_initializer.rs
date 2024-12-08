@@ -65,43 +65,32 @@ pub fn main() {
         controller_drones, 
         node_event_recv
     );
-    // controller.crash(1, vec![2,3]);
-
-    println!();
-    println!();
-    println!();
-    println!();
-    println!("generic_fragment_forward");
-    test_fragments::generic_fragment_forward::<MyDrone>();
-    println!();
-    println!();
-    println!();
-    println!();
-    println!("generic_fragment_drop");
-    test_fragments::generic_fragment_drop::<MyDrone>();
-    println!();
-    println!();
-    println!();
-    println!();
-    println!("generic_chain_fragment_drop");
-    test_fragments::generic_chain_fragment_drop::<MyDrone>();
-    println!();
-    println!();
-    println!();
-    println!();
-    println!("generic_chain_fragment_ack");
-    test_fragments::generic_chain_fragment_ack::<MyDrone>();
-
-    
-    while let Some(handle) = handles.pop() {
-        handle.join().unwrap();
-    }
 
     // ########################################################################################
     // TEST 
     // ########################################################################################
-
     
+    println!("generic_fragment_forward");
+    test_fragments::generic_fragment_forward::<MyDrone>();
+    println!("success!");
+    println!();
+    
+    println!("generic_fragment_drop");
+    test_fragments::generic_fragment_drop::<MyDrone>();
+    println!("success!");
+    println!();
+    
+    println!("generic_chain_fragment_drop");
+    test_fragments::generic_chain_fragment_drop::<MyDrone>();
+    println!("success!");
+    println!();
+    
+    println!("generic_chain_fragment_ack");
+    test_fragments::generic_chain_fragment_ack::<MyDrone>();
+    println!("success!");
+    println!();
+
+    // controller.crash(1, vec![2,3]);
     
     // let test_flood = FloodRequest{
     //     flood_id: 99,
@@ -123,10 +112,11 @@ pub fn main() {
     //     }
     //     if let Some(d3) = packet_channels.get(&(4 as NodeId)) {}
     // }
-    
-    
-    
-    
+
+
+    while let Some(handle) = handles.pop() {
+        handle.join().unwrap();
+    }
 }
 
 fn parse_config(file: &str) -> Config {

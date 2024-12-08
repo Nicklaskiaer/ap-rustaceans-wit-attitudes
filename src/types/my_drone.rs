@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use crossbeam_channel::{select_biased, unbounded, Receiver, Sender};
+use crossbeam_channel::{select_biased, unbounded, Receiver, SendError, Sender};
 use std::collections::HashMap;
 use std::{fs, thread};
 use rand::{random, Rng};
@@ -107,13 +107,22 @@ impl MyDrone {
                 
                             // Forward Ack, Nack, and FloodResponse
                             PacketType::Ack(_ack) => {
-                                self.send_ack(packet, _ack);
+                                match self.send_ack(packet.clone(), _ack){
+                                    Err(p) => {self.send_shortcut_to_sc(p.0)}
+                                    _ => {}
+                                }
                             }
                             PacketType::Nack(_nack) => {
-                                self.send_nack(packet, _nack.nack_type);
+                                match self.send_nack(packet.clone(), _nack.nack_type){
+                                    Err(p) => {self.send_shortcut_to_sc(p.0)}
+                                    _ => {}
+                                }
                             }
                             PacketType::FloodResponse(_flood_response) => {
-                                self.send_flood_response(packet, _flood_response);
+                                match self.send_flood_response(packet, _flood_response){
+                                    Err(p) => {self.send_shortcut_to_sc(p.0)}
+                                    _ => {}
+                                }
                             }
                 
                             // Send Nack(ErrorInRouting) for other packet types
@@ -136,28 +145,43 @@ impl MyDrone {
         self.packet_send.remove(&id);
         println!("{} removed {}", self.id, id);
     }
+    fn send_dropped_to_sc(&mut self, packet: Packet){
+        self.controller_send.send(DroneEvent::PacketDropped(packet));
+    }
+    fn send_sent_to_sc(&mut self, packet: Packet){
+        self.controller_send.send(DroneEvent::PacketSent(packet));
+    }
+    fn send_shortcut_to_sc(&mut self, packet: Packet){
+        self.controller_send.send(DroneEvent::ControllerShortcut(packet));
+    }
     // </editor-fold>
 
     // <editor-fold desc="Packets">
     fn handle_packet(&mut self, mut packet: Packet) {
-        
+
         // check for UnexpectedRecipient (will send the package backwards)
         if self.id != packet.routing_header.hops[packet.routing_header.hop_index] {
-            self.send_nack(
-                packet.clone(),
+            let p = self.send_nack(
+                packet.clone(), 
                 NackType::UnexpectedRecipient(self.id)
             );
-            self.send_sent_to_sc(packet);
+            match p{
+                Ok(_p) => {self.send_sent_to_sc(_p)}
+                Err(_p) => {self.send_shortcut_to_sc(_p.0)}
+            }
             return;
         }
 
         // check for DestinationIsDrone (will send the package backwards)
         if packet.routing_header.hops.len() == packet.routing_header.hop_index {
             let p = self.send_nack(
-                packet.clone(),
-                NackType::DestinationIsDrone,
+                packet.clone(), 
+                NackType::DestinationIsDrone
             );
-            self.send_sent_to_sc(packet);
+            match p{
+                Ok(_p) => {self.send_sent_to_sc(_p)}
+                Err(_p) => {self.send_shortcut_to_sc(_p.0)}
+            }
             return;
         }
 
@@ -167,45 +191,60 @@ impl MyDrone {
                 packet.clone(),
                 NackType::ErrorInRouting(packet.routing_header.hops[packet.routing_header.hop_index + 1]),
             );
-            self.send_sent_to_sc(packet);
+            match p{
+                Ok(_p) => {self.send_sent_to_sc(_p)}
+                Err(_p) => {self.send_shortcut_to_sc(_p.0)}
+            }
             return;
         }
 
         // match with all Packet Types
         match packet.clone().pack_type {
             PacketType::Nack(_nack) => {
-                self.send_nack(
+                let p = self.send_nack(
                     packet.clone(),
                     _nack.nack_type
                 );
-                self.send_sent_to_sc(packet);
+                match p{
+                    Ok(_p) => {self.send_sent_to_sc(_p)}
+                    Err(_p) => {self.send_shortcut_to_sc(_p.0)}
+                }
                 return;
             }
             PacketType::Ack(_ack) => {
-                self.send_ack(
+                let p = self.send_ack(
                     packet.clone(),
                     _ack
                 );
-                self.send_sent_to_sc(packet);
+                match p{
+                    Ok(_p) => {self.send_sent_to_sc(_p)}
+                    Err(_p) => {self.send_shortcut_to_sc(_p.0)}
+                }
                 return;
             }
             PacketType::MsgFragment(_fragment) => {
                 // check if it's Dropped
                 let mut rng = rand::thread_rng();
                 if rng.gen_range(0.0..=1.0) < self.pdr {
-                    self.send_nack(
+                    let p = self.send_nack(
                         packet.clone(),
                         NackType::Dropped
                     );
-                    self.send_dropped_to_sc(packet); // send the dropped packet to the simulation controller
+                    match p{
+                        Ok(_p) => {self.send_dropped_to_sc(_p)} // send the dropped packet to the simulation controller
+                        Err(_p) => {panic!("*surprised quack*")} // self.send_shortcut_to_sc(_p.0)
+                    }
                     return;
                 } else {
                     // send fragment
-                    self.send_msg_fragment(
+                    let p =self.send_msg_fragment(
                         packet.clone(),
                         _fragment
                     );
-                    self.send_sent_to_sc(packet);
+                    match p{
+                        Ok(_p) => {self.send_sent_to_sc(_p)}
+                        Err(_p) => {panic!("*surprised quack*")} //self.send_shortcut_to_sc(_p.0)
+                    }
                     return;
                 }
             }
@@ -215,11 +254,14 @@ impl MyDrone {
                 let drone_flood = (&_flood_request.flood_id, &_flood_request.initiator_id);
                 if current_flood.unwrap() != drone_flood{
                     // yes: send a flood request to all neighbors
-                    self.send_flood_request(
+                    let p = self.send_flood_request(
                         packet.clone(),
                         _flood_request
                     );
-                    self.send_sent_to_sc(packet);
+                    match p{
+                        Ok(_p) => {self.send_sent_to_sc(_p)}
+                        Err(_p) => {panic!("*surprised quack*")} //self.send_shortcut_to_sc(_p.0)
+                    }
                     return;
                 } else {
                     // no: send a flood response
@@ -227,100 +269,94 @@ impl MyDrone {
                         flood_id: _flood_request.flood_id,
                         path_trace: _flood_request.path_trace,
                     };
-                    self.send_flood_response(packet.clone(), flood_response);
-                    self.send_sent_to_sc(packet);
+                    let p = self.send_flood_response(packet.clone(), flood_response);
+                    match p{
+                        Ok(_p) => {self.send_sent_to_sc(_p)}
+                        Err(_p) => {self.send_shortcut_to_sc(_p.0)}
+                    }
                     return;
                 }
             },
             PacketType::FloodResponse(_flood_response) => {
-                self.send_flood_response(
+                let p = self.send_flood_response(
                     packet.clone(),
                     _flood_response
                 );
-                self.send_sent_to_sc(packet);
+                match p{
+                    Ok(_p) => {self.send_sent_to_sc(_p)}
+                    Err(_p) => {self.send_shortcut_to_sc(_p.0)}
+                }
                 return;
             },
         }
     }
-    fn send_nack(&mut self, packet: Packet, nack_type: NackType){
+    fn send_nack(&mut self, packet: Packet, nack_type: NackType)->Result<(Packet), SendError<Packet>>{
         let next_hop_index = packet.routing_header.hop_index - 1;
         let next_node_id = packet.routing_header.hops[next_hop_index];
 
-        if let Some(sender) = self.packet_send.get(&next_node_id) {
-            // generate new packet
-            let p = Packet {
-                pack_type: PacketType::Nack(Nack {
-                    fragment_index: match packet.pack_type {
-                        PacketType::MsgFragment(_fragment) => _fragment.fragment_index,
-                        _ => 0,
-                    },
-                    nack_type,
-                }),
-                routing_header: SourceRoutingHeader {
-                    hop_index: next_hop_index,
-                    hops: packet.routing_header.hops.clone(),
+        // generate new packet
+        let p = Packet {
+            pack_type: PacketType::Nack(Nack {
+                fragment_index: match packet.pack_type {
+                    PacketType::MsgFragment(_fragment) => _fragment.fragment_index,
+                    _ => 0,
                 },
-                session_id: packet.session_id,
-            };
+                nack_type,
+            }),
+            routing_header: SourceRoutingHeader {
+                hop_index: next_hop_index,
+                hops: packet.routing_header.hops.clone(),
+            },
+            session_id: packet.session_id,
+        };
 
-            // send packet
-            sender.send(p).unwrap();
-        } else {
-            panic!("Sender not found, cannot send: {:?}", nack_type);
-        }
+        // try to send packet
+        self.try_send_packet(p, next_node_id)
     }
-    fn send_ack(&mut self, packet: Packet, ack: Ack){
+    fn send_ack(&mut self, packet: Packet, ack: Ack)->Result<(Packet), SendError<Packet>>{
         let next_hop_index = packet.routing_header.hop_index - 1;
         let next_node_id = packet.routing_header.hops[next_hop_index];
 
-        if let Some(sender) = self.packet_send.get(&next_node_id) {
-            // generate new packet
-            let p = Packet {
-                pack_type: PacketType::Ack(Ack {
-                    fragment_index: ack.fragment_index,
-                }),
-                routing_header: SourceRoutingHeader {
-                    hop_index: next_hop_index,
-                    hops: packet.routing_header.hops
-                },
-                session_id: packet.session_id,
-            };
+        // generate new packet
+        let p = Packet {
+            pack_type: PacketType::Ack(Ack {
+                fragment_index: ack.fragment_index,
+            }),
+            routing_header: SourceRoutingHeader {
+                hop_index: next_hop_index,
+                hops: packet.routing_header.hops
+            },
+            session_id: packet.session_id,
+        };
 
-            // send packet
-            sender.send(p).unwrap();
-        } else {
-            panic!("Sender not found, cannot send: {:?}", ack);
-        }
+        // try to send packet
+        self.try_send_packet(p, next_node_id)
     }
-    fn send_msg_fragment(&mut self, packet: Packet, fragment: Fragment){
+    fn send_msg_fragment(&mut self, packet: Packet, fragment: Fragment)->Result<(Packet), SendError<Packet>>{
         let next_hop_index = packet.routing_header.hop_index + 1;
         let next_node_id = packet.routing_header.hops[next_hop_index];
 
-        if let Some(sender) = self.packet_send.get(&next_node_id) {
-            // generate new packet
-            let p = Packet {
-                pack_type: PacketType::MsgFragment(Fragment{
-                    fragment_index: fragment.fragment_index,
-                    total_n_fragments: fragment.total_n_fragments,
-                    length: fragment.length,
-                    data: fragment.data,
-                }),
-                routing_header: SourceRoutingHeader {
-                    hop_index: next_hop_index,
-                    hops: packet.routing_header.hops,
-                },
-                session_id: packet.session_id,
-            };
+        // generate new packet
+        let p = Packet {
+            pack_type: PacketType::MsgFragment(Fragment{
+                fragment_index: fragment.fragment_index,
+                total_n_fragments: fragment.total_n_fragments,
+                length: fragment.length,
+                data: fragment.data,
+            }),
+            routing_header: SourceRoutingHeader {
+                hop_index: next_hop_index,
+                hops: packet.routing_header.hops,
+            },
+            session_id: packet.session_id,
+        };
 
-            // send packet
-            sender.send(p).unwrap();
-        } else {
-            panic!("Sender not found, cannot send: {:?}", fragment);
-        }
+        // try to send packet
+        self.try_send_packet(p, next_node_id)
     }
-    fn send_flood_request(&mut self, packet: Packet, flood_request: FloodRequest){
+    fn send_flood_request(&mut self, packet: Packet, flood_request: FloodRequest)->Result<(Packet), SendError<Packet>>{
         let next_hop_index = packet.routing_header.hop_index + 1;
-        let next_node_id = packet.routing_header.hops[next_hop_index];
+        //let next_node_id = packet.routing_header.hops[next_hop_index];
 
         // add node to the path trace
         let mut new_path_trace = flood_request.path_trace;
@@ -342,44 +378,47 @@ impl MyDrone {
 
         // send packet to neighbors (except for the previous drone)
         let prev_node_id = packet.routing_header.hops[packet.routing_header.hop_index-1];
-        for sender in &self.packet_send{
-            if *sender.0 != prev_node_id{
-                sender.1.send(p.clone()).unwrap();
+        for node_id in packet.routing_header.hops{
+            if prev_node_id != node_id{
+                // try to send packet
+                match self.try_send_packet(p.clone(), node_id){
+                    Ok(_) => {}
+                    Err(e) => {return Err(e)}
+                }
             }
         }
+        Ok(p)
     }
-    fn send_flood_response(&mut self, packet: Packet, flood_response: FloodResponse){
+    fn send_flood_response(&mut self, packet: Packet, flood_response: FloodResponse)->Result<(Packet), SendError<Packet>>{
         let next_hop_index = packet.routing_header.hop_index - 1;
         let next_node_id = packet.routing_header.hops[next_hop_index];
 
-        if let Some(sender) = self.packet_send.get(&next_node_id) {
-            // generate new packet
-            let p = Packet {
-                pack_type: PacketType::FloodResponse(FloodResponse{
-                    flood_id: flood_response.flood_id,
-                    path_trace: flood_response.path_trace,
-                }),
-                routing_header: SourceRoutingHeader {
-                    hop_index: next_hop_index,
-                    hops: packet.routing_header.hops,
-                },
-                session_id: packet.session_id,
-            };
+        // generate new packet
+        let p = Packet {
+            pack_type: PacketType::FloodResponse(FloodResponse{
+                flood_id: flood_response.flood_id,
+                path_trace: flood_response.path_trace,
+            }),
+            routing_header: SourceRoutingHeader {
+                hop_index: next_hop_index,
+                hops: packet.routing_header.hops,
+            },
+            session_id: packet.session_id,
+        };
 
+        // try to send packet
+        self.try_send_packet(p, next_node_id)
+    }
+    fn try_send_packet(&self, p: Packet, next_node_id: NodeId) -> Result<Packet, SendError<Packet>> {
+        if let Some(sender) = self.packet_send.get(&next_node_id) {
             // send packet
-            sender.send(p).unwrap();
+            match sender.send(p.clone()) {
+                Ok(_) => Ok(p),
+                Err(e) => Err(e),
+            }
         } else {
-            panic!("Sender not found, cannot send: {:?}", flood_response);
+            Err(panic!("Sender not found, cannot send: {:?}", p))
         }
-    }
-    fn send_dropped_to_sc(&mut self, packet: Packet){
-        self.controller_send.send(DroneEvent::PacketDropped(packet)).unwrap();
-    }
-    fn send_sent_to_sc(&mut self, packet: Packet){
-        self.controller_send.send(DroneEvent::PacketSent(packet)).unwrap();
-    }
-    fn send_short_to_sc(&mut self, packet: Packet){
-        self.controller_send.send(DroneEvent::ControllerShortcut(packet)).unwrap();
     }
     // </editor-fold>
 }
