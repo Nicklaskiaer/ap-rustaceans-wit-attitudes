@@ -3,6 +3,7 @@ mod simulation_controller;
 mod server;
 mod message;
 mod types;
+mod test_fragments;
 
 fn main() {
     println!("Hello, world!");

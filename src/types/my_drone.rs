@@ -20,6 +20,7 @@ pub struct MyDrone {
     packet_recv: Receiver<Packet>,
     pdr: f32,
     packet_send: HashMap<NodeId, Sender<Packet>>,
+    flood_initiators: HashMap<u64, NodeId>, // HashMap<flood_id, initiator_id>
 }
 
 impl Drone for MyDrone {
@@ -38,6 +39,7 @@ impl Drone for MyDrone {
             packet_recv,
             packet_send,
             pdr,
+            flood_initiators: HashMap::new()
         }
     }
 
@@ -138,23 +140,24 @@ impl MyDrone {
 
     // <editor-fold desc="Packets">
     fn handle_packet(&mut self, mut packet: Packet) {
-        let mut new_hop_index: usize = 0;
-
+        
         // check for UnexpectedRecipient (will send the package backwards)
         if self.id != packet.routing_header.hops[packet.routing_header.hop_index] {
             self.send_nack(
-                packet,
+                packet.clone(),
                 NackType::UnexpectedRecipient(self.id)
             );
+            self.send_sent_to_sc(packet);
             return;
         }
 
         // check for DestinationIsDrone (will send the package backwards)
         if packet.routing_header.hops.len() == packet.routing_header.hop_index {
             let p = self.send_nack(
-                packet,
+                packet.clone(),
                 NackType::DestinationIsDrone,
             );
+            self.send_sent_to_sc(packet);
             return;
         }
 
@@ -164,6 +167,7 @@ impl MyDrone {
                 packet.clone(),
                 NackType::ErrorInRouting(packet.routing_header.hops[packet.routing_header.hop_index + 1]),
             );
+            self.send_sent_to_sc(packet);
             return;
         }
 
@@ -171,16 +175,18 @@ impl MyDrone {
         match packet.clone().pack_type {
             PacketType::Nack(_nack) => {
                 self.send_nack(
-                    packet,
+                    packet.clone(),
                     _nack.nack_type
                 );
+                self.send_sent_to_sc(packet);
                 return;
             }
             PacketType::Ack(_ack) => {
                 self.send_ack(
-                    packet,
+                    packet.clone(),
                     _ack
                 );
+                self.send_sent_to_sc(packet);
                 return;
             }
             PacketType::MsgFragment(_fragment) => {
@@ -188,27 +194,32 @@ impl MyDrone {
                 let mut rng = rand::thread_rng();
                 if rng.gen_range(0.0..=1.0) < self.pdr {
                     self.send_nack(
-                        packet,
+                        packet.clone(),
                         NackType::Dropped
                     );
+                    self.send_dropped_to_sc(packet); // send the dropped packet to the simulation controller
                     return;
                 } else {
                     // send fragment
                     self.send_msg_fragment(
-                        packet,
+                        packet.clone(),
                         _fragment
                     );
+                    self.send_sent_to_sc(packet);
                     return;
                 }
             }
             PacketType::FloodRequest(_flood_request) => {
                 // is it the first time the node receives this flood request?
-                if !_flood_request.path_trace.contains(&(self.id, NodeType::Drone)) {
+                let current_flood = self.flood_initiators.get_key_value(&_flood_request.flood_id);
+                let drone_flood = (&_flood_request.flood_id, &_flood_request.initiator_id);
+                if current_flood.unwrap() != drone_flood{
                     // yes: send a flood request to all neighbors
                     self.send_flood_request(
-                        packet,
+                        packet.clone(),
                         _flood_request
                     );
+                    self.send_sent_to_sc(packet);
                     return;
                 } else {
                     // no: send a flood response
@@ -216,15 +227,17 @@ impl MyDrone {
                         flood_id: _flood_request.flood_id,
                         path_trace: _flood_request.path_trace,
                     };
-                    self.send_flood_response(packet, flood_response);
+                    self.send_flood_response(packet.clone(), flood_response);
+                    self.send_sent_to_sc(packet);
                     return;
                 }
             },
             PacketType::FloodResponse(_flood_response) => {
                 self.send_flood_response(
-                    packet,
+                    packet.clone(),
                     _flood_response
                 );
+                self.send_sent_to_sc(packet);
                 return;
             },
         }
@@ -358,6 +371,15 @@ impl MyDrone {
         } else {
             panic!("Sender not found, cannot send: {:?}", flood_response);
         }
+    }
+    fn send_dropped_to_sc(&mut self, packet: Packet){
+        self.controller_send.send(DroneEvent::PacketDropped(packet)).unwrap();
+    }
+    fn send_sent_to_sc(&mut self, packet: Packet){
+        self.controller_send.send(DroneEvent::PacketSent(packet)).unwrap();
+    }
+    fn send_short_to_sc(&mut self, packet: Packet){
+        self.controller_send.send(DroneEvent::ControllerShortcut(packet)).unwrap();
     }
     // </editor-fold>
 }
