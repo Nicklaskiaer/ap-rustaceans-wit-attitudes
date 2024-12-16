@@ -6,7 +6,6 @@ mod types;
 mod test_fragments;
 
 fn main() {
-    println!("Hello, world!");
-    
-    network_initializer::network_initializer::main();
+
+    simulation_controller::simulation_controller::main().expect("GUI panicked!");
 }
