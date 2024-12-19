@@ -4,6 +4,7 @@ use wg_2024::network::*;
 pub struct ChatServer;
 pub struct MediaServer;
 
+#[derive(Debug, Clone)]
 pub enum ServerType {
     Media,
     Chat,
@@ -28,7 +29,8 @@ pub trait Server {
 
     fn on_request_arrived(&mut self, source_id: NodeId, session_id: u64, raw_content: String) {
         if raw_content == "ServerType" {
-            let _server_type = Self::get_sever_type();
+            let server_type = Self::get_server_type();
+            println!("Server type: {:?}", server_type);
             // send response
             return;
         }
@@ -41,13 +43,11 @@ pub trait Server {
         }
     }
 
-    fn send_response(&mut self, _response: Self::ResponseType) {
-        // send response
-    }
+    fn send_response(&mut self, _response: Self::ResponseType);
 
     fn handle_request(&mut self, request: Self::RequestType) -> Self::ResponseType;
 
-    fn get_sever_type() -> ServerType;
+    fn get_server_type() -> ServerType;
 }
 
 impl Server for ChatServer {
@@ -75,8 +75,10 @@ impl Server for ChatServer {
             }
         }
     }
-
-    fn get_sever_type() -> ServerType {
+    fn send_response(&mut self, _response: Self::ResponseType) {
+        println!("Sending response: {:?}", _response);
+    }
+    fn get_server_type() -> ServerType {
         ServerType::Chat
     }
 }
@@ -98,8 +100,11 @@ impl Server for MediaServer {
         }
     }
 
-    fn get_sever_type() -> ServerType {
+    fn get_server_type() -> ServerType {
         ServerType::Media
+    }
+    fn send_response(&mut self, _response: Self::ResponseType) {
+        println!("Sending response: {:?}", _response);
     }
 }
 
