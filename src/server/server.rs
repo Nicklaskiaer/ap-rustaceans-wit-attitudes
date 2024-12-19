@@ -1,97 +1,120 @@
-pub enum ClientToServer {
-    ServerType,
-    FilesList,
-    File { file_id: String },
-    Media { media_id: String },
+use crate::server::message::*;
+use wg_2024::network::*;
+
+pub struct ChatServer;
+pub struct MediaServer;
+
+pub enum ServerType {
+    Media,
+    Chat,
 }
 
-pub enum ServerToClient {
-    ServerType { server_type: String },
-    FilesList { list_of_file_ids: Vec<String> },
-    File { file_size: usize, file: Vec<u8> },
-    Media { media: Vec<u8> },
-    ErrorRequestedNotFound,
-    ErrorUnsupportedRequest,
-}
+pub trait Server {
+    type RequestType: Request;
+    type ResponseType: Response;
 
-pub enum ChatClientToServer {
-    RegistrationToChat,
-    ClientList,
-    MessageFor { client_id: String, message: String },
-}
+    fn compose_message(
+        source_id: NodeId,
+        session_id: u64,
+        raw_content: String,
+    ) -> Result<Message<Self::RequestType>, String> {
+        let content = Self::RequestType::from_string(raw_content)?;
+        Ok(Message {
+            session_id,
+            source_id,
+            content,
+        })
+    }
 
-pub enum ChatServerToClient {
-    ClientList { list_of_client_ids: Vec<String> },
-    MessageFrom { client_id: String, message: String },
-    ErrorWrongClientId,
-}
-
-impl ClientToServer {
-    pub fn handle_request(&self) -> ServerToClient {
-        match self {
-            ClientToServer::ServerType => ServerToClient::ServerType {
-                server_type: "ExampleServer".to_string(),
-            },
-            ClientToServer::FilesList => ServerToClient::FilesList {
-                list_of_file_ids: vec!["file1".to_string(), "file2".to_string()],
-            },
-            ClientToServer::File { file_id } => ServerToClient::File {
-                file_size: 1024,
-                file: vec![0; 1024],
-            },
-            ClientToServer::Media { media_id } => ServerToClient::Media {
-                media: vec![1, 2, 3, 4],
-            },
+    fn on_request_arrived(&mut self, source_id: NodeId, session_id: u64, raw_content: String) {
+        if raw_content == "ServerType" {
+            let _server_type = Self::get_sever_type();
+            // send response
+            return;
         }
+        match Self::compose_message(source_id, session_id, raw_content) {
+            Ok(message) => {
+                let response = self.handle_request(message.content);
+                self.send_response(response);
+            }
+            Err(str) => panic!("{}", str),
+        }
+    }
+
+    fn send_response(&mut self, _response: Self::ResponseType) {
+        // send response
+    }
+
+    fn handle_request(&mut self, request: Self::RequestType) -> Self::ResponseType;
+
+    fn get_sever_type() -> ServerType;
+}
+
+impl Server for ChatServer {
+    type RequestType = ChatRequest;
+    type ResponseType = ChatResponse;
+
+    fn handle_request(&mut self, request: Self::RequestType) -> Self::ResponseType {
+        match request {
+            ChatRequest::ClientList => {
+                println!("Sending ClientList");
+                ChatResponse::ClientList(vec![1, 2])
+            }
+            ChatRequest::Register(id) => {
+                println!("Registering {}", id);
+                ChatResponse::ClientList(vec![1, 2])
+            }
+            ChatRequest::SendMessage {
+                message,
+                to,
+                from: _,
+            } => {
+                println!("Sending message \"{}\" to {}", message, to);
+                // effectively forward message
+                ChatResponse::MessageSent
+            }
+        }
+    }
+
+    fn get_sever_type() -> ServerType {
+        ServerType::Chat
     }
 }
 
-impl ChatClientToServer {
-    pub fn handle_request(&self) -> ChatServerToClient {
-        match self {
-            ChatClientToServer::RegistrationToChat => ChatServerToClient::ClientList {
-                list_of_client_ids: vec!["client1".to_string(), "client2".to_string()],
-            },
-            ChatClientToServer::ClientList => ChatServerToClient::ClientList {
-                list_of_client_ids: vec!["client1".to_string(), "client2".to_string()],
-            },
-            ChatClientToServer::MessageFor { client_id, message } => {
-                ChatServerToClient::MessageFrom {
-                    client_id: client_id.clone(),
-                    message: message.clone(),
-                }
+impl Server for MediaServer {
+    type RequestType = MediaRequest;
+    type ResponseType = MediaResponse;
+
+    fn handle_request(&mut self, request: Self::RequestType) -> Self::ResponseType {
+        match request {
+            MediaRequest::MediaList => {
+                println!("Sending MediaList");
+                MediaResponse::MediaList(vec![1, 2])
+            }
+            MediaRequest::Media(id) => {
+                println!("Sending media {}", id);
+                MediaResponse::Media(vec![1, 2, 3])
             }
         }
+    }
+
+    fn get_sever_type() -> ServerType {
+        ServerType::Media
     }
 }
 
-impl ServerToClient {
-    pub fn handle_response(&self) {
-        match self {
-            ServerToClient::ServerType { server_type } => println!("Server type: {}", server_type),
-            ServerToClient::FilesList { list_of_file_ids } => {
-                println!("Files list: {:?}", list_of_file_ids)
-            }
-            ServerToClient::File { file_size, file } => {
-                println!("File size: {}, File content: {:?}", file_size, file)
-            }
-            ServerToClient::Media { media } => println!("Media content: {:?}", media),
-            ServerToClient::ErrorRequestedNotFound => println!("Error: Requested item not found"),
-            ServerToClient::ErrorUnsupportedRequest => println!("Error: Unsupported request"),
+fn main() {
+    let mut server = ChatServer;
+    server.on_request_arrived(1, 1, ChatRequest::Register(1).stringify());
+    server.on_request_arrived(
+        1,
+        1,
+        ChatRequest::SendMessage {
+            from: 1,
+            to: 2,
+            message: "Hello".to_string(),
         }
-    }
-}
-
-impl ChatServerToClient {
-    pub fn handle_response(&self) {
-        match self {
-            ChatServerToClient::ClientList { list_of_client_ids } => {
-                println!("Client list: {:?}", list_of_client_ids)
-            }
-            ChatServerToClient::MessageFrom { client_id, message } => {
-                println!("Message from {}: {}", client_id, message)
-            }
-            ChatServerToClient::ErrorWrongClientId => println!("Error: Wrong client ID"),
-        }
-    }
+        .stringify(),
+    );
+    server.on_request_arrived(1, 1, "ServerType".to_string());
 }
