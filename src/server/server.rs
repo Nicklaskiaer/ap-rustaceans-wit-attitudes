@@ -1,19 +1,28 @@
 use crate::server::message::*;
 use wg_2024::network::*;
 
-pub struct ChatServer;
-pub struct MediaServer;
+pub struct ContentServer;
+pub struct CommunicationServer;
 
 #[derive(Debug, Clone)]
 pub enum ServerType {
-    Media,
-    Chat,
+    Content,
+    CommunicationServer,
 }
 
 pub trait Server {
     type RequestType: Request;
     type ResponseType: Response;
 
+    fn get_server_type(&self) -> ServerType;
+    fn handle_request(&self, message: Message<TextRequest>) -> Message<TextRequest>;
+    fn send_response(&self, message: Message<impl DroneSend>);
+    // fn compute_route(&self, hops: Vec<i32>, hop_index: usize) -> Vec<i32>;
+    fn create_source_routing_header(
+        &self,
+        hops: Vec<NodeId>,
+        hop_index: usize,
+    ) -> SourceRoutingHeader;
     fn compose_message(
         source_id: NodeId,
         session_id: u64,
@@ -26,100 +35,88 @@ pub trait Server {
             content,
         })
     }
-
-    fn on_request_arrived(&mut self, source_id: NodeId, session_id: u64, raw_content: String) {
-        if raw_content == "ServerType" {
-            let server_type = Self::get_server_type();
-            println!("Server type: {:?}", server_type);
-            // send response
-            return;
-        }
-        match Self::compose_message(source_id, session_id, raw_content) {
-            Ok(message) => {
-                let response = self.handle_request(message.content);
-                self.send_response(response);
-            }
-            Err(str) => panic!("{}", str),
-        }
-    }
-
-    fn send_response(&mut self, _response: Self::ResponseType);
-
-    fn handle_request(&mut self, request: Self::RequestType) -> Self::ResponseType;
-
-    fn get_server_type() -> ServerType;
 }
 
-impl Server for ChatServer {
-    type RequestType = ChatRequest;
-    type ResponseType = ChatResponse;
+impl Server for ContentServer {
+    type RequestType = TextRequest;
+    type ResponseType = TextResponse;
 
-    fn handle_request(&mut self, request: Self::RequestType) -> Self::ResponseType {
-        match request {
-            ChatRequest::ClientList => {
-                println!("Sending ClientList");
-                ChatResponse::ClientList(vec![1, 2])
+    fn get_server_type(&self) -> ServerType {
+        ServerType::Content
+    }
+
+    fn handle_request(&self, message: Message<TextRequest>) -> Message<TextRequest> {
+        match message.content {
+            TextRequest::TextList => {
+                let response = TextRequest::Text(1);
+                Message {
+                    source_id: message.source_id,
+                    session_id: message.session_id,
+                    content: response,
+                }
             }
-            ChatRequest::Register(id) => {
-                println!("Registering {}", id);
-                ChatResponse::ClientList(vec![1, 2])
-            }
-            ChatRequest::SendMessage {
-                message,
-                to,
-                from: _,
-            } => {
-                println!("Sending message \"{}\" to {}", message, to);
-                // effectively forward message
-                ChatResponse::MessageSent
+            TextRequest::Text(_) => {
+                let response = TextRequest::Text(1);
+                Message {
+                    source_id: message.source_id,
+                    session_id: message.session_id,
+                    content: response,
+                }
             }
         }
     }
-    fn send_response(&mut self, _response: Self::ResponseType) {
-        println!("Sending response: {:?}", _response);
+
+    fn send_response(&self, message: Message<impl DroneSend>) {
+        println!("Sending response: {:?}", message);
     }
-    fn get_server_type() -> ServerType {
-        ServerType::Chat
+
+    fn create_source_routing_header(
+        &self,
+        hops: Vec<NodeId>,
+        hop_index: usize,
+    ) -> SourceRoutingHeader {
+        SourceRoutingHeader::new(hops, hop_index)
     }
 }
 
-impl Server for MediaServer {
-    type RequestType = MediaRequest;
-    type ResponseType = MediaResponse;
+impl Server for CommunicationServer {
+    type RequestType = TextRequest;
+    type ResponseType = TextResponse;
 
-    fn handle_request(&mut self, request: Self::RequestType) -> Self::ResponseType {
-        match request {
-            MediaRequest::MediaList => {
-                println!("Sending MediaList");
-                MediaResponse::MediaList(vec![1, 2])
+    fn get_server_type(&self) -> ServerType {
+        ServerType::CommunicationServer
+    }
+
+    fn handle_request(&self, message: Message<TextRequest>) -> Message<TextRequest> {
+        match message.content {
+            TextRequest::TextList => {
+                let response = TextRequest::Text(1);
+                Message {
+                    source_id: message.source_id,
+                    session_id: message.session_id,
+                    content: response,
+                }
             }
-            MediaRequest::Media(id) => {
-                println!("Sending media {}", id);
-                MediaResponse::Media(vec![1, 2, 3])
+            TextRequest::Text(_) => {
+                let response = TextRequest::Text(1);
+                Message {
+                    source_id: message.source_id,
+                    session_id: message.session_id,
+                    content: response,
+                }
             }
         }
     }
 
-    fn get_server_type() -> ServerType {
-        ServerType::Media
+    fn send_response(&self, message: Message<impl DroneSend>) {
+        println!("Sending response: {:?}", message);
     }
-    fn send_response(&mut self, _response: Self::ResponseType) {
-        println!("Sending response: {:?}", _response);
-    }
-}
 
-fn main() {
-    let mut server = ChatServer;
-    server.on_request_arrived(1, 1, ChatRequest::Register(1).stringify());
-    server.on_request_arrived(
-        1,
-        1,
-        ChatRequest::SendMessage {
-            from: 1,
-            to: 2,
-            message: "Hello".to_string(),
-        }
-        .stringify(),
-    );
-    server.on_request_arrived(1, 1, "ServerType".to_string());
+    fn create_source_routing_header(
+        &self,
+        hops: Vec<NodeId>,
+        hop_index: usize,
+    ) -> SourceRoutingHeader {
+        SourceRoutingHeader::new(hops, hop_index)
+    }
 }

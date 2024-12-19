@@ -9,13 +9,9 @@ pub struct Message<M: DroneSend> {
     pub content: M,
 }
 
-pub trait DroneSend: Serialize + DeserializeOwned {
-    fn stringify(&self) -> String {
-        serde_json::to_string(self).unwrap()
-    }
-    fn from_string(raw: String) -> Result<Self, String> {
-        serde_json::from_str(raw.as_str()).map_err(|e| e.to_string())
-    }
+pub trait DroneSend: Serialize + DeserializeOwned + std::fmt::Debug {
+    fn stringify(&self) -> String;
+    fn from_string(raw: String) -> Result<Self, String>;
 }
 
 pub trait Request: DroneSend {
@@ -40,6 +36,7 @@ impl DroneSend for TextRequest {
         serde_json::from_str(raw.as_str()).map_err(|e| e.to_string())
     }
 }
+
 impl Request for TextRequest {
     fn request_type(&self) -> String {
         match self {
@@ -63,6 +60,7 @@ impl DroneSend for MediaRequest {
         serde_json::from_str(raw.as_str()).map_err(|e| e.to_string())
     }
 }
+
 impl Request for MediaRequest {
     fn request_type(&self) -> String {
         match self {
