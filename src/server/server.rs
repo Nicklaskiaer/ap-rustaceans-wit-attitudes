@@ -116,21 +116,11 @@ impl Server for ContentServer {
                                     content: TextRequest::from_string(String::from_utf8_lossy(&fragment.data).to_string()).unwrap(),
                                 };
                                 let response = self.handle_request(message);
-                                let response_packet = self.send_response(response);
-                                // send response
-                                match response_packet {
-                                    Ok(packet) => {
-                                        if let Some(sender) = self.packet_send.get(&packet.routing_header.hops[packet.routing_header.hop_index]) {
-                                            match sender.send(packet) {
-                                                Ok(_) => {},
-                                                Err(e) => {
-                                                    println!("Error sending packet: {:?}", e);
-                                                }
-                                            }
-                                        }
-                                    },
+                                let send_respose_result = self.send_response(response);
+                                match send_respose_result {
+                                    Ok(_) => {},
                                     Err(e) => {
-                                        println!("Error sending packet: {:?}", e);
+                                        println!("Error: {}", e);
                                     }
                                 }
                             },
@@ -183,7 +173,7 @@ impl Server for ContentServer {
 
     fn send_response(&self, message: Message<TextRequest>) -> Result<Packet, SendError<Packet>> {
         // compute the route
-        // let hos = Self::compute_route();
+
         let hops: Vec<NodeId> = vec![1, 2, 3];
         // create source header
         let source_routing_header = self.create_source_routing_header(hops, 1);
@@ -193,6 +183,7 @@ impl Server for ContentServer {
             message.session_id,
             Fragment::new(0, 1, [0; 128]), // example data
         );
+
         // send packet
         if let Some(sender) = self.packet_send.get(&message.source_id) {
             // send packet
