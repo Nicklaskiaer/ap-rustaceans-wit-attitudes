@@ -1,22 +1,12 @@
 use crate::server::assembler::*;
 use crate::server::message::*;
 use crossbeam_channel::{select_biased, unbounded, Receiver, SendError, Sender};
-use rand::{random, Rng};
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::{fs, string, thread, vec};
-use wg_2024::network::*;
-
-use wg_2024::config::Config;
-use wg_2024::controller::{DroneCommand, DroneEvent};
-use wg_2024::drone::Drone;
+use wg_2024::controller::DroneCommand;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::Nack;
 use wg_2024::packet::{
     Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType,
-    FRAGMENT_DSIZE,
 };
-
-use super::assembler;
 
 pub struct ContentServer {
     id: NodeId,
@@ -27,7 +17,7 @@ pub struct ContentServer {
     packet_send: HashMap<NodeId, Sender<Packet>>,
     packet_recv: Receiver<Packet>,
     assemblers: Vec<Assembler>,
-    assembler_send: Sender<Assembler>,
+    assembler_send: Sender<Vec<u8>>,
     assembler_recv: Receiver<Vec<u8>>,
 }
 
@@ -40,7 +30,7 @@ pub struct CommunicationServer {
     packet_send: HashMap<NodeId, Sender<Packet>>,
     packet_recv: Receiver<Packet>,
     assemblers: Vec<Assembler>,
-    assembler_send: Sender<Assembler>,
+    assembler_send: Sender<Vec<u8>>,
     assembler_recv: Receiver<Vec<u8>>,
 }
 
@@ -49,6 +39,7 @@ pub enum ServerType {
     Content,
     CommunicationServer,
 }
+
 pub enum ServerEvent {
     PacketSent(Packet),
 }
@@ -66,13 +57,13 @@ pub trait Server {
         packet_recv: Receiver<Packet>,
         assemblers: Vec<Assembler>,
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
-        assembler_send: Sender<Assembler>,
+        assembler_send: Sender<Vec<u8>>,
         assembler_recv: Receiver<Vec<u8>>,
     ) -> Self;
 
     fn run(&mut self);
 
-    fn handle_request(&mut self, packet: Packet) -> Result<bool, String>;
+    fn send_fragment_to_assembler(&mut self, packet: Packet) -> Result<String, String>;
 
     fn handle_flood_response(
         &mut self,
@@ -112,7 +103,7 @@ impl Server for ContentServer {
         packet_recv: Receiver<Packet>,
         assemblers: Vec<Assembler>,
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
-        assembler_send: Sender<Assembler>,
+        assembler_send: Sender<Vec<u8>>,
         assembler_recv: Receiver<Vec<u8>>,
     ) -> Self {
         Self {
@@ -146,7 +137,8 @@ impl Server for ContentServer {
                         match &packet.pack_type {
                             PacketType::MsgFragment(fragment) => {
                                 // handle message fragment
-                                let message_fragment_result = self.handle_request(packet);
+                                let message_fragment_result = self.send_fragment_to_assembler(packet);
+
                             },
                             PacketType::FloodResponse(flood_response) => {
                                 // handle flood request
@@ -180,22 +172,38 @@ impl Server for ContentServer {
         self.controller_send.send(ServerEvent::PacketSent(packet))
     }
 
-    fn handle_request(&mut self, packet: Packet) -> Result<bool, String> {
+    fn send_fragment_to_assembler(&mut self, packet: Packet) -> Result<String, String> {
         // Send the data and the fragment index to the assembler
         for assembler in self.assemblers.iter_mut() {
             if assembler.session_id == packet.session_id {
                 assembler.packet_send.send(packet).unwrap();
-                return Ok(true);
+                return Ok("Sent fragment to assembler".to_string());
             }
         }
 
         // If the assembler does not exist, create a new one
         let (packet_send, packet_recv) = unbounded();
-        let assembler = Assembler::new(packet.session_id, packet_send, packet_recv);
-        assembler.packet_send.send(packet).unwrap();
+        let (server_send, server_recv) = unbounded();
+        let assembler = Assembler::new(
+            packet.session_id,
+            packet_send,
+            packet_recv,
+            server_send,
+            server_recv,
+        );
+
+        // Send the data and the fragment index to the assembler
+        match assembler.packet_send.send(packet) {
+            Ok(_) => {}
+            Err(_) => {
+                return Err("Failed to send packet to assembler".to_string());
+            }
+        }
+
+        // Add new assembler to the list
         self.assemblers.push(assembler);
 
-        Ok(true)
+        return Ok("Sent fragment to assembler".to_string());
     }
 
     fn send_response(&self, message: Message<TextRequest>) -> Result<Packet, SendError<Packet>> {
@@ -253,7 +261,7 @@ impl Server for ContentServer {
         // Check if new vector is longer than existing vector
         if flood_response.path_trace.len() > existing_path_length {
             self.topology_map.insert((sender_node_id, new_path.clone()));
-            return Ok(("node found in hashset but updated pathtrace".to_string()));
+            return Ok("node found in hashset but updated pathtrace".to_string());
         }
 
         return Err("node already in topology map".to_string());
