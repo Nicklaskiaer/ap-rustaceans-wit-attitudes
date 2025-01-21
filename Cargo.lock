@@ -28,18 +28,18 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "crossbeam-channel"
-version = "0.5.14"
+version = "0.5.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06ba6d68e24814cb8de6bb986db8222d3a027d15872cabc0d18817bc3c0e4471"
+checksum = "33480d6946193aa8033910124896ca395333cae7e2d1113d1fef6c3272217df2"
 dependencies = [
  "crossbeam-utils",
 ]
 
 [[package]]
 name = "crossbeam-utils"
-version = "0.8.21"
+version = "0.8.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
+checksum = "22ec99545bb0ed0ea7bb9b8e1e9122ea386ff8a48c0922e43f36d45ab09e0e80"
 
 [[package]]
 name = "equivalent"
@@ -82,9 +82,9 @@ checksum = "d75a2a4b1b190afb6f5425f10f6a8f959d2ea0b9c2b1d79553551850539e4674"
 
 [[package]]
 name = "libc"
-version = "0.2.169"
+version = "0.2.167"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5aba8db14291edd000dfcc4d620c7ebfb122c613afb886ca8803fa4e128a20a"
+checksum = "09d6582e104315a817dff97f75133544b2e094ee22447d2acf4a74e189ba06fc"
 
 [[package]]
 name = "memchr"
@@ -112,9 +112,9 @@ dependencies = [
 
 [[package]]
 name = "quote"
-version = "1.0.38"
+version = "1.0.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e4dccaaaf89514f546c693ddc140f729f958c247918a13380cccc6078391acc"
+checksum = "b5b9d34b8991d19d98081b46eacdd8eb58c6f2b201139f7c5f643cc155a633af"
 dependencies = [
  "proc-macro2",
 ]
@@ -157,18 +157,18 @@ checksum = "f3cb5ba0dc43242ce17de99c180e96db90b235b8a9fdc9543c96d2209116bd9f"
 
 [[package]]
 name = "serde"
-version = "1.0.217"
+version = "1.0.215"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02fc4265df13d6fa1d00ecff087228cc0a2b5f3c0e87e258d8b94a156e984c70"
+checksum = "6513c1ad0b11a9376da888e3e0baa0077f1aed55c17f50e7b2397136129fb88f"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.217"
+version = "1.0.215"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a9bf7cf98d04a2b28aead066b7496853d4779c9cc183c440dbac457641e19a0"
+checksum = "ad1e866f866923f252f05c889987993144fb74e722403468a4ebd70c3cd756c0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -177,9 +177,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.134"
+version = "1.0.133"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d00f4175c42ee48b15416f6193a959ba3a0d67fc699a0db9ad12df9f83991c7d"
+checksum = "c7fceb2473b9166b2294ef05efcb65a3db80803f0b03ef86a5fc88a2b85ee377"
 dependencies = [
  "itoa",
  "memchr",
@@ -198,9 +198,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.94"
+version = "2.0.90"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "987bc0be1cdea8b10216bd06e2ca407d40b9543468fafd3ddfb02f36e77f71f3"
+checksum = "919d3b74a5dd0ccd15aeb8f93e7006bd9e14c295087c9896a110f490752bcf31"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -256,7 +256,7 @@ checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
 [[package]]
 name = "wg_2024"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#7f4ae571471526f3a81d02a2843e05c1328c9e15"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
 dependencies = [
  "wg_internal",
 ]
@@ -264,7 +264,7 @@ dependencies = [
 [[package]]
 name = "wg_config"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#7f4ae571471526f3a81d02a2843e05c1328c9e15"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
 dependencies = [
  "serde",
  "wg_network",
@@ -273,7 +273,7 @@ dependencies = [
 [[package]]
 name = "wg_controller"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#7f4ae571471526f3a81d02a2843e05c1328c9e15"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
 dependencies = [
  "crossbeam-channel",
  "wg_network",
@@ -283,7 +283,7 @@ dependencies = [
 [[package]]
 name = "wg_drone"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#7f4ae571471526f3a81d02a2843e05c1328c9e15"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
 dependencies = [
  "crossbeam-channel",
  "wg_controller",
@@ -294,7 +294,7 @@ dependencies = [
 [[package]]
 name = "wg_internal"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#7f4ae571471526f3a81d02a2843e05c1328c9e15"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
 dependencies = [
  "wg_config",
  "wg_controller",
@@ -307,12 +307,12 @@ dependencies = [
 [[package]]
 name = "wg_network"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#7f4ae571471526f3a81d02a2843e05c1328c9e15"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
 
 [[package]]
 name = "wg_packet"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#7f4ae571471526f3a81d02a2843e05c1328c9e15"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
 dependencies = [
  "wg_network",
 ]
@@ -320,10 +320,9 @@ dependencies = [
 [[package]]
 name = "wg_tests"
 version = "0.1.0"
-source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#7f4ae571471526f3a81d02a2843e05c1328c9e15"
+source = "git+https://github.com/WGL-2024/WGL_repo_2024.git#f88f1f263ba5e0d356bac60b694f787bcc8c7107"
 dependencies = [
  "crossbeam-channel",
- "wg_controller",
  "wg_drone",
  "wg_network",
  "wg_packet",
@@ -331,9 +330,9 @@ dependencies = [
 
 [[package]]
 name = "winnow"
-version = "0.6.22"
+version = "0.6.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39281189af81c07ec09db316b302a3e67bf9bd7cbf6c820b50e35fee9c2fa980"
+checksum = "36c1fec1a2bb5866f07c25f68c26e565c4c200aebb96d7e55710c19d3e8ac49b"
 dependencies = [
  "memchr",
 ]
