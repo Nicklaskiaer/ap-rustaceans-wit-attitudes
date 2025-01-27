@@ -136,16 +136,16 @@ impl MyApp {
 
         let message = match command {
             DroneCommand::RemoveSender(node_id) => {
-                format!("[COMMAND] RemoveSender: {}", node_id)
+                format!("[COMMAND] Removed Sender at Node {}", node_id)
             }
             DroneCommand::AddSender(node_id, _) => {
-                format!("[COMMAND] AddSender: {}", node_id)
+                format!("[COMMAND] Added Sender at Node {}", node_id)
             }
             DroneCommand::SetPacketDropRate(_) => {
-                return; //todo()
+                return; //todo(how to get ID of changed drop rate drone)
             }
             DroneCommand::Crash => {
-                return; //todo()
+                return; //todo(how to get ID of crashed drone)
             }
         };
 
@@ -163,7 +163,7 @@ impl MyApp {
 
         let message = match event {
             DroneEvent::PacketSent(packet) => {
-                format!("[EVENT] Packet Sent: {}",
+                format!("[EVENT] Packet Sent by Node {}.",
                         packet
                             .routing_header
                             .hops
@@ -173,7 +173,7 @@ impl MyApp {
                 )
             }
             DroneEvent::PacketDropped(packet) => {
-                format!("[EVENT] Packet Dropped: {}",
+                format!("[EVENT] Packet Dropped by Node {}",
                         packet
                             .routing_header
                             .hops
@@ -183,7 +183,7 @@ impl MyApp {
                 )
             }
             DroneEvent::ControllerShortcut(packet) => {
-                format!("[EVENT] Packet Routed trough Controller: {}",
+                format!("[EVENT] Packet Routed trough Controller by Node {}.",
                         packet
                             .routing_header
                             .hops

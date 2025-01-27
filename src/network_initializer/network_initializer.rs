@@ -22,6 +22,7 @@ pub fn main() {
 
     let mut controller_drones = HashMap::new();
     let (node_event_send, node_event_recv) = unbounded();
+    //todo!(node_command_send and node_command_recv)
 
     let mut packet_channels = HashMap::new();
     for drone in config.drone.iter() {
