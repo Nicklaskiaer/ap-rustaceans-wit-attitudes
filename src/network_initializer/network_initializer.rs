@@ -61,10 +61,13 @@ pub fn main() {
             drone.run();
         }));
     }
+
+    /*
     let mut controller = SimulationController::new(
         controller_drones, 
         node_event_recv
     );
+    */ todo!("add node_command_recv");
 
     // ########################################################################################
     // TEST 
