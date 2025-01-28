@@ -7,5 +7,6 @@ mod test_fragments;
 
 fn main() {
 
-    simulation_controller::simulation_controller::main().expect("GUI panicked!");
+    network_initializer::network_initializer::main();
+    // simulation_controller::simulation_controller::main().expect("GUI panicked!");
 }
