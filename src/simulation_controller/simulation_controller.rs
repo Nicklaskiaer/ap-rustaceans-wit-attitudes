@@ -57,9 +57,11 @@ impl SimulationController {
 
     pub fn get_drone_ids(&self) -> Vec<String> {
         self.drones.keys()
-            .map(|node_id| node_id.to_string())
+            .map(|node_id| format!("Drone {}", node_id.to_string()))
             .collect()
     }
+
+    //todo(GET_DRONE_CONNECTIONS)
 
     pub fn get_node_event_recv(&self) -> Receiver<DroneEvent>{
         self.node_event_recv.clone()
