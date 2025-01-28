@@ -20,12 +20,10 @@ pub fn main() {
     let config = parse_config("src/config.toml");
 
     // check for errors in the toml
-    // check_toml_validity(&config); //TODO: Enable after testing
+    // check_toml_validity(&config);
 
     let mut controller_drones = HashMap::new();
     let (node_event_send, node_event_recv) = unbounded();
-    //TODO: used only in the simulation controller, probably is useless. remove later
-    let (_, node_command_recv): (Sender<DroneCommand>, Receiver<DroneCommand>) = unbounded();
 
     let mut packet_channels = HashMap::new();
     for drone in config.drone.iter() {
@@ -66,63 +64,13 @@ pub fn main() {
             drone.run();
         }));
     }
-
-
-    // TEST TODO:Remove
-    const TIMEOUT: Duration = Duration::from_millis(400);
-
-    let msg = Packet::new_fragment(
-        SourceRoutingHeader {
-            hop_index: 1,
-            hops: vec![1, 11, 12, 21],
-        },
-        1,
-        Fragment {
-            fragment_index: 1,
-            total_n_fragments: 1,
-            length: 128,
-            data: [1; 128],
-        },
-    );
-
-    // Get the sender for drone 11 from packet_channels
-    let d11_send = &packet_channels[&11].0;
-    let d12_recv = &packet_channels[&12].1;
-
-    //D12 sends packet to D11
-    d11_send.send(msg.clone()).unwrap();
-
-    //D12 receives packet from D11
-    // println!("{:?}", d12_recv.recv_timeout(TIMEOUT).unwrap());
-
-    //SC listen for event from the drone
-    // println!("{:?}", node_event_recv.recv_timeout(TIMEOUT).unwrap());
     
-    simulation_controller_main(controller_drones.clone(), node_event_recv.clone(), node_command_recv).expect("GUI panicked!");
-    println!("\n\n\n\n\n\n\n\n\n\n\n\ntheendisnevertheendisnevertheendisnevertheend\n\n\n\n\n\n\n\n\n\n\n\n");
-    
-    
-    
-    
-    
-    
-    
-    
-    
-
-
-    
-    
-    
-    
-    
-    
-    
+    simulation_controller_main(controller_drones.clone(), node_event_recv.clone()).expect("GUI panicked!");
     
     // do not stop the code until all threads are done
-    while let Some(handle) = handles.pop() {
-        handle.join().unwrap();
-    }
+    // while let Some(handle) = handles.pop() {
+    //     handle.join().unwrap();
+    // }
 }
 
 fn parse_config(file: &str) -> Config {

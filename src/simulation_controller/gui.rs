@@ -3,8 +3,10 @@ use chrono_tz::Europe::Rome;
 use crossbeam_channel::Receiver;
 use eframe::egui;
 use std::collections::HashMap;
+use std::time::Duration;
 use wg_2024::controller::{DroneCommand, DroneEvent};
-
+use wg_2024::network::SourceRoutingHeader;
+use wg_2024::packet::{Fragment, Packet};
 use crate::simulation_controller::simulation_controller::SimulationController;
 
 #[derive(PartialEq)]
@@ -24,7 +26,6 @@ pub struct MyApp {
     show_confirmation_dialog: bool,
     allowed_to_close: bool,
     node_event_recv: Receiver<DroneEvent>,
-    node_command_recv: Receiver<DroneCommand>,
     clients: Vec<String>, // List of clients
     servers: Vec<String>, // List of servers
     drones: Vec<String>, // List of Drones
@@ -41,10 +42,8 @@ impl MyApp {
             show_confirmation_dialog: false,
             allowed_to_close: false,
             node_event_recv: sc.get_node_event_recv(),
-            node_command_recv: sc.get_node_command_recv(),
             clients: vec!["Test_Client1".to_string(), "Test_Client2".to_string()], // Example clients
             servers: vec!["Test_Server1".to_string(), "Test_Server1".to_string()], // Example servers
-            // drones: vec!["Drone1".to_string(), "Drone2".to_string(), "Drone3".to_string()], // Example drones
             drones: sc.get_drone_ids(),
             open_popups: HashMap::new(), // Initialize the map to track popups
             drone_packet_drop_rates: HashMap::new(),
@@ -179,11 +178,6 @@ impl eframe::App for MyApp {
             self.log_event(event); // Use the new log_event method
         }
 
-        while let Ok(command) = self.node_command_recv.try_recv() {
-            println!("\n\n\n\n\n\n\n\n\n\n\n\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n\n\n\n\n\n\n\n\n\n\n\n");
-            self.log_command(command);
-        }
-
         egui::TopBottomPanel::top("navigation_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 // Navigation buttons
@@ -287,5 +281,30 @@ impl eframe::App for MyApp {
         for name in popups_to_show {
             self.show_popup(ctx, &name);
         }
+
+        // #[cfg(test)]
+        // {
+        //     const TIMEOUT: Duration = Duration::from_millis(400);
+        // 
+        //     let msg = Packet::new_fragment(
+        //         SourceRoutingHeader {
+        //             hop_index: 1,
+        //             hops: vec![1, 11, 12, 21],
+        //         },
+        //         1,
+        //         Fragment {
+        //             fragment_index: 1,
+        //             total_n_fragments: 1,
+        //             length: 128,
+        //             data: [1; 128],
+        //         },
+        //     );
+        // 
+        //     // Get the sender for drone 11 from packet_channels
+        //     let d11_send = &packet_channels[&11].0;
+        // 
+        //     //D12 sends packet to D11
+        //     d11_send.send(msg.clone()).unwrap();
+        // }
     }
 }

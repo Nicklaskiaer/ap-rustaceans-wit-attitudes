@@ -8,16 +8,14 @@ use crate::simulation_controller::gui::MyApp;
 
 pub struct SimulationController {
     drones: HashMap<NodeId, Sender<DroneCommand>>,
-    node_event_recv: Receiver<DroneEvent>,
-    node_command_recv: Receiver<DroneCommand>, //TODO: chiedi nico
+    node_event_recv: Receiver<DroneEvent>
 }
 
 impl SimulationController {
-    pub fn new(drones: HashMap<NodeId, Sender<DroneCommand>>, node_event_recv: Receiver<DroneEvent>, node_command_recv: Receiver<DroneCommand>)->Self{
+    pub fn new(drones: HashMap<NodeId, Sender<DroneCommand>>, node_event_recv: Receiver<DroneEvent>)->Self{
         SimulationController{
             drones,
-            node_event_recv,
-            node_command_recv
+            node_event_recv
         }
     }
 
@@ -62,23 +60,18 @@ impl SimulationController {
             .map(|node_id| node_id.to_string())
             .collect()
     }
-    
+
     pub fn get_node_event_recv(&self) -> Receiver<DroneEvent>{
         self.node_event_recv.clone()
-    }
-
-    pub fn get_node_command_recv(&self) -> Receiver<DroneCommand>{
-        self.node_command_recv.clone()
     }
 }
 
 
-pub fn simulation_controller_main(controller_drones: HashMap<NodeId, Sender<DroneCommand>>, node_event_recv: Receiver<DroneEvent>, node_command_recv: Receiver<DroneCommand>) -> Result<(), eframe::Error> {
-    
+pub fn simulation_controller_main(controller_drones: HashMap<NodeId, Sender<DroneCommand>>, node_event_recv: Receiver<DroneEvent>) -> Result<(), eframe::Error> {
+
     let simulation_controller = SimulationController::new(
-            controller_drones, 
-            node_event_recv.clone(), 
-            node_command_recv.clone()
+            controller_drones,
+            node_event_recv.clone()
     );
 
     let native_options = eframe::NativeOptions::default();
@@ -88,19 +81,3 @@ pub fn simulation_controller_main(controller_drones: HashMap<NodeId, Sender<Dron
         Box::new(|_cc| Ok(Box::new(MyApp::new(simulation_controller))))
     )
 }
-
-
-
-/*pub fn main()-> Result<(), eframe::Error> {
-    let (node_event_send, node_event_recv) = crossbeam_channel::unbounded();
-    let (node_command_send, node_command_recv) = crossbeam_channel::unbounded();
-
-    let simulation_controller = SimulationController::new(HashMap::new(), node_event_recv.clone(), node_command_recv.clone());
-
-    let native_options = eframe::NativeOptions::default();
-    eframe::run_native(
-        "Rustaceans Wit Attitudes",
-        native_options,
-        Box::new(|_cc| Ok(Box::new(MyApp::new(node_event_recv, node_command_recv))))
-    )
-}*/
