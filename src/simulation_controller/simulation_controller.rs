@@ -104,14 +104,16 @@ struct LogEntry {
 
 struct MyApp {
     current_screen: Screen,
-    logs: Vec<LogEntry>,
+    logs: Vec<LogEntry>, // List of logs
     show_confirmation_dialog: bool,
     allowed_to_close: bool,
     node_event_recv: Receiver<DroneEvent>,
     node_command_recv: Receiver<DroneCommand>,
     clients: Vec<String>, // List of clients
     servers: Vec<String>, // List of servers
-    open_popups: HashMap<String, bool>,
+    drones: Vec<String>, // List of Drones
+    open_popups: HashMap<String, bool>, // Keeps tracks of opened control windows
+    drone_packet_drop_rates: HashMap<String, String>, // Keeps the input state for each drone
 }
 
 impl MyApp {
@@ -124,8 +126,10 @@ impl MyApp {
             node_event_recv,
             node_command_recv,
             clients: vec!["Client1".to_string(), "Client2".to_string()], // Example clients
-            servers: vec!["Server1".to_string()], // Example servers
+            servers: vec!["Server1".to_string(), "Server1".to_string()], // Example servers
+            drones: vec!["Drone1".to_string(), "Drone2".to_string(), "Drone3".to_string()], // Example drones
             open_popups: HashMap::new(), // Initialize the map to track popups
+            drone_packet_drop_rates: HashMap::new(),
         }
     }
 
@@ -208,13 +212,44 @@ impl MyApp {
                 .collapsible(true)
                 .open(is_open) // Tie window open state to the hashmap
                 .show(ctx, |ui| {
-                    ui.label(format!("Controls for {}", name));
-                    if ui.button("Do Something").clicked() {
-                        println!("Action for {}", name);
+                    if self.clients.contains(&name.to_string()) {
+                        //todo!("implement controls for client)
+
+                    } else if self.drones.contains(&name.to_string()) {
+
+                        // Get or initialize the input value for the packet drop rate
+                        let packet_drop_rate = self
+                            .drone_packet_drop_rates
+                            .entry(name.to_string())
+                            .or_insert_with(|| String::new());
+
+                        // Packet Drop Rate Control
+                        ui.horizontal(|ui| {
+                            ui.label("Packet Drop Rate:");
+                            ui.text_edit_singleline(packet_drop_rate); // Packet drop rate input field
+                            if ui.button("Set").clicked() {
+                                match packet_drop_rate.parse::<f32>() {
+                                    Ok(value) if value >= 0.0 && value <= 1.0 => {
+                                        println!("Setting packet drop rate for {} to {}", name, value);
+                                        //self.handle_set_packet_drop_rate(xyz, value); todo!("handle the packet drop rate control")
+                                    }
+                                    _ => {
+                                        println!("Invalid drop rate value. Please enter a number between 0 and 1.");
+                                    }
+                                }
+                            }
+                        });
+
+                        if ui.button("Crash").clicked() {
+                            println!("Crashed {}.", name); //todo!("handle crash")
+                        }
+                    } else if self.servers.contains(&name.to_string()) {
+                        //todo!("implement controls for client)
                     }
                 });
         }
     }
+
 }
 
 impl eframe::App for MyApp {
@@ -235,7 +270,7 @@ impl eframe::App for MyApp {
                     self.current_screen = Screen::NetworkScreen;
                 }
 
-                if ui.button("Events Log").clicked() {
+                if ui.button("Logs Page").clicked() {
                     self.current_screen = Screen::LogsScreen;
                 }
             });
@@ -278,6 +313,7 @@ impl eframe::App for MyApp {
                         .max_width(200.0)
                         .show(ctx, |ui| {
                         ui.heading("Network Menu");
+
                         ui.separator();
                         ui.label("Clients:");
                         for client in &self.clients {
@@ -286,12 +322,22 @@ impl eframe::App for MyApp {
                                 self.open_popups.insert(client.clone(), true);
                             }
                         }
+
                         ui.separator();
                         ui.label("Servers:");
                         for server in &self.servers {
                             if ui.button(server).clicked() {
                                 // Explicitly set the pop-up state to true to reopen it
                                 self.open_popups.insert(server.clone(), true);
+                            }
+                        }
+
+                        ui.separator();
+                        ui.label("Drones:");
+                        for drones in &self.drones {
+                            if ui.button(drones).clicked() {
+                                // Explicitly set the pop-up state to true to reopen it
+                                self.open_popups.insert(drones.clone(), true);
                             }
                         }
                     });
@@ -301,7 +347,7 @@ impl eframe::App for MyApp {
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         for log in &self.logs {
                             // Format the log entry as [timestamp] event_type: message
-                            let formatted_log = format!("[{}] {}", log.timestamp, log.message);
+                            let formatted_log = format!("{} | {}", log.timestamp, log.message);
                             ui.label(formatted_log); // Display the formatted log entry
                         }
                     });
@@ -322,3 +368,4 @@ impl eframe::App for MyApp {
         }
     }
 }
+
