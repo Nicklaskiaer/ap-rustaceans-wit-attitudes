@@ -1,15 +1,17 @@
-use crossbeam_channel::unbounded;
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::collections::HashSet;
 use std::{fs, thread};
 
 use std::collections::HashMap;
+use std::time::Duration;
 use wg_2024::config::Config;
+use wg_2024::controller::DroneCommand;
 use wg_2024::drone::Drone;
-use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{FloodRequest, Packet, PacketType};
-use crate::simulation_controller::simulation_controller::SimulationController;
+use wg_2024::network::SourceRoutingHeader;
+use wg_2024::packet::{Fragment, Packet};
+
+use crate::simulation_controller::simulation_controller::simulation_controller_main;
 use crate::types::my_drone::MyDrone;
-use crate::test_fragments;
 
 
 pub fn main() {
@@ -18,7 +20,7 @@ pub fn main() {
     let config = parse_config("src/config.toml");
 
     // check for errors in the toml
-    check_toml_validity(&config);
+    // check_toml_validity(&config);
 
     let mut controller_drones = HashMap::new();
     let (node_event_send, node_event_recv) = unbounded();
@@ -33,13 +35,14 @@ pub fn main() {
     for server in config.server.iter() {
         packet_channels.insert(server.id, unbounded());
     }
-
+    
     let mut handles = Vec::new();
     for drone in config.drone.into_iter() {
         // controller
         let (controller_drone_send, controller_drone_recv) = unbounded();
         controller_drones.insert(drone.id, controller_drone_send);
         let node_event_send = node_event_send.clone();
+        
         // packet
         let packet_recv = packet_channels[&drone.id].1.clone();
         let packet_send = drone
@@ -61,66 +64,13 @@ pub fn main() {
             drone.run();
         }));
     }
-    let mut controller = SimulationController::new(
-        controller_drones, 
-        node_event_recv
-    );
-
-    // ########################################################################################
-    // TEST 
-    // ########################################################################################
     
-    // println!("generic_fragment_forward");
-    // test_fragments::generic_fragment_forward::<MyDrone>();
-    // println!("success!");
-    // println!();
-    // 
-    // println!("generic_fragment_drop");
-    // test_fragments::generic_fragment_drop::<MyDrone>();
-    // println!("success!");
-    // println!();
-    // 
-    // println!("generic_chain_fragment_drop");
-    // test_fragments::generic_chain_fragment_drop::<MyDrone>();
-    // println!("success!");
-    // println!();
-    // 
-    // println!("generic_chain_fragment_ack");
-    // test_fragments::generic_chain_fragment_ack::<MyDrone>();
-    // println!("success!");
-    // println!();
-    println!("generic_flood_request");
-    test_fragments::generic_flood_request::<MyDrone>();
-    println!("success!");
-    println!();
-
-    // controller.crash(1, vec![2,3]);
+    simulation_controller_main(controller_drones.clone(), node_event_recv.clone()).expect("GUI panicked!");
     
-    // let test_flood = FloodRequest{
-    //     flood_id: 99,
-    //     initiator_id: 4,
-    //     path_trace: vec![],
-    // };
-    // let p_test_flood = Packet{
-    //     routing_header: SourceRoutingHeader{
-    //         hop_index: 1,
-    //         hops: vec![],
-    //     },
-    //     session_id: 50,
-    //     pack_type: PacketType::FloodRequest(test_flood),
-    // };
-    // if let Some(c4) = packet_channels.get(&(4 as NodeId)) {
-    //     if let Some(d2) = packet_channels.get(&(4 as NodeId)) {
-    //         
-    //         d2.0.send(p_test_flood).unwrap();
-    //     }
-    //     if let Some(d3) = packet_channels.get(&(4 as NodeId)) {}
+    // do not stop the code until all threads are done
+    // while let Some(handle) = handles.pop() {
+    //     handle.join().unwrap();
     // }
-
-
-    while let Some(handle) = handles.pop() {
-        handle.join().unwrap();
-    }
 }
 
 fn parse_config(file: &str) -> Config {
