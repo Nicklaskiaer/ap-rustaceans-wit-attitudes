@@ -4,6 +4,7 @@ mod server;
 mod message;
 mod types;
 mod test_fragments;
+mod assembler;
 
 fn main() {
 

@@ -1,5 +1,3 @@
-use crate::assembler::assembler::*;
-use crate::server::message::*;
 use crossbeam_channel::{select_biased, unbounded, Receiver, SendError, Sender};
 use std::collections::{HashMap, HashSet, VecDeque};
 use wg_2024::controller::DroneCommand;
@@ -9,11 +7,11 @@ use wg_2024::packet::{
     Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType,
 };
 
-pub struct ContentServer {
+pub struct Client {
     id: NodeId,
     topology_map: HashSet<(NodeId, Vec<NodeId>)>,
     connected_drone_ids: Vec<NodeId>,
-    controller_send: Sender<ServerEvent>,
+    controller_send: Sender<ClientEvent>,
     controller_recv: Receiver<DroneCommand>,
     packet_send: HashMap<NodeId, Sender<Packet>>,
     packet_recv: Receiver<Packet>,
@@ -22,38 +20,16 @@ pub struct ContentServer {
     assembler_recv: Receiver<Vec<u8>>,
 }
 
-pub struct CommunicationServer {
-    id: NodeId,
-    topology_map: HashSet<(NodeId, Vec<NodeId>)>,
-    connected_drone_ids: Vec<NodeId>,
-    controller_send: Sender<ServerEvent>,
-    controller_recv: Receiver<DroneCommand>,
-    packet_send: HashMap<NodeId, Sender<Packet>>,
-    packet_recv: Receiver<Packet>,
-    assemblers: Vec<Assembler>,
-    assembler_send: Sender<Vec<u8>>,
-    assembler_recv: Receiver<Vec<u8>>,
-}
-
-#[derive(Debug, Clone)]
-pub enum ServerType {
-    Content,
-    CommunicationServer,
-}
-
-pub enum ServerEvent {
+pub enum ClientEvent {
     PacketSent(Packet),
     PacketReceived(Packet),
 }
 
-pub trait Server {
-    type RequestType: Request;
-    type ResponseType: Response;
-
+pub trait ClientTrait {
     fn new(
         id: NodeId,
         connected_drone_ids: Vec<NodeId>,
-        controller_send: Sender<ServerEvent>,
+        controller_send: Sender<ClientEvent>,
         controller_recv: Receiver<DroneCommand>,
         packet_send: HashMap<NodeId, Sender<Packet>>,
         packet_recv: Receiver<Packet>,
@@ -93,14 +69,11 @@ pub trait Server {
     fn compute_path_to_node(&self, target_node_id: NodeId) -> Result<Vec<NodeId>, String>;
 }
 
-impl Server for ContentServer {
-    type RequestType = TextRequest;
-    type ResponseType = TextResponse;
-
+impl ClientTrait for Client {
     fn new(
         id: NodeId,
         connected_drone_ids: Vec<NodeId>,
-        controller_send: Sender<ServerEvent>,
+        controller_send: Sender<ClientEvent>,
         controller_recv: Receiver<DroneCommand>,
         packet_send: HashMap<NodeId, Sender<Packet>>,
         packet_recv: Receiver<Packet>,
@@ -182,13 +155,13 @@ impl Server for ContentServer {
         }
     }
 
-    fn send_sent_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ServerEvent>> {
-        self.controller_send.send(ServerEvent::PacketSent(packet))
+    fn send_sent_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ClientEvent>> {
+        self.controller_send.send(ClientEvent::PacketSent(packet))
     }
 
-    fn send_recv_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ServerEvent>> {
+    fn send_recv_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ClientEvent>> {
         self.controller_send
-            .send(ServerEvent::PacketReceived(packet))
+            .send(ClientEvent::PacketReceived(packet))
     }
 
     fn send_fragment_to_assembler(&mut self, packet: Packet) -> Result<String, String> {
@@ -227,9 +200,8 @@ impl Server for ContentServer {
 
     fn send_response(&self, message: Message<TextRequest>) -> Result<Packet, SendError<Packet>> {
         // compute the hops
-        let target_node_id = 1;
         let mut hops = Vec::new();
-        if let Ok(computed_hops) = self.compute_path_to_node(target_node_id) {
+        if let Ok(computed_hops) = self.compute_path_to_node(message.source_id) {
             hops = computed_hops;
         }
 
@@ -291,6 +263,7 @@ impl Server for ContentServer {
         return Err("node already in topology map".to_string());
     }
 
+    // find the route to the node in the hashmap, and return the path
     fn compute_path_to_node(&self, target_node_id: NodeId) -> Result<Vec<NodeId>, String> {
         let path = self
             .topology_map
