@@ -49,7 +49,8 @@ pub trait ClientTrait {
         flood_response: FloodResponse,
     ) -> Result<String, String>;
 
-    fn send_response(&self, message: Message<TextRequest>) -> Result<Packet, SendError<Packet>>;
+    fn send_response(&mut self, message: Message<TextRequest>)
+        -> Result<Packet, SendError<Packet>>;
 
     fn send_sent_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ServerEvent>>;
     fn send_recv_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ServerEvent>>;
@@ -112,6 +113,14 @@ impl ClientTrait for Client {
                     if let Ok(packet) = packet {
                         match &packet.pack_type {
                             PacketType::MsgFragment(fragment) => {
+                                // send received packet to simulation controller
+                                let sc_send_res = self.send_recv_to_sc(packet.clone());
+                                match sc_send_res {
+                                    Ok(_) => {},
+                                    Err(e) => {
+                                        println!("Error: {}", e);
+                                    }
+                                }
                                 // handle message fragment
                                 let message_fragment_result = self.send_fragment_to_assembler(packet);
                                 match message_fragment_result {
@@ -122,6 +131,14 @@ impl ClientTrait for Client {
                                 }
                             },
                             PacketType::FloodResponse(flood_response) => {
+                                // send received packet to simulation controller
+                                let sc_send_res = self.send_recv_to_sc(packet.clone());
+                                match sc_send_res {
+                                    Ok(_) => {},
+                                    Err(e) => {
+                                        println!("Error: {}", e);
+                                    }
+                                }
                                 // handle flood request
                                 let flood_response_result = self.handle_flood_response(
                                     packet.routing_header.hops[packet.routing_header.hop_index],
@@ -198,7 +215,10 @@ impl ClientTrait for Client {
         return Ok("Sent fragment to assembler".to_string());
     }
 
-    fn send_response(&self, message: Message<TextRequest>) -> Result<Packet, SendError<Packet>> {
+    fn send_response(
+        &mut self,
+        message: Message<TextRequest>,
+    ) -> Result<Packet, SendError<Packet>> {
         // compute the hops
         let mut hops = Vec::new();
         if let Ok(computed_hops) = self.compute_path_to_node(message.source_id) {
@@ -218,7 +238,17 @@ impl ClientTrait for Client {
         if let Some(sender) = self.packet_send.get(&message.source_id) {
             // send packet
             match sender.send(packet.clone()) {
-                Ok(_) => Ok(packet),
+                Ok(_) => {
+                    // send "sent packet" to simulation controller
+                    let sc_send_res = self.send_sent_to_sc(packet.clone());
+                    match sc_send_res {
+                        Ok(_) => {}
+                        Err(e) => {
+                            println!("Error: {}", e);
+                        }
+                    }
+                    Ok(packet)
+                }
                 Err(e) => Err(e),
             }
         } else {
