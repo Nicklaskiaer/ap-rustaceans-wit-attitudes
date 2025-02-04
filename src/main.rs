@@ -1,11 +1,12 @@
-mod assembler;
-mod message;
 mod network_initializer;
-mod server;
 mod simulation_controller;
-mod test_fragments;
+mod server;
+mod message;
 mod types;
+mod test_fragments;
 
 fn main() {
+
     network_initializer::network_initializer::main();
+    // simulation_controller::simulation_controller::main().expect("GUI panicked!");
 }
