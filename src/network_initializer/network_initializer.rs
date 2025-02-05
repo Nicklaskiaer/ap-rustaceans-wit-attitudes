@@ -1,14 +1,10 @@
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::collections::HashSet;
 use std::{fs, thread};
-
 use std::collections::HashMap;
-use std::time::Duration;
+
 use wg_2024::config::Config;
-use wg_2024::controller::DroneCommand;
 use wg_2024::drone::Drone;
-use wg_2024::network::SourceRoutingHeader;
-use wg_2024::packet::{Fragment, Packet};
 
 use crate::simulation_controller::simulation_controller::simulation_controller_main;
 use crate::types::my_drone::MyDrone;
@@ -20,7 +16,7 @@ pub fn main() {
     let config = parse_config("src/config.toml");
 
     // check for errors in the toml
-    // check_toml_validity(&config);
+    //check_toml_validity(&config);
 
     let mut controller_drones = HashMap::new();
     let (node_event_send, node_event_recv) = unbounded();
