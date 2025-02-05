@@ -1,12 +1,15 @@
+use eframe::egui;
 use chrono::{DateTime, Utc};
 use chrono_tz::Europe::Rome;
 use crossbeam_channel::Receiver;
-use eframe::egui;
 use std::collections::HashMap;
 use std::time::Duration;
+use regex::Regex;
+
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::network::SourceRoutingHeader;
 use wg_2024::packet::{Fragment, Packet};
+
 use crate::simulation_controller::simulation_controller::SimulationController;
 
 #[derive(PartialEq)]
@@ -22,12 +25,12 @@ struct LogEntry {
 
 struct Node {
     id: String,
-    position: (f32, f32), // x, y position in the graph
+    position: (f32, f32),
 }
 
 pub struct NetworkTopology {
     pub nodes: Vec<Node>,
-    pub connections: Vec<(usize, usize)>, // Edges: indices of nodes
+    pub connections: Vec<(usize, usize)>,
 }
 
 pub struct MyApp {
@@ -43,23 +46,39 @@ pub struct MyApp {
     drone_packet_drop_rates: HashMap<String, String>, // Keeps the input state for each drone
     simulation_controller: SimulationController,
     topology: NetworkTopology,
+    log_checkboxes: HashMap<String, bool>,
 }
 
 impl MyApp {
     pub(crate) fn new(sc: SimulationController) -> Self {
+
+        // Initialize checkboxes for each client, server, and drone
+        let mut log_checkboxes = HashMap::new();
+
+        for client in &["Test_Client1", "Test_Client2"] {
+            log_checkboxes.insert(client.to_string(), true);
+        }
+        for server in &["Test_Server1", "Test_Server2"] {
+            log_checkboxes.insert(server.to_string(), true);
+        } //todo!(GET CLIENT AND SERVER ID'S)
+        for drone in sc.get_drone_ids() {
+            log_checkboxes.insert(drone.clone(), true);
+        }
+
         Self {
             current_screen: Screen::NetworkScreen,
             logs: Vec::new(),
             show_confirmation_dialog: false,
             allowed_to_close: false,
             node_event_recv: sc.get_node_event_recv(),
-            clients: vec!["Test_Client1".to_string(), "Test_Client2".to_string()], // Example clients
-            servers: vec!["Test_Server1".to_string(), "Test_Server1".to_string()], // Example servers
+            clients: vec!["Test_Client1".to_string(), "Test_Client2".to_string()], // Example clients //todo!(GET CLIENT AND SERVER ID'S)
+            servers: vec!["Test_Server1".to_string(), "Test_Server2".to_string()], // Example servers
             drones: sc.get_drone_ids(),
-            open_popups: HashMap::new(), // Initialize the map to track popups
+            open_popups: HashMap::new(),
             drone_packet_drop_rates: HashMap::new(),
             simulation_controller: sc,
             topology: NetworkTopology::new(),
+            log_checkboxes,
         }
     }
 
@@ -174,7 +193,7 @@ impl MyApp {
                             println!("Crashed {}.", name);
                         }
                     } else if self.servers.contains(&name.to_string()) {
-                        //todo!("implement controls for client)
+                        //todo!(implement controls for server)
                     }
                 });
         }
@@ -186,13 +205,12 @@ impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Poll for new events and log them
         while let Ok(event) = self.node_event_recv.try_recv(){
-            println!("\n\n\n\n\n\n\n\n\n\n\n\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n\n\n\n\n\n\n\n\n\n\n\n");
-            self.log_event(event); // Use the new log_event method
+            self.log_event(event);
         }
 
         if ctx.input(|i| i.viewport().close_requested()) {
             if self.allowed_to_close {
-                // do nothing - we will close
+                // do nothing
             } else {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
                 self.show_confirmation_dialog = true;
@@ -204,15 +222,14 @@ impl eframe::App for MyApp {
             let center_x = (screen_rect.left() + screen_rect.right()) / 2.0;
             let center_y = (screen_rect.top() + screen_rect.bottom()) / 2.0;
 
-            // Set the size of the confirmation dialog
             let window_size = egui::vec2(170.0, 150.0);
 
             // Calculate top-left position for the window to be centered
             let top_left = egui::pos2(center_x - window_size.x / 2.0, center_y - window_size.y / 2.0);
 
             egui::Window::new("Confirm Exit")
-                .fixed_size(window_size) // Fix the size of the dialog
-                .fixed_pos(top_left)    // Position it at the calculated top-left point
+                .fixed_size(window_size)
+                .fixed_pos(top_left)
                 .collapsible(false)
                 .resizable(false)
                 .show(ctx, |ui| {
@@ -254,15 +271,16 @@ impl eframe::App for MyApp {
                 ui.add_space(2.0)
             });
 
-            egui::CentralPanel::default().show(ctx, |ui| {
+            egui::CentralPanel::default()
+                .show(ctx, |ui| {
                 match self.current_screen {
                     Screen::NetworkScreen => {
                         // Synchronize the drones with the topology
                         self.topology.update_drones(&self.drones);
 
                         egui::SidePanel::left("network_menu")
-                            .min_width(160.0) // Set minimum width
-                            .max_width(160.0)
+                            .min_width(140.0)
+                            .max_width(140.0)
                             .show(ctx, |ui| {
                                 ui.heading("Network Menu");
 
@@ -288,7 +306,7 @@ impl eframe::App for MyApp {
                                 ui.label("Drones:");
                                 for drones in &self.drones {
                                     if ui.button(drones).clicked() {
-                                        // Explicitly set the pop-up state to true to reopen it
+                                        // Set the pop-up state to true to reopen it
                                         self.open_popups.insert(drones.clone(), true);
                                     }
                                 }
@@ -300,14 +318,58 @@ impl eframe::App for MyApp {
                     },
                     Screen::LogsScreen => {
                         egui::SidePanel::left("logs_options")
-                            .min_width(160.0) // Set minimum width
-                            .max_width(160.0)
+                            .min_width(140.0)
+                            .max_width(140.0)
                             .show(ctx, |ui| {
                                 ui.heading("Logs Options");
                                 ui.separator();
 
-                                ui.label("Sort by: ");
+                                // Client Section
+                                ui.label("Clients:");
+                                for client in &self.clients {
+                                    // Create a checkbox for each client
+                                    let is_checked = self.log_checkboxes.get_mut(client).unwrap();
+                                    ui.checkbox(is_checked, client);
+                                }
+
+                                ui.separator();
+
+                                // Server Section
+                                ui.label("Servers:");
+                                for server in &self.servers {
+                                    // Create a checkbox for each server
+                                    let is_checked = self.log_checkboxes.get_mut(server).unwrap();
+                                    ui.checkbox(is_checked, server);
+                                }
+
+                                ui.separator();
+
+                                // Drone Section
+                                ui.label("Drones:");
+                                for drone in &self.drones {
+                                    // Create a checkbox for each drone
+                                    let is_checked = self.log_checkboxes.get_mut(drone).unwrap();
+                                    ui.checkbox(is_checked, drone);
+                                }
                             });
+
+                        // Filtering logs based on checkbox states
+                        let filtered_logs: Vec<&LogEntry> = self.logs.iter()
+                            .filter(|log| {
+                                // Use regex to extract the noe ID from the log message
+                                let re = Regex::new(r"\[EVENT\] .*Node (\d+)").unwrap();
+                                if let Some(caps) = re.captures(&log.message) {
+                                    // Extract the node ID (assumes Node ID is numeric)
+                                    if let Some(node_id) = caps.get(1) {
+                                        let node_id_str = node_id.as_str();
+                                        // Check if the corresponding checkbox is checked
+                                        return *self.log_checkboxes.get(node_id_str).unwrap_or(&false);
+                                    }
+                                }
+                                // Default: Show the log if it doesn't contain a node ID
+                                true
+                            })
+                            .collect();
 
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             for log in &self.logs {
@@ -315,20 +377,19 @@ impl eframe::App for MyApp {
 
                                 if log.message.starts_with("[EVENT]") {
                                     text_parts.push(egui::RichText::new("[EVENT]").color(egui::Color32::GREEN));
-                                    text_parts.push(egui::RichText::new(&log.message[7..]).color(egui::Color32::WHITE)); // Rest of the message
+                                    text_parts.push(egui::RichText::new(&log.message[7..]).color(egui::Color32::WHITE));
                                 } else if log.message.starts_with("[COMMAND]") {
                                     text_parts.push(egui::RichText::new("[COMMAND]").color(egui::Color32::BLUE));
-                                    text_parts.push(egui::RichText::new(&log.message[9..]).color(egui::Color32::WHITE)); // Rest of the message
+                                    text_parts.push(egui::RichText::new(&log.message[9..]).color(egui::Color32::WHITE));
                                 }
 
-                                // Add timestamp in white
                                 let formatted_log = egui::RichText::new(format!("{} | ", log.timestamp)).color(egui::Color32::WHITE);
 
                                 // Combine all parts and display the log
                                 ui.horizontal(|ui| {
-                                    ui.label(formatted_log); // Timestamp
+                                    ui.label(formatted_log);
                                     for part in text_parts {
-                                        ui.label(part); // Colored and white components
+                                        ui.label(part);
                                     }
                                 });
                             }
@@ -349,6 +410,32 @@ impl eframe::App for MyApp {
                 self.show_popup(ctx, &name);
             }
 
+            if self.current_screen == Screen::NetworkScreen {
+                let legend_width = 150.0;
+                let legend_height = 100.0;
+
+                egui::Window::new("Legend")
+                    .anchor(egui::Align2::RIGHT_TOP, [-10.0, 40.0])
+                    .collapsible(false)
+                    .resizable(false)
+                    .default_width(legend_width)
+                    .default_height(legend_height)
+                    .show(ctx, |ui| {
+
+                        ui.horizontal(|ui| {
+                            ui.colored_label(egui::Color32::BLUE, " ● Drone");
+                        });
+
+                        ui.horizontal(|ui| {
+                            ui.colored_label(egui::Color32::RED, " ● Client");
+                        });
+
+                        ui.horizontal(|ui| {
+                            ui.colored_label(egui::Color32::GREEN, " ● Server");
+                        });
+
+                    });
+            }
         }
 
         /*#[cfg(test)]
@@ -387,22 +474,39 @@ impl NetworkTopology {
     }
 
     pub fn update_drones(&mut self, drones: &[String]) {
-        let mut x = 100.0;
         // Clear existing nodes and connections
         self.nodes.clear();
         self.connections.clear();
 
-        // Add drones as nodes
+        // Determine the number of drones
+        let n = drones.len();
+        if n == 0 {
+            return;
+        }
+
+        // Center and radius of the circle.
+        let center = (300.0, 300.0);
+        let radius = 100.0;
+
+        // Calculate the angle between nodes
+        let angle_increment = std::f32::consts::TAU / n as f32;
+
+        // Create nodes evenly spaced on the circle
         for (i, drone) in drones.iter().enumerate() {
-            x = x+50.0;
+            let angle = i as f32 * angle_increment;
+            let x = center.0 + radius * angle.cos();
+            let y = center.1 + radius * angle.sin();
             self.nodes.push(Node {
                 id: drone.clone(),
-                position: (200.0 + i as f32 * 100.0, x), // Dynamic position based on index
+                position: (x, y),
             });
         }
 
-        for i in 0..self.nodes.len() {
-            self.connections.push((0, i)); // Connect all drones to the first node (central hub)
+        // Create connections to form a closed polygon
+        // This connects each node to the next and the last to the first.
+        for i in 0..n {
+            let next = (i + 1) % n; // wrap around for the last node
+            self.connections.push((i, next));
         }
     }
 
@@ -410,7 +514,7 @@ impl NetworkTopology {
         // Create a painter constrained to the available area
         let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::click());
 
-        // Draw connections (edges) first
+        // Draw connections
         for &(node1_idx, node2_idx) in &self.connections {
             let pos1 = self.nodes[node1_idx].position;
             let pos2 = self.nodes[node2_idx].position;
@@ -423,21 +527,36 @@ impl NetworkTopology {
             painter.line_segment([p1, p2], egui::Stroke::new(2.0, egui::Color32::LIGHT_GRAY));
         }
 
-        // Draw nodes (circles with labels)
+        // Compute an approximate center for all nodes.
+        let center = if !self.nodes.is_empty() {
+            let (sum_x, sum_y) = self.nodes.iter().fold((0.0, 0.0), |(sx, sy), node| {
+                (sx + node.position.0, sy + node.position.1)
+            });
+            response.rect.min + egui::vec2(sum_x / self.nodes.len() as f32, sum_y / self.nodes.len() as f32)
+        } else {
+            response.rect.min
+        };
+
+        // Draw circles and labels
         for node in &self.nodes {
             let pos = response.rect.min + egui::vec2(node.position.0, node.position.1);
 
             // Draw the circle for the node
-            painter.circle_filled(pos, 10.0, egui::Color32::BLUE);
+            painter.circle_filled(pos, 15.0, egui::Color32::BLUE);
 
-            // Add a label for the node
+            // Offset the label by 20 pixels along this direction.
+            let label_pos = pos;
+
+            // Draw the node label at the offset position with the chosen alignment.
             painter.text(
-                pos + egui::vec2(0.0, -20.0),
+                label_pos,
                 egui::Align2::CENTER_CENTER,
                 &node.id,
                 egui::FontId::default(),
                 egui::Color32::WHITE,
             );
         }
+
     }
 }
+

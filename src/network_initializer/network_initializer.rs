@@ -1,14 +1,10 @@
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::collections::HashSet;
 use std::{fs, thread};
-
 use std::collections::HashMap;
-use std::time::Duration;
+
 use wg_2024::config::Config;
-use wg_2024::controller::DroneCommand;
 use wg_2024::drone::Drone;
-use wg_2024::network::SourceRoutingHeader;
-use wg_2024::packet::{Fragment, Packet};
 
 use crate::simulation_controller::simulation_controller::simulation_controller_main;
 use crate::types::my_drone::MyDrone;
