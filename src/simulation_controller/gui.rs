@@ -52,7 +52,7 @@ impl MyApp {
             logs: Vec::new(),
             show_confirmation_dialog: false,
             allowed_to_close: false,
-            node_event_recv: sc.get_node_event_recv(),
+            node_event_recv: sc.get_drone_event_recv(),
             clients: vec!["Test_Client1".to_string(), "Test_Client2".to_string()], // Example clients
             servers: vec!["Test_Server1".to_string(), "Test_Server1".to_string()], // Example servers
             drones: sc.get_drone_ids(),
