@@ -16,7 +16,7 @@ pub fn main() {
     let config = parse_config("src/config.toml");
 
     // check for errors in the toml
-    // check_toml_validity(&config);
+    //check_toml_validity(&config);
 
     let mut controller_drones = HashMap::new();
     let (node_event_send, node_event_recv) = unbounded();

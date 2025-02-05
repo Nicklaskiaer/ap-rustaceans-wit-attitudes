@@ -3,7 +3,6 @@ use chrono::{DateTime, Utc};
 use chrono_tz::Europe::Rome;
 use crossbeam_channel::Receiver;
 use std::collections::HashMap;
-use std::time::Duration;
 use regex::Regex;
 
 use wg_2024::controller::{DroneCommand, DroneEvent};
@@ -480,9 +479,6 @@ impl NetworkTopology {
 
         // Determine the number of drones
         let n = drones.len();
-        if n == 0 {
-            return;
-        }
 
         // Center and radius of the circle.
         let center = (300.0, 300.0);
@@ -526,16 +522,6 @@ impl NetworkTopology {
             // Draw the line for the edge
             painter.line_segment([p1, p2], egui::Stroke::new(2.0, egui::Color32::LIGHT_GRAY));
         }
-
-        // Compute an approximate center for all nodes.
-        let center = if !self.nodes.is_empty() {
-            let (sum_x, sum_y) = self.nodes.iter().fold((0.0, 0.0), |(sx, sy), node| {
-                (sx + node.position.0, sy + node.position.1)
-            });
-            response.rect.min + egui::vec2(sum_x / self.nodes.len() as f32, sum_y / self.nodes.len() as f32)
-        } else {
-            response.rect.min
-        };
 
         // Draw circles and labels
         for node in &self.nodes {
