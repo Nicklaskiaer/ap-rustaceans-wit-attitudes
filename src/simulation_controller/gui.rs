@@ -4,7 +4,6 @@ use chrono_tz::Europe::Rome;
 use crossbeam_channel::{Receiver, Sender};
 use std::collections::HashMap;
 use std::time::Duration;
-use egui::debug_text::print;
 use regex::Regex;
 
 use wg_2024::controller::{DroneCommand, DroneEvent};
@@ -43,7 +42,6 @@ pub struct MyApp {
     logs: Vec<LogEntry>, // List of logs
     show_confirmation_dialog: bool,
     allowed_to_close: bool,
-    node_event_recv: Receiver<DroneEvent>,
     open_popups: HashMap<String, bool>, // Keeps tracks of opened control windows
     topology: NetworkTopology,
     log_checkboxes: HashMap<String, bool>,
@@ -133,112 +131,110 @@ impl MyApp {
             egui::Window::new(format!("Controls for {}", name))
                 .resizable(true)
                 .collapsible(true)
-                .open(is_open) // Tie window open state to the hashmap
+                .open(is_open)
                 .show(ctx, |ui| {
-                    // TODO: Implement controls for clients
-                    // TODO: Implement controls for servers
-                    if let Some(node_id) self.simulation_controller.get_drone_ids().get(&name.to_string()) {
+                    // Extract the node ID from the name (e.g., "Drone 21" -> 21)
+                    if let Some(node_id_str) = name.split_whitespace().nth(1) {
+                        if let Ok(node_id) = node_id_str.parse::<NodeId>() {
+                            // Handle Drone controls
+                            if name.starts_with("Drone") {
+                                if let Some((sender, neighbours)) = self.simulation_controller.get_drones().get(&node_id) {
+                                    // Set Packet Drop Rate
+                                    ui.horizontal(|ui| {
+                                        ui.label("Packet Drop Rate:");
+                                        let packet_drop_rate = self
+                                            .drone_packet_drop_rates
+                                            .entry(name.to_string())
+                                            .or_insert_with(String::new);
 
+                                        ui.text_edit_singleline(packet_drop_rate);
 
+                                        if ui.button("Set").clicked() {
+                                            if let Ok(value) = packet_drop_rate.parse::<f32>() {
+                                                if value >= 0.0 && value <= 1.0 {
+                                                    let message = format!("[COMMAND] Setting packet drop rate for {} to {}", name, value);
+                                                    self.logs.push(LogEntry {
+                                                        timestamp: formatted_time.clone(),
+                                                        message,
+                                                    });
+                                                    self.simulation_controller.handle_set_packet_drop_rate(node_id, value);
+                                                }
+                                            }
+                                        }
+                                    });
 
-                        } else if let Some((_, senders)) = self.drones.get_mut(&node_id) {
-                            // Get or initialize the input value for the packet drop rate
-                            let packet_drop_rate = self
-                                .drone_packet_drop_rates
-                                .entry(name.to_string())
-                                .or_insert_with(|| String::new());
+                                    // Add sender
+                                    
+                                    // Remove sender
 
-                            // Input fields for sender ID
-                            let sender_input = self
-                                .drone_sender_input
-                                .entry(name.to_string())
-                                .or_insert_with(|| String::new());
-
-                            // Packet Drop Rate Control
-                            ui.horizontal(|ui| {
-                                ui.label("Packet Drop Rate:");
-                                ui.text_edit_singleline(packet_drop_rate);
-
-                                if ui.button("Set").clicked() {
-                                    match packet_drop_rate.parse::<f32>() {
-                                        Ok(value) if value >= 0.0 && value <= 1.0 => {
-                                            let message = format!("[COMMAND] Setting packet drop rate for {} to {}", name, value);
-
+                                    // Crash Button
+                                    if ui.button("Crash").clicked() {
+                                        if let Some((_, neighbors)) = self.simulation_controller.get_drones().get(&node_id) {
+                                            let message = format!("[COMMAND] Crashing {}", name);
                                             self.logs.push(LogEntry {
                                                 timestamp: formatted_time.clone(),
                                                 message,
                                             });
-
-                                            self.simulation_controller
-                                                .handle_set_packet_drop_rate(node_id, value);
-                                        }
-                                        _ => {
-                                            println!("Invalid drop rate value. Please enter a number between 0 and 1.");
+                                            self.simulation_controller.handle_crash(node_id, neighbors.clone());
                                         }
                                     }
-                                }
-                            });
-
-                            ui.horizontal(|ui| {
-                                ui.label("Add Sender:");
-                                ui.text_edit_singleline(sender_input);
-
-                                if ui.button("Add").clicked() {
-                                    if let Ok(sender_id) = sender_input.parse::<NodeId>() {
-                                        let message = format!("[COMMAND] Added sender {} to drone {}", sender_input, name);
-
-                                        self.logs.push(LogEntry {
-                                            timestamp: formatted_time.clone(),
-                                            message,
-                                        });
-
-                                        /*self.simulation_controller
-                                            .handle_add_sender(node_id, sender_id);  !todo(missing argument here)*/
-                                    } else {
-                                        println!("Invalid sender ID. Please enter a valid number.");
-                                    }
-                                }
-                            });
-
-                            ui.horizontal(|ui| {
-                                ui.label("Remove Sender:");
-                                ui.text_edit_singleline(sender_input);
-
-                                if ui.button("Remove").clicked() {
-                                    if let Ok(sender_id) = sender_input.parse::<NodeId>() {
-                                        let message = format!("[COMMAND] Removed sender {} from drone {}", sender_input, name);
-
-                                        self.logs.push(LogEntry {
-                                            timestamp: formatted_time.clone(),
-                                            message,
-                                        });
-
-                                        self.simulation_controller
-                                            .handle_remove_sender(node_id, sender_id);
-                                    } else {
-                                        println!("Invalid sender ID. Please enter a valid number.");
-                                    }
-                                }
-                            });
-
-                            if let Some((_, neighbors)) = self.drones.get(&node_id) {
-                                if ui.button("Crash").clicked() {
-                                    self.simulation_controller.handle_crash(node_id, neighbors.clone());
                                 }
                             }
-
-                        } else if self.servers.contains_key(&node_id) {
-
-                            // TODO: Implement controls for servers
-
+                            // Handle Client controls
+                            else if name.starts_with("Client") {
+                                ui.label("Client controls coming soon...");
+                            }
+                            // Handle Server controls
+                            else if name.starts_with("Server") {
+                                ui.label("Server controls coming soon...");
+                            }
                         }
-                    } else if self.servers.contains(&name.to_string()) {
-                        //todo!(implement controls for server)
                     }
                 });
         }
     }
 
+    fn drone_message_forward_test(&self) {
+        let msg = Packet::new_fragment(
+            SourceRoutingHeader {
+                hop_index: 1,
+                hops: vec![11, 21, 31, 32, 41],
+            },
+            1,
+            Fragment {
+                fragment_index: 1,
+                total_n_fragments: 1,
+                length: 128,
+                data: [1; 128],
+            },
+        );
+
+        //sends packet to D21
+        if let Some((d21_sender, _)) = self.simulation_controller.get_packet_channels().get(&21) {
+            d21_sender.send(msg.clone()).unwrap();
+        }
+    }
+    
+    fn drone_error_in_routing_test(&self) {
+        let msg = Packet::new_fragment(
+            SourceRoutingHeader {
+                hop_index: 1,
+                hops: vec![11, 21, 31, 32, 41],
+            },
+            1,
+            Fragment {
+                fragment_index: 1,
+                total_n_fragments: 1,
+                length: 128,
+                data: [1; 128],
+            },
+        );
+
+        //sends packet to D21
+        if let Some((d21_sender, _)) = self.simulation_controller.get_packet_channels().get(&21) {
+            d21_sender.send(msg.clone()).unwrap();
+        }
+    }
 }
 
 impl eframe::App for MyApp {
@@ -337,7 +333,7 @@ impl eframe::App for MyApp {
                 match self.current_screen {
                     Screen::NetworkScreen => {
                         // Synchronize the drones with the topology
-                        self.topology.update_drones(&self.simulation_controller.get_drone_ids());
+                        self.topology.update_drones(&self.simulation_controller.get_drones());
 
                             egui::SidePanel::left("network_menu")
                                 .min_width(140.0)

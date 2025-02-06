@@ -82,13 +82,13 @@ impl SimulationController {
 
     pub fn get_client_ids(&self) -> Vec<String> {
         self.clients.keys()
-            .map(|node_id| format!("Drone {}", node_id.to_string()))
+            .map(|node_id| format!("Client {}", node_id.to_string()))
             .collect()
     }
 
     pub fn get_server_ids(&self) -> Vec<String> {
         self.servers.keys()
-            .map(|node_id| format!("Drone {}", node_id.to_string()))
+            .map(|node_id| format!("Server {}", node_id.to_string()))
             .collect()
     }
     
