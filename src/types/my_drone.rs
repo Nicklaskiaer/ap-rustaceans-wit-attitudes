@@ -15,12 +15,12 @@ use wg_2024::packet::Nack;
 
 pub struct MyDrone {
     id: NodeId,
-    controller_send: Sender<DroneEvent>,
-    controller_recv: Receiver<DroneCommand>,
-    packet_recv: Receiver<Packet>,
+    controller_send: Sender<DroneEvent>,        // send to sc
+    controller_recv: Receiver<DroneCommand>,    // receive from sc
+    packet_recv: Receiver<Packet>,              // receive to neighbor nodes
     pdr: f32,
-    packet_send: HashMap<NodeId, Sender<Packet>>,
-    flood_initiators: HashMap<u64, NodeId>, // HashMap<flood_id, initiator_id>
+    packet_send: HashMap<NodeId, Sender<Packet>>,   // send to neighbor nodes
+    flood_initiators: HashMap<u64, NodeId>,
 }
 
 impl Drone for MyDrone {
@@ -91,7 +91,7 @@ impl MyDrone {
                                     return;
                                 }
                             }
-                            
+
                             // Ignore other commands while crashing
                             _ => {}
                         }
@@ -102,9 +102,9 @@ impl MyDrone {
                         match packet.pack_type.clone() {
                             // Lose FloodRequest
                             PacketType::FloodRequest(_) => {
-                                // Do nothing 
+                                // Do nothing
                             }
-                
+
                             // Forward Ack, Nack, and FloodResponse
                             PacketType::Ack(_ack) => {
                                 match self.send_ack(packet.clone(), _ack){
@@ -124,7 +124,7 @@ impl MyDrone {
                                     _ => {}
                                 }
                             }
-                
+
                             // Send Nack(ErrorInRouting) for other packet types
                             PacketType::MsgFragment(_) => {
                                 self.send_nack(
@@ -159,10 +159,10 @@ impl MyDrone {
     // <editor-fold desc="Packets">
     fn handle_packet(&mut self, mut packet: Packet) {
 
-        // first thing first check if it's a FloodRequest 
+        // first thing first check if it's a FloodRequest
         // if so, hop_index and hops will be ignored
         if !matches!(packet.pack_type, PacketType::FloodRequest(_)){
-            
+
             // check for UnexpectedRecipient (will send the package backwards)
             if self.id != packet.routing_header.hops[packet.routing_header.hop_index]{
                 let p = self.send_nack(
@@ -366,7 +366,7 @@ impl MyDrone {
         // add node to the hops
         let mut new_hops = packet.routing_header.hops.clone();
         new_hops.push((self.id));
-        
+
         // add node to the path trace
         let mut new_path_trace = flood_request.path_trace.clone();
         new_path_trace.push((self.id, NodeType::Drone));

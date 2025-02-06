@@ -5,6 +5,7 @@ mod message;
 mod types;
 mod test_fragments;
 mod assembler;
+mod client;
 
 fn main() {
 
