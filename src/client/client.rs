@@ -53,7 +53,7 @@ pub trait ClientTrait {
     ) -> Result<String, String>;
 
     fn send_response(&mut self, message: Message<TextRequest>)
-        -> Result<Packet, SendError<Packet>>;
+                     -> Result<Packet, SendError<Packet>>;
 
     fn send_sent_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ClientEvent>>;
     fn send_recv_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ClientEvent>>;
