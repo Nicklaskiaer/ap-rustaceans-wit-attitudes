@@ -6,6 +6,9 @@ use wg_2024::packet;
 use wg_2024::packet::{
     Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType,
 };
+use crate::assembler::assembler::Assembler;
+use crate::server::message::{Message, TextRequest};
+use crate::server::server::ServerEvent;
 
 pub struct Client {
     id: NodeId,
@@ -52,21 +55,21 @@ pub trait ClientTrait {
     fn send_response(&mut self, message: Message<TextRequest>)
         -> Result<Packet, SendError<Packet>>;
 
-    fn send_sent_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ServerEvent>>;
-    fn send_recv_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ServerEvent>>;
+    fn send_sent_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ClientEvent>>;
+    fn send_recv_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ClientEvent>>;
 
-    fn compose_message(
-        source_id: NodeId,
-        session_id: u64,
-        raw_content: String,
-    ) -> Result<Message<Self::RequestType>, String> {
-        let content = Self::RequestType::from_string(raw_content)?;
-        Ok(Message {
-            session_id,
-            source_id,
-            content,
-        })
-    }
+    // fn compose_message(
+    //     source_id: NodeId,
+    //     session_id: u64,
+    //     raw_content: String,
+    // ) -> Result<Message<Self::RequestType>, String> {
+    //     let content = Self::RequestType::from_string(raw_content)?;
+    //     Ok(Message {
+    //         session_id,
+    //         source_id,
+    //         content,
+    //     })
+    // }
     fn compute_path_to_node(&self, target_node_id: NodeId) -> Result<Vec<NodeId>, String>;
 }
 

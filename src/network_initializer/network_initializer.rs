@@ -2,13 +2,17 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::collections::HashSet;
 use std::{fs, thread};
 use std::collections::HashMap;
-
+use std::time::Duration;
 use wg_2024::config::Config;
+use wg_2024::controller::DroneCommand;
 use wg_2024::drone::Drone;
+use wg_2024::network::{NodeId, SourceRoutingHeader};
+use wg_2024::packet::{Fragment, Packet};
 
-use crate::simulation_controller::simulation_controller::simulation_controller_main;
+use crate::simulation_controller::simulation_controller::{simulation_controller_main, SimulationController};
 use crate::types::my_drone::MyDrone;
-
+use crate::client::client::{Client, ClientTrait};
+use crate::server::server::{ContentServer, Server};
 
 pub fn main() {
     // let current_path = env::current_dir().expect("Unable to get current directory");
@@ -16,12 +20,10 @@ pub fn main() {
     let config = parse_config("src/config.toml");
 
     // check for errors in the toml
-    //check_toml_validity(&config);
-
-    let mut controller_drones = HashMap::new();
-    let (node_event_send, node_event_recv) = unbounded();
-
-    let mut packet_channels = HashMap::new();
+    // check_toml_validity(&config);
+    
+    // hashmap with all packet_channels
+    let mut packet_channels: HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)> = HashMap::new();
     for drone in config.drone.iter() {
         packet_channels.insert(drone.id, unbounded());
     }
@@ -32,25 +34,28 @@ pub fn main() {
         packet_channels.insert(server.id, unbounded());
     }
     
-    let mut handles = Vec::new();
+    // INITIALIZE DRONES
+    let (node_event_send_drone, node_event_recv_drone) = unbounded();
+    let mut controller_drones = HashMap::new();
     for drone in config.drone.into_iter() {
         // controller
         let (controller_drone_send, controller_drone_recv) = unbounded();
-        controller_drones.insert(drone.id, controller_drone_send);
-        let node_event_send = node_event_send.clone();
+        controller_drones.insert(drone.id, (controller_drone_send, drone.connected_node_ids.clone()));
+        let node_event_send_drone = node_event_send_drone.clone();
         
         // packet
-        let packet_recv = packet_channels[&drone.id].1.clone();
-        let packet_send = drone
+        let packet_recv: Receiver<Packet> = packet_channels[&drone.id].1.clone();
+        let packet_send: HashMap<NodeId, Sender<Packet>> = drone
             .connected_node_ids
             .into_iter()
             .map(|id| (id, packet_channels[&id].0.clone()))
             .collect();
 
-        handles.push(thread::spawn(move || {
+        // spawn
+        thread::spawn(move || {
             let mut drone = MyDrone::new(
                 drone.id,
-                node_event_send,
+                node_event_send_drone,
                 controller_drone_recv,
                 packet_recv,
                 packet_send,
@@ -58,15 +63,96 @@ pub fn main() {
             );
 
             drone.run();
-        }));
+        });
+    }
+
+    // INITIALIZE CLIENTS
+    let (node_event_send_client, node_event_recv_client) = unbounded();
+    let mut controller_clients = HashMap::new();
+    for client in config.client.into_iter() {
+
+        // controller
+        let (controller_client_send, controller_client_recv) = unbounded();
+        controller_clients.insert(client.id, (controller_client_send, client.connected_drone_ids.clone()));
+        let node_event_send_client = node_event_send_client.clone();
+
+        // packet
+        let packet_recv: Receiver<Packet> = packet_channels[&client.id].1.clone();
+        let packet_send: HashMap<NodeId, Sender<Packet>> = client
+            .connected_drone_ids.clone()
+            .into_iter()
+            .map(|id| (id, packet_channels[&id].0.clone()))
+            .collect();
+
+        // spawn
+        let (assembler_send, assembler_recv) = unbounded();
+        thread::spawn(move || {
+            let mut client = Client::new(
+                client.id,
+                client.connected_drone_ids,
+                node_event_send_client,
+                controller_client_recv,
+                packet_send,
+                packet_recv,
+                vec![],
+                HashSet::new(),
+                assembler_send,
+                assembler_recv
+            );
+
+            client.run();
+        });
     }
     
-    simulation_controller_main(controller_drones.clone(), node_event_recv.clone()).expect("GUI panicked!");
+    // INITIALIZE SERVERS
+    let (node_event_send_server, node_event_recv_server) = unbounded();
+    let mut controller_servers: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+    for server in config.server.into_iter() {
+
+        // controller
+        let (controller_server_send, controller_server_recv) = unbounded();
+        controller_servers.insert(server.id, server.connected_drone_ids.clone());
+        let node_event_send_server = node_event_send_server.clone();
+
+        // packet
+        let packet_recv: Receiver<Packet> = packet_channels[&server.id].1.clone();
+        let packet_send: HashMap<NodeId, Sender<Packet>> = server
+            .connected_drone_ids.clone()
+            .into_iter()
+            .map(|id| (id, packet_channels[&id].0.clone()))
+            .collect();
+
+        // spawn
+        let (assembler_send, assembler_recv) = unbounded();
+        thread::spawn(move || {
+            let mut server = ContentServer::new(
+                server.id,
+                server.connected_drone_ids,
+                node_event_send_server,
+                controller_server_recv,
+                packet_send,
+                packet_recv,
+                vec![],
+                HashSet::new(),
+                assembler_send,
+                assembler_recv
+            );
+
+            server.run();
+        });
+    }
     
-    // do not stop the code until all threads are done
-    // while let Some(handle) = handles.pop() {
-    //     handle.join().unwrap();
-    // }
+    
+    // INITIALIZE SIMULATION CONTROLLER AND GUI
+    let sc = SimulationController::new(
+        controller_drones.clone(),
+        controller_clients.clone(),
+        controller_servers.clone(),
+        node_event_recv_drone.clone(),
+        node_event_recv_client.clone(),
+        node_event_recv_server.clone()
+    );
+    simulation_controller_main(sc).expect("GUI panicked!");
 }
 
 fn parse_config(file: &str) -> Config {

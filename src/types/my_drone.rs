@@ -15,12 +15,12 @@ use wg_2024::packet::Nack;
 
 pub struct MyDrone {
     id: NodeId,
-    controller_send: Sender<DroneEvent>,
-    controller_recv: Receiver<DroneCommand>,
-    packet_recv: Receiver<Packet>,
+    controller_send: Sender<DroneEvent>,        // send to sc
+    controller_recv: Receiver<DroneCommand>,    // receive from sc
+    packet_recv: Receiver<Packet>,              // receive to neighbor nodes
     pdr: f32,
-    packet_send: HashMap<NodeId, Sender<Packet>>,
-    flood_initiators: HashMap<u64, NodeId>, // HashMap<flood_id, initiator_id>
+    packet_send: HashMap<NodeId, Sender<Packet>>,   // send to neighbor nodes
+    flood_initiators: HashMap<u64, NodeId>,
 }
 
 impl Drone for MyDrone {
