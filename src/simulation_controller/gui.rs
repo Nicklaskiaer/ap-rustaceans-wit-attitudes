@@ -3,12 +3,15 @@ use chrono::{DateTime, Utc};
 use chrono_tz::Europe::Rome;
 use crossbeam_channel::Receiver;
 use std::collections::HashMap;
+use std::time::Duration;
+use egui::debug_text::print;
 use regex::Regex;
 
 use wg_2024::controller::{DroneCommand, DroneEvent};
-use wg_2024::network::SourceRoutingHeader;
+use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Fragment, Packet};
-
+use crate::client::client::ClientEvent;
+use crate::server::server::ServerEvent;
 use crate::simulation_controller::simulation_controller::SimulationController;
 
 #[derive(PartialEq)]
@@ -33,17 +36,14 @@ pub struct NetworkTopology {
 }
 
 pub struct MyApp {
+    test_executed: bool,
+    simulation_controller: SimulationController,
+    drone_packet_drop_rates: HashMap<String, String>, // Keeps the input state for each drone
     current_screen: Screen,
     logs: Vec<LogEntry>, // List of logs
     show_confirmation_dialog: bool,
     allowed_to_close: bool,
-    node_event_recv: Receiver<DroneEvent>,
-    clients: Vec<String>, // List of clients
-    servers: Vec<String>, // List of servers
-    drones: Vec<String>, // List of Drones
     open_popups: HashMap<String, bool>, // Keeps tracks of opened control windows
-    drone_packet_drop_rates: HashMap<String, String>, // Keeps the input state for each drone
-    simulation_controller: SimulationController,
     topology: NetworkTopology,
     log_checkboxes: HashMap<String, bool>,
 }
@@ -54,25 +54,22 @@ impl MyApp {
         // Initialize checkboxes for each client, server, and drone
         let mut log_checkboxes = HashMap::new();
 
-        for client in &["Test_Client1", "Test_Client2"] {
+        for client in sc.get_client_ids() {
             log_checkboxes.insert(client.to_string(), true);
         }
-        for server in &["Test_Server1", "Test_Server2"] {
+        for server in sc.get_server_ids() {
             log_checkboxes.insert(server.to_string(), true);
-        } //todo!(GET CLIENT AND SERVER ID'S)
+        }
         for drone in sc.get_drone_ids() {
             log_checkboxes.insert(drone.clone(), true);
         }
 
         Self {
+            test_executed: false,
             current_screen: Screen::NetworkScreen,
             logs: Vec::new(),
             show_confirmation_dialog: false,
             allowed_to_close: false,
-            node_event_recv: sc.get_node_event_recv(),
-            clients: vec!["Test_Client1".to_string(), "Test_Client2".to_string()], // Example clients //todo!(GET CLIENT AND SERVER ID'S)
-            servers: vec!["Test_Server1".to_string(), "Test_Server2".to_string()], // Example servers
-            drones: sc.get_drone_ids(),
             open_popups: HashMap::new(),
             drone_packet_drop_rates: HashMap::new(),
             simulation_controller: sc,
@@ -160,10 +157,10 @@ impl MyApp {
                 .collapsible(true)
                 .open(is_open) // Tie window open state to the hashmap
                 .show(ctx, |ui| {
-                    if self.clients.contains(&name.to_string()) {
+                    if self.simulation_controller.get_client_ids().contains(&name.to_string()) {
                         //todo!(implement controls for client)
 
-                    } else if self.drones.contains(&name.to_string()) {
+                    } else if self.simulation_controller.get_drone_ids().contains(&name.to_string()) {
 
                         // Get or initialize the input value for the packet drop rate
                         let packet_drop_rate = self
@@ -191,20 +188,81 @@ impl MyApp {
                         if ui.button("Crash").clicked() {
                             println!("Crashed {}.", name);
                         }
-                    } else if self.servers.contains(&name.to_string()) {
+                    } else if self.simulation_controller.get_server_ids().contains(&name.to_string()) {
                         //todo!(implement controls for server)
                     }
                 });
         }
     }
+    
+    fn drone_message_forward_test(&self) {
+        let msg = Packet::new_fragment(
+            SourceRoutingHeader {
+                hop_index: 1,
+                hops: vec![11, 21, 31, 32, 41],
+            },
+            1,
+            Fragment {
+                fragment_index: 1,
+                total_n_fragments: 1,
+                length: 128,
+                data: [1; 128],
+            },
+        );
 
+        //sends packet to D21
+        if let Some((d21_sender, _)) = self.simulation_controller.get_packet_channels().get(&21) {
+            d21_sender.send(msg.clone()).unwrap();
+        }
+    }
+    fn drone_error_in_routing_test(&self) {
+        let msg = Packet::new_fragment(
+            SourceRoutingHeader {
+                hop_index: 1,
+                hops: vec![11, 21, 31, 32, 41],
+            },
+            1,
+            Fragment {
+                fragment_index: 1,
+                total_n_fragments: 1,
+                length: 128,
+                data: [1; 128],
+            },
+        );
+
+        //sends packet to D21
+        if let Some((d21_sender, _)) = self.simulation_controller.get_packet_channels().get(&21) {
+            d21_sender.send(msg.clone()).unwrap();
+        }
+    }
 }
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Poll for new events and log them
-        while let Ok(event) = self.node_event_recv.try_recv(){
+        while let Ok(event) = self.simulation_controller.get_drone_event_recv().try_recv(){
+            match event {
+                DroneEvent::PacketSent(_) => {println!("drone PacketSent")}
+                DroneEvent::PacketDropped(_) => {println!("drone PacketDropped")}
+                DroneEvent::ControllerShortcut(_) => {println!("drone ControllerShortcut")}
+            }
             self.log_event(event);
+        }
+
+        while let Ok(event) = self.simulation_controller.get_client_event_recv().try_recv(){
+            match event {
+                ClientEvent::PacketSent(_) => {println!("client PacketSent")}
+                ClientEvent::PacketReceived(_) => {println!("client PacketReceived")}
+            }
+            //TODO: real client log
+        }
+
+        while let Ok(event) = self.simulation_controller.get_server_event_recv().try_recv(){
+            match event {
+                ServerEvent::PacketSent(_) => {println!("server PacketSent")}
+                ServerEvent::PacketReceived(_) => {println!("server PacketReceived")}
+            }
+            //TODO: real server log
         }
 
         if ctx.input(|i| i.viewport().close_requested()) {
@@ -275,7 +333,7 @@ impl eframe::App for MyApp {
                 match self.current_screen {
                     Screen::NetworkScreen => {
                         // Synchronize the drones with the topology
-                        self.topology.update_drones(&self.drones);
+                        self.topology.update_drones(&self.simulation_controller.get_drone_ids());
 
                         egui::SidePanel::left("network_menu")
                             .min_width(140.0)
@@ -285,7 +343,7 @@ impl eframe::App for MyApp {
 
                                 ui.separator();
                                 ui.label("Clients:");
-                                for client in &self.clients {
+                                for client in &self.simulation_controller.get_client_ids() {
                                     if ui.button(client).clicked() {
                                         // Set the pop-up state to true to reopen it
                                         self.open_popups.insert(client.clone(), true);
@@ -294,7 +352,7 @@ impl eframe::App for MyApp {
 
                                 ui.separator();
                                 ui.label("Servers:");
-                                for server in &self.servers {
+                                for server in &self.simulation_controller.get_server_ids() {
                                     if ui.button(server).clicked() {
                                         // Set the pop-up state to true to reopen it
                                         self.open_popups.insert(server.clone(), true);
@@ -303,7 +361,7 @@ impl eframe::App for MyApp {
 
                                 ui.separator();
                                 ui.label("Drones:");
-                                for drones in &self.drones {
+                                for drones in &self.simulation_controller.get_drone_ids() {
                                     if ui.button(drones).clicked() {
                                         // Set the pop-up state to true to reopen it
                                         self.open_popups.insert(drones.clone(), true);
@@ -325,7 +383,7 @@ impl eframe::App for MyApp {
 
                                 // Client Section
                                 ui.label("Clients:");
-                                for client in &self.clients {
+                                for client in &self.simulation_controller.get_client_ids() {
                                     // Create a checkbox for each client
                                     let is_checked = self.log_checkboxes.get_mut(client).unwrap();
                                     ui.checkbox(is_checked, client);
@@ -335,7 +393,7 @@ impl eframe::App for MyApp {
 
                                 // Server Section
                                 ui.label("Servers:");
-                                for server in &self.servers {
+                                for server in &self.simulation_controller.get_server_ids() {
                                     // Create a checkbox for each server
                                     let is_checked = self.log_checkboxes.get_mut(server).unwrap();
                                     ui.checkbox(is_checked, server);
@@ -345,7 +403,7 @@ impl eframe::App for MyApp {
 
                                 // Drone Section
                                 ui.label("Drones:");
-                                for drone in &self.drones {
+                                for drone in &self.simulation_controller.get_drone_ids() {
                                     // Create a checkbox for each drone
                                     let is_checked = self.log_checkboxes.get_mut(drone).unwrap();
                                     ui.checkbox(is_checked, drone);
@@ -437,30 +495,13 @@ impl eframe::App for MyApp {
             }
         }
 
-        /*#[cfg(test)]
-         {
-             const TIMEOUT: Duration = Duration::from_millis(400);
-
-             let msg = Packet::new_fragment(
-                 SourceRoutingHeader {
-                     hop_index: 1,
-                     hops: vec![1, 11, 12, 21],
-                 },
-                 1,
-                 Fragment {
-                     fragment_index: 1,
-                     total_n_fragments: 1,
-                     length: 128,
-                     data: [1; 128],
-                 },
-             );
-
-             // Get the sender for drone 11 from packet_channels
-             let d11_send = &packet_channels[&11].0;
-
-             //D12 sends packet to D11
-             d11_send.send(msg.clone()).unwrap();
-         }*/
+        if !self.test_executed {
+            const TIMEOUT: Duration = Duration::from_millis(400);
+            self.drone_message_forward_test();
+            self.drone_error_in_routing_test();
+            self.test_executed = true;
+            println!("test done");
+        }
     }
 }
 

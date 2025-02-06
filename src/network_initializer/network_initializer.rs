@@ -2,12 +2,10 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::collections::HashSet;
 use std::{fs, thread};
 use std::collections::HashMap;
-use std::time::Duration;
 use wg_2024::config::Config;
-use wg_2024::controller::DroneCommand;
 use wg_2024::drone::Drone;
-use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{Fragment, Packet};
+use wg_2024::network::{NodeId};
+use wg_2024::packet::{Packet};
 
 use crate::simulation_controller::simulation_controller::{simulation_controller_main, SimulationController};
 use crate::types::my_drone::MyDrone;
@@ -20,7 +18,7 @@ pub fn main() {
     let config = parse_config("src/config.toml");
 
     // check for errors in the toml
-    // check_toml_validity(&config);
+    check_toml_validity(&config);
     
     // hashmap with all packet_channels
     let mut packet_channels: HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)> = HashMap::new();
@@ -150,7 +148,8 @@ pub fn main() {
         controller_servers.clone(),
         node_event_recv_drone.clone(),
         node_event_recv_client.clone(),
-        node_event_recv_server.clone()
+        node_event_recv_server.clone(),
+        packet_channels.clone()
     );
     simulation_controller_main(sc).expect("GUI panicked!");
 }
@@ -263,6 +262,53 @@ fn check_toml_validity(config: &Config){
     }
     // </editor-fold>
 
+    // <editor-fold desc="check for bidirectional connectivity">
+    // Check drone connectivity
+    for drone in &config.drone {
+        for &connected_id in &drone.connected_node_ids {
+            // Find the connected node
+            if let Some(connected_node) = config.drone.iter().find(|d| d.id == connected_id) {
+                // Check if the connection is bidirectional
+                if !connected_node.connected_node_ids.contains(&drone.id) {
+                    panic!(
+                        "Unidirectional connection: Drone {} is connected to {}, but {} is not connected back to {}",
+                        drone.id, connected_id, connected_id, drone.id
+                    );
+                }
+            }
+        }
+    }
 
-    // todo: is a bidirectional graph?
+    // Check client-drone connectivity
+    for client in &config.client {
+        for &connected_drone_id in &client.connected_drone_ids {
+            // Find the connected drone
+            if let Some(drone) = config.drone.iter().find(|d| d.id == connected_drone_id) {
+                // Check if the drone considers this client as a connection
+                if !drone.connected_node_ids.contains(&client.id) {
+                    panic!(
+                        "Unidirectional connection: Client {} is connected to Drone {}, but Drone {} does not recognize Client {}",
+                        client.id, connected_drone_id, connected_drone_id, client.id
+                    );
+                }
+            }
+        }
+    }
+
+    // Check server-drone connectivity
+    for server in &config.server {
+        for &connected_drone_id in &server.connected_drone_ids {
+            // Find the connected drone
+            if let Some(drone) = config.drone.iter().find(|d| d.id == connected_drone_id) {
+                // Check if the drone considers this server as a connection
+                if !drone.connected_node_ids.contains(&server.id) {
+                    panic!(
+                        "Unidirectional connection: Server {} is connected to Drone {}, but Drone {} does not recognize Server {}",
+                        server.id, connected_drone_id, connected_drone_id, server.id
+                    );
+                }
+            }
+        }
+    }
+    // </editor-fold>
 }

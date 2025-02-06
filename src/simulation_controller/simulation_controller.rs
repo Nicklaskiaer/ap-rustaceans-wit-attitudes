@@ -14,6 +14,7 @@ pub struct SimulationController {
     drone_event_recv: Receiver<DroneEvent>,
     client_event_recv: Receiver<ClientEvent>,
     server_event_recv: Receiver<ServerEvent>,
+    packet_channels: HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>
 }
 
 impl SimulationController {
@@ -24,6 +25,7 @@ impl SimulationController {
         drone_event_recv: Receiver<DroneEvent>,
         client_event_recv: Receiver<ClientEvent>,
         server_event_recv: Receiver<ServerEvent>,
+        packet_channels: HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>
     ) -> Self {
         SimulationController {
             drones,
@@ -32,6 +34,7 @@ impl SimulationController {
             drone_event_recv,
             client_event_recv,
             server_event_recv,
+            packet_channels
         }
     }
 
@@ -88,32 +91,35 @@ impl SimulationController {
             .map(|node_id| format!("Drone {}", node_id.to_string()))
             .collect()
     }
-
-    pub fn get_drones(&self) -> HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)> {
-        self.drones.clone()
+    
+    pub fn get_drones(&self) -> &HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)> {
+        &self.drones
     }
 
-    pub fn get_clients(&self) -> HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)> {
-        self.clients.clone()
+    pub fn get_clients(&self) -> &HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)> {
+        &self.clients
     }
 
-    pub fn get_servers(&self) -> HashMap<NodeId, Vec<NodeId>> {
-        self.servers.clone()
+    pub fn get_servers(&self) -> &HashMap<NodeId, Vec<NodeId>> {
+        &self.servers
     }
 
-    pub fn get_drone_event_recv(&self) -> Receiver<DroneEvent>{
-        self.drone_event_recv.clone()
+    pub fn get_drone_event_recv(&self) -> &Receiver<DroneEvent> {
+        &self.drone_event_recv
+    }
+
+    pub fn get_client_event_recv(&self) -> &Receiver<ClientEvent> {
+        &self.client_event_recv
+    }
+
+    pub fn get_server_event_recv(&self) -> &Receiver<ServerEvent> {
+        &self.server_event_recv
+    }
+    pub fn get_packet_channels(&self) -> &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)> {
+        &self.packet_channels
     }
     
-    pub fn get_client_event_recv(&self) -> Receiver<ClientEvent>{
-        self.client_event_recv.clone()
-    }
-    
-    pub fn get_server_event_recv(&self) -> Receiver<ServerEvent>{
-        self.server_event_recv.clone()
-    }
 }
-
 
 pub fn simulation_controller_main(sc: SimulationController) -> Result<(), eframe::Error> {
     let native_options = eframe::NativeOptions::default();

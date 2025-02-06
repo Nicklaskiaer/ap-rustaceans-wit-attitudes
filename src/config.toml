@@ -14,9 +14,14 @@ pdr = 0.00
 
 [[drone]]
 id = 31
-connected_node_ids = [21, 22, 41]
+connected_node_ids = [21, 22, 32, 41]
+pdr = 0.00
+
+[[drone]]
+id = 32
+connected_node_ids = [31, 41]
 pdr = 0.00
 
 [[server]]
 id = 41
-connected_drone_ids = [31]
+connected_drone_ids = [31, 32]
