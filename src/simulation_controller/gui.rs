@@ -38,6 +38,8 @@ pub struct MyApp {
     test_executed: bool,
     simulation_controller: SimulationController,
     drone_packet_drop_rates: HashMap<String, String>, // Keeps the input state for each drone
+    sender_to_rem: String,
+    sender_to_add: String,
     current_screen: Screen,
     logs: Vec<LogEntry>, // List of logs
     show_confirmation_dialog: bool,
@@ -71,6 +73,8 @@ impl MyApp {
             allowed_to_close: false,
             open_popups: HashMap::new(),
             drone_packet_drop_rates: HashMap::new(),
+            sender_to_rem: String::new(),
+            sender_to_add: String::new(),
             simulation_controller: sc,
             topology: NetworkTopology::new(),
             log_checkboxes,
@@ -164,8 +168,49 @@ impl MyApp {
                                     });
 
                                     // Add sender
-                                    
+                                    ui.horizontal(|ui| {
+                                        ui.label("Add Sender:");
+
+                                        ui.text_edit_singleline(&mut self.sender_to_add);
+
+                                        if ui.button("Add").clicked() {
+                                            match self.sender_to_add.parse::<NodeId>() {
+                                                Ok(node_id) => {
+                                                    //self.simulation_controller.handle_add_sender(node_id);
+
+                                                    let message = format!("[COMMAND] Added sender {} to {}", name, node_id);
+                                                    self.logs.push(LogEntry {
+                                                        timestamp: formatted_time.clone(),
+                                                        message,
+                                                    });
+                                                }
+                                                Err(_) => println!("Invalid input! Please enter a valid NodeId."),
+                                            }
+                                        }
+                                    });
+
                                     // Remove sender
+                                    ui.horizontal(|ui| {
+                                        ui.label("Remove sender:");
+
+
+                                        ui.text_edit_singleline(&mut self.sender_to_rem);
+
+                                        if ui.button("Remove").clicked() {
+                                            match self.sender_to_rem.parse::<NodeId>() {
+                                                Ok(node_id) => {
+                                                    //self.simulation_controller.handle_remove_sender(node_id);
+
+                                                    let message = format!("[COMMAND] Removed sender {} to {}", name, node_id);
+                                                    self.logs.push(LogEntry {
+                                                        timestamp: formatted_time.clone(),
+                                                        message,
+                                                    });
+                                                },
+                                                Err(_) => println!("Invalid input! Please enter a valid NodeId."),
+                                            }
+                                        }
+                                    });
 
                                     // Crash Button
                                     if ui.button("Crash").clicked() {
@@ -428,28 +473,30 @@ impl eframe::App for MyApp {
                                 })
                                 .collect();
 
-                            egui::ScrollArea::vertical().show(ui, |ui| {
-                                for log in &self.logs {
-                                    let mut text_parts: Vec<egui::RichText> = Vec::new();
+                            egui::CentralPanel::default().show(ctx, |ui| {
+                                egui::ScrollArea::vertical().show(ui, |ui| {
+                                    for log in &self.logs {
+                                        let mut text_parts: Vec<egui::RichText> = Vec::new();
 
-                                    if log.message.starts_with("[EVENT]") {
-                                        text_parts.push(egui::RichText::new("[EVENT]").color(egui::Color32::GREEN));
-                                        text_parts.push(egui::RichText::new(&log.message[7..]).color(egui::Color32::WHITE));
-                                    } else if log.message.starts_with("[COMMAND]") {
-                                        text_parts.push(egui::RichText::new("[COMMAND]").color(egui::Color32::BLUE));
-                                        text_parts.push(egui::RichText::new(&log.message[9..]).color(egui::Color32::WHITE));
-                                    }
-
-                                    let formatted_log = egui::RichText::new(format!("{} | ", log.timestamp)).color(egui::Color32::WHITE);
-
-                                    // Combine all parts and display the log
-                                    ui.horizontal(|ui| {
-                                        ui.label(formatted_log);
-                                        for part in text_parts {
-                                            ui.label(part);
+                                        if log.message.starts_with("[EVENT]") {
+                                            text_parts.push(egui::RichText::new("[EVENT]").color(egui::Color32::GREEN));
+                                            text_parts.push(egui::RichText::new(&log.message[7..]).color(egui::Color32::WHITE));
+                                        } else if log.message.starts_with("[COMMAND]") {
+                                            text_parts.push(egui::RichText::new("[COMMAND]").color(egui::Color32::BLUE));
+                                            text_parts.push(egui::RichText::new(&log.message[9..]).color(egui::Color32::WHITE));
                                         }
-                                    });
-                                }
+
+                                        let formatted_log = egui::RichText::new(format!("{} | ", log.timestamp)).color(egui::Color32::WHITE);
+
+                                        // Combine all parts and display the log
+                                        ui.horizontal(|ui| {
+                                            ui.label(formatted_log);
+                                            for part in text_parts {
+                                                ui.label(part);
+                                            }
+                                        });
+                                    }
+                                });
                             });
                         },
                     }
