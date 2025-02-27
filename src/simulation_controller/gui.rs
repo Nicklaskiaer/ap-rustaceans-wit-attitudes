@@ -1,14 +1,16 @@
 use eframe::egui;
 use chrono::{DateTime, Utc};
 use chrono_tz::Europe::Rome;
-use crossbeam_channel::Receiver;
+use crossbeam_channel::{Receiver, Sender};
 use std::collections::HashMap;
+use std::time::Duration;
 use regex::Regex;
 
 use wg_2024::controller::{DroneCommand, DroneEvent};
-use wg_2024::network::SourceRoutingHeader;
+use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Fragment, Packet};
-
+use crate::client::client::ClientEvent;
+use crate::server::server::ServerEvent;
 use crate::simulation_controller::simulation_controller::SimulationController;
 
 #[derive(PartialEq)]
@@ -33,17 +35,16 @@ pub struct NetworkTopology {
 }
 
 pub struct MyApp {
+    test_executed: bool,
+    simulation_controller: SimulationController,
+    drone_packet_drop_rates: HashMap<String, String>, // Keeps the input state for each drone
+    sender_to_rem: String,
+    sender_to_add: String,
     current_screen: Screen,
     logs: Vec<LogEntry>, // List of logs
     show_confirmation_dialog: bool,
     allowed_to_close: bool,
-    node_event_recv: Receiver<DroneEvent>,
-    clients: Vec<String>, // List of clients
-    servers: Vec<String>, // List of servers
-    drones: Vec<String>, // List of Drones
     open_popups: HashMap<String, bool>, // Keeps tracks of opened control windows
-    drone_packet_drop_rates: HashMap<String, String>, // Keeps the input state for each drone
-    simulation_controller: SimulationController,
     topology: NetworkTopology,
     log_checkboxes: HashMap<String, bool>,
 }
@@ -54,58 +55,30 @@ impl MyApp {
         // Initialize checkboxes for each client, server, and drone
         let mut log_checkboxes = HashMap::new();
 
-        for client in &["Test_Client1", "Test_Client2"] {
+        for client in sc.get_client_ids() {
             log_checkboxes.insert(client.to_string(), true);
         }
-        for server in &["Test_Server1", "Test_Server2"] {
+        for server in sc.get_server_ids() {
             log_checkboxes.insert(server.to_string(), true);
-        } //todo!(GET CLIENT AND SERVER ID'S)
+        }
         for drone in sc.get_drone_ids() {
             log_checkboxes.insert(drone.clone(), true);
         }
 
         Self {
+            test_executed: false,
             current_screen: Screen::NetworkScreen,
             logs: Vec::new(),
             show_confirmation_dialog: false,
             allowed_to_close: false,
-            node_event_recv: sc.get_node_event_recv(),
-            clients: vec!["Test_Client1".to_string(), "Test_Client2".to_string()], // Example clients //todo!(GET CLIENT AND SERVER ID'S)
-            servers: vec!["Test_Server1".to_string(), "Test_Server2".to_string()], // Example servers
-            drones: sc.get_drone_ids(),
             open_popups: HashMap::new(),
             drone_packet_drop_rates: HashMap::new(),
+            sender_to_rem: String::new(),
+            sender_to_add: String::new(),
             simulation_controller: sc,
             topology: NetworkTopology::new(),
             log_checkboxes,
         }
-    }
-
-    fn log_command(&mut self, command: DroneCommand) {
-        let current_time: DateTime<Utc> = Utc::now(); // Get current time
-        let italian_time = current_time.with_timezone(&Rome); // Convert to Italian time
-        let formatted_time = italian_time.format("%d-%m-%Y %H:%M:%S").to_string(); // Format as string
-
-        let message = match command {
-            DroneCommand::RemoveSender(node_id) => {
-                format!("[COMMAND] Removed Sender at Node {}", node_id)
-            }
-            DroneCommand::AddSender(node_id, _) => {
-                format!("[COMMAND] Added Sender at Node {}", node_id)
-            }
-            DroneCommand::SetPacketDropRate(_) => {
-                return; //todo(how to get ID of changed drop rate drone)
-            }
-            DroneCommand::Crash => {
-                return; //todo(how to get ID of crashed drone)
-            }
-        };
-
-        // Add the log entry
-        self.logs.push(LogEntry {
-            timestamp: formatted_time,
-            message,
-        });
     }
 
     fn log_event(&mut self, event: DroneEvent) {
@@ -154,57 +127,187 @@ impl MyApp {
     }
 
     fn show_popup(&mut self, ctx: &egui::Context, name: &str) {
+        let current_time: DateTime<Utc> = Utc::now(); // Get current time
+        let italian_time = current_time.with_timezone(&Rome); // Convert to Italian time
+        let formatted_time = italian_time.format("%d-%m-%Y %H:%M:%S").to_string(); // Format as string
+
         if let Some(is_open) = self.open_popups.get_mut(name) {
             egui::Window::new(format!("Controls for {}", name))
                 .resizable(true)
                 .collapsible(true)
-                .open(is_open) // Tie window open state to the hashmap
+                .open(is_open)
                 .show(ctx, |ui| {
-                    if self.clients.contains(&name.to_string()) {
-                        //todo!(implement controls for client)
+                    // Extract the node ID from the name (e.g., "Drone 21" -> 21)
+                    if let Some(node_id_str) = name.split_whitespace().nth(1) {
+                        if let Ok(node_id) = node_id_str.parse::<NodeId>() {
+                            // Handle Drone controls
+                            if name.starts_with("Drone") {
+                                if let Some((sender, neighbours)) = self.simulation_controller.get_drones().get(&node_id) {
+                                    // Set Packet Drop Rate
+                                    ui.horizontal(|ui| {
+                                        ui.label("Packet Drop Rate:");
+                                        let packet_drop_rate = self
+                                            .drone_packet_drop_rates
+                                            .entry(name.to_string())
+                                            .or_insert_with(String::new);
 
-                    } else if self.drones.contains(&name.to_string()) {
+                                        ui.text_edit_singleline(packet_drop_rate);
 
-                        // Get or initialize the input value for the packet drop rate
-                        let packet_drop_rate = self
-                            .drone_packet_drop_rates
-                            .entry(name.to_string())
-                            .or_insert_with(|| String::new());
+                                        if ui.button("Set").clicked() {
+                                            if let Ok(value) = packet_drop_rate.parse::<f32>() {
+                                                if value >= 0.0 && value <= 1.0 {
+                                                    let message = format!("[COMMAND] Setting packet drop rate for {} to {}", name, value);
+                                                    self.logs.push(LogEntry {
+                                                        timestamp: formatted_time.clone(),
+                                                        message,
+                                                    });
+                                                    self.simulation_controller.handle_set_packet_drop_rate(node_id, value);
+                                                }
+                                            }
+                                        }
+                                    });
 
-                        // Packet Drop Rate Control
-                        ui.horizontal(|ui| {
-                            ui.label("Packet Drop Rate:");
-                            ui.text_edit_singleline(packet_drop_rate); // Packet drop rate input field
-                            if ui.button("Set").clicked() {
-                                match packet_drop_rate.parse::<f32>() {
-                                    Ok(value) if value >= 0.0 && value <= 1.0 => {
-                                        println!("Setting packet drop rate for {} to {}", name, value);
-                                        //self.handle_set_packet_drop_rate(name, value);
-                                    }
-                                    _ => {
-                                        println!("Invalid drop rate value. Please enter a number between 0 and 1.");
+                                    // Add sender
+                                    ui.horizontal(|ui| {
+                                        ui.label("Add Sender:");
+
+                                        ui.text_edit_singleline(&mut self.sender_to_add);
+
+                                        if ui.button("Add").clicked() {
+                                            match self.sender_to_add.parse::<NodeId>() {
+                                                Ok(node_id) => {
+                                                    //self.simulation_controller.handle_add_sender(node_id);
+
+                                                    let message = format!("[COMMAND] Added sender {} to {}", name, node_id);
+                                                    self.logs.push(LogEntry {
+                                                        timestamp: formatted_time.clone(),
+                                                        message,
+                                                    });
+                                                }
+                                                Err(_) => println!("Invalid input! Please enter a valid NodeId."),
+                                            }
+                                        }
+                                    });
+
+                                    // Remove sender
+                                    ui.horizontal(|ui| {
+                                        ui.label("Remove sender:");
+
+
+                                        ui.text_edit_singleline(&mut self.sender_to_rem);
+
+                                        if ui.button("Remove").clicked() {
+                                            match self.sender_to_rem.parse::<NodeId>() {
+                                                Ok(node_id) => {
+                                                    //self.simulation_controller.handle_remove_sender(node_id);
+
+                                                    let message = format!("[COMMAND] Removed sender {} to {}", name, node_id);
+                                                    self.logs.push(LogEntry {
+                                                        timestamp: formatted_time.clone(),
+                                                        message,
+                                                    });
+                                                },
+                                                Err(_) => println!("Invalid input! Please enter a valid NodeId."),
+                                            }
+                                        }
+                                    });
+
+                                    // Crash Button
+                                    if ui.button("Crash").clicked() {
+                                        if let Some((_, neighbors)) = self.simulation_controller.get_drones().get(&node_id) {
+                                            let message = format!("[COMMAND] Crashing {}", name);
+                                            self.logs.push(LogEntry {
+                                                timestamp: formatted_time.clone(),
+                                                message,
+                                            });
+                                            self.simulation_controller.handle_crash(node_id, neighbors.clone());
+                                        }
                                     }
                                 }
                             }
-                        });
-
-                        if ui.button("Crash").clicked() {
-                            println!("Crashed {}.", name);
+                            // Handle Client controls
+                            else if name.starts_with("Client") {
+                                ui.label("Client controls coming soon...");
+                            }
+                            // Handle Server controls
+                            else if name.starts_with("Server") {
+                                ui.label("Server controls coming soon...");
+                            }
                         }
-                    } else if self.servers.contains(&name.to_string()) {
-                        //todo!(implement controls for server)
                     }
                 });
         }
     }
 
+    fn drone_message_forward_test(&self) {
+        let msg = Packet::new_fragment(
+            SourceRoutingHeader {
+                hop_index: 1,
+                hops: vec![11, 21, 31, 32, 41],
+            },
+            1,
+            Fragment {
+                fragment_index: 1,
+                total_n_fragments: 1,
+                length: 128,
+                data: [1; 128],
+            },
+        );
+
+        //sends packet to D21
+        if let Some((d21_sender, _)) = self.simulation_controller.get_packet_channels().get(&21) {
+            d21_sender.send(msg.clone()).unwrap();
+        }
+    }
+    
+    fn drone_error_in_routing_test(&self) {
+        let msg = Packet::new_fragment(
+            SourceRoutingHeader {
+                hop_index: 1,
+                hops: vec![11, 21, 31, 32, 41],
+            },
+            1,
+            Fragment {
+                fragment_index: 1,
+                total_n_fragments: 1,
+                length: 128,
+                data: [1; 128],
+            },
+        );
+
+        //sends packet to D21
+        if let Some((d21_sender, _)) = self.simulation_controller.get_packet_channels().get(&21) {
+            d21_sender.send(msg.clone()).unwrap();
+        }
+    }
 }
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Poll for new events and log them
-        while let Ok(event) = self.node_event_recv.try_recv(){
+        while let Ok(event) = self.simulation_controller.get_drone_event_recv().try_recv(){
+            match event {
+                DroneEvent::PacketSent(_) => {println!("drone PacketSent")}
+                DroneEvent::PacketDropped(_) => {println!("drone PacketDropped")}
+                DroneEvent::ControllerShortcut(_) => {println!("drone ControllerShortcut")}
+            }
             self.log_event(event);
+        }
+
+        while let Ok(event) = self.simulation_controller.get_client_event_recv().try_recv(){
+            match event {
+                ClientEvent::PacketSent(_) => {println!("client PacketSent")}
+                ClientEvent::PacketReceived(_) => {println!("client PacketReceived")}
+            }
+            //TODO: real client log
+        }
+
+        while let Ok(event) = self.simulation_controller.get_server_event_recv().try_recv(){
+            match event {
+                ServerEvent::PacketSent(_) => {println!("server PacketSent")}
+                ServerEvent::PacketReceived(_) => {println!("server PacketReceived")}
+            }
+            //TODO: real server log
         }
 
         if ctx.input(|i| i.viewport().close_requested()) {
@@ -233,8 +336,8 @@ impl eframe::App for MyApp {
                 .resizable(false)
                 .show(ctx, |ui| {
                     ui.vertical(|ui| {
-                            ui.label("Are you sure you want to exit?");
-                            ui.separator();
+                        ui.label("Are you sure you want to exit?");
+                        ui.separator();
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
                             let button = egui::Button::new("Exit").fill(egui::Color32::from_rgb(0, 0, 250)); // Red fill color
@@ -275,17 +378,17 @@ impl eframe::App for MyApp {
                 match self.current_screen {
                     Screen::NetworkScreen => {
                         // Synchronize the drones with the topology
-                        self.topology.update_drones(&self.drones);
+                        self.topology.update_drones(&self.simulation_controller.get_drones());
 
-                        egui::SidePanel::left("network_menu")
-                            .min_width(140.0)
-                            .max_width(140.0)
-                            .show(ctx, |ui| {
-                                ui.heading("Network Menu");
+                            egui::SidePanel::left("network_menu")
+                                .min_width(140.0)
+                                .max_width(140.0)
+                                .show(ctx, |ui| {
+                                    ui.heading("Network Menu");
 
                                 ui.separator();
                                 ui.label("Clients:");
-                                for client in &self.clients {
+                                for client in &self.simulation_controller.get_client_ids() {
                                     if ui.button(client).clicked() {
                                         // Set the pop-up state to true to reopen it
                                         self.open_popups.insert(client.clone(), true);
@@ -294,7 +397,7 @@ impl eframe::App for MyApp {
 
                                 ui.separator();
                                 ui.label("Servers:");
-                                for server in &self.servers {
+                                for server in &self.simulation_controller.get_server_ids() {
                                     if ui.button(server).clicked() {
                                         // Set the pop-up state to true to reopen it
                                         self.open_popups.insert(server.clone(), true);
@@ -303,7 +406,7 @@ impl eframe::App for MyApp {
 
                                 ui.separator();
                                 ui.label("Drones:");
-                                for drones in &self.drones {
+                                for drones in &self.simulation_controller.get_drone_ids() {
                                     if ui.button(drones).clicked() {
                                         // Set the pop-up state to true to reopen it
                                         self.open_popups.insert(drones.clone(), true);
@@ -311,91 +414,93 @@ impl eframe::App for MyApp {
                                 }
                             });
 
-                        egui::CentralPanel::default().show(ctx, |ui| {
-                            self.topology.draw(ui);
-                        });
-                    },
-                    Screen::LogsScreen => {
-                        egui::SidePanel::left("logs_options")
-                            .min_width(140.0)
-                            .max_width(140.0)
-                            .show(ctx, |ui| {
-                                ui.heading("Logs Options");
-                                ui.separator();
+                            egui::CentralPanel::default().show(ctx, |ui| {
+                                self.topology.draw(ui);
+                            });
+                        },
+                        Screen::LogsScreen => {
+                            egui::SidePanel::left("logs_options")
+                                .min_width(140.0)
+                                .max_width(140.0)
+                                .show(ctx, |ui| {
+                                    ui.heading("Logs Options");
+                                    ui.separator();
 
                                 // Client Section
                                 ui.label("Clients:");
-                                for client in &self.clients {
+                                for client in &self.simulation_controller.get_client_ids() {
                                     // Create a checkbox for each client
                                     let is_checked = self.log_checkboxes.get_mut(client).unwrap();
                                     ui.checkbox(is_checked, client);
                                 }
 
-                                ui.separator();
+                                    ui.separator();
 
                                 // Server Section
                                 ui.label("Servers:");
-                                for server in &self.servers {
+                                for server in &self.simulation_controller.get_server_ids() {
                                     // Create a checkbox for each server
                                     let is_checked = self.log_checkboxes.get_mut(server).unwrap();
                                     ui.checkbox(is_checked, server);
                                 }
 
-                                ui.separator();
+                                    ui.separator();
 
                                 // Drone Section
                                 ui.label("Drones:");
-                                for drone in &self.drones {
+                                for drone in &self.simulation_controller.get_drone_ids() {
                                     // Create a checkbox for each drone
                                     let is_checked = self.log_checkboxes.get_mut(drone).unwrap();
                                     ui.checkbox(is_checked, drone);
                                 }
                             });
 
-                        // Filtering logs based on checkbox states
-                        let filtered_logs: Vec<&LogEntry> = self.logs.iter()
-                            .filter(|log| {
-                                // Use regex to extract the noe ID from the log message
-                                let re = Regex::new(r"\[EVENT\] .*Node (\d+)").unwrap();
-                                if let Some(caps) = re.captures(&log.message) {
-                                    // Extract the node ID (assumes Node ID is numeric)
-                                    if let Some(node_id) = caps.get(1) {
-                                        let node_id_str = node_id.as_str();
-                                        // Check if the corresponding checkbox is checked
-                                        return *self.log_checkboxes.get(node_id_str).unwrap_or(&false);
+                            // Filtering logs based on checkbox states
+                            let filtered_logs: Vec<&LogEntry> = self.logs.iter()
+                                .filter(|log| {
+                                    // Use regex to extract the noe ID from the log message
+                                    let re = Regex::new(r"\[EVENT\] .*Node (\d+)").unwrap();
+                                    if let Some(caps) = re.captures(&log.message) {
+                                        // Extract the node ID (assumes Node ID is numeric)
+                                        if let Some(node_id) = caps.get(1) {
+                                            let node_id_str = node_id.as_str();
+                                            // Check if the corresponding checkbox is checked
+                                            return *self.log_checkboxes.get(node_id_str).unwrap_or(&false);
+                                        }
                                     }
-                                }
-                                // Default: Show the log if it doesn't contain a node ID
-                                true
-                            })
-                            .collect();
+                                    // Default: Show the log if it doesn't contain a node ID
+                                    true
+                                })
+                                .collect();
 
-                        egui::ScrollArea::vertical().show(ui, |ui| {
-                            for log in &self.logs {
-                                let mut text_parts: Vec<egui::RichText> = Vec::new();
+                            egui::CentralPanel::default().show(ctx, |ui| {
+                                egui::ScrollArea::vertical().show(ui, |ui| {
+                                    for log in &self.logs {
+                                        let mut text_parts: Vec<egui::RichText> = Vec::new();
 
-                                if log.message.starts_with("[EVENT]") {
-                                    text_parts.push(egui::RichText::new("[EVENT]").color(egui::Color32::GREEN));
-                                    text_parts.push(egui::RichText::new(&log.message[7..]).color(egui::Color32::WHITE));
-                                } else if log.message.starts_with("[COMMAND]") {
-                                    text_parts.push(egui::RichText::new("[COMMAND]").color(egui::Color32::BLUE));
-                                    text_parts.push(egui::RichText::new(&log.message[9..]).color(egui::Color32::WHITE));
-                                }
+                                        if log.message.starts_with("[EVENT]") {
+                                            text_parts.push(egui::RichText::new("[EVENT]").color(egui::Color32::GREEN));
+                                            text_parts.push(egui::RichText::new(&log.message[7..]).color(egui::Color32::WHITE));
+                                        } else if log.message.starts_with("[COMMAND]") {
+                                            text_parts.push(egui::RichText::new("[COMMAND]").color(egui::Color32::BLUE));
+                                            text_parts.push(egui::RichText::new(&log.message[9..]).color(egui::Color32::WHITE));
+                                        }
 
-                                let formatted_log = egui::RichText::new(format!("{} | ", log.timestamp)).color(egui::Color32::WHITE);
+                                        let formatted_log = egui::RichText::new(format!("{} | ", log.timestamp)).color(egui::Color32::WHITE);
 
-                                // Combine all parts and display the log
-                                ui.horizontal(|ui| {
-                                    ui.label(formatted_log);
-                                    for part in text_parts {
-                                        ui.label(part);
+                                        // Combine all parts and display the log
+                                        ui.horizontal(|ui| {
+                                            ui.label(formatted_log);
+                                            for part in text_parts {
+                                                ui.label(part);
+                                            }
+                                        });
                                     }
                                 });
-                            }
-                        });
-                    },
-                }
-            });
+                            });
+                        },
+                    }
+                });
 
             let popups_to_show: Vec<String> = self
                 .open_popups
@@ -437,30 +542,13 @@ impl eframe::App for MyApp {
             }
         }
 
-        /*#[cfg(test)]
-         {
-             const TIMEOUT: Duration = Duration::from_millis(400);
-
-             let msg = Packet::new_fragment(
-                 SourceRoutingHeader {
-                     hop_index: 1,
-                     hops: vec![1, 11, 12, 21],
-                 },
-                 1,
-                 Fragment {
-                     fragment_index: 1,
-                     total_n_fragments: 1,
-                     length: 128,
-                     data: [1; 128],
-                 },
-             );
-
-             // Get the sender for drone 11 from packet_channels
-             let d11_send = &packet_channels[&11].0;
-
-             //D12 sends packet to D11
-             d11_send.send(msg.clone()).unwrap();
-         }*/
+        if !self.test_executed {
+            const TIMEOUT: Duration = Duration::from_millis(400);
+            self.drone_message_forward_test();
+            self.drone_error_in_routing_test();
+            self.test_executed = true;
+            println!("test done");
+        }
     }
 }
 
@@ -472,7 +560,7 @@ impl NetworkTopology {
         }
     }
 
-    pub fn update_drones(&mut self, drones: &[String]) {
+    pub fn update_drones(&mut self, drones: &HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)>) {
         // Clear existing nodes and connections
         self.nodes.clear();
         self.connections.clear();
@@ -492,8 +580,9 @@ impl NetworkTopology {
             let angle = i as f32 * angle_increment;
             let x = center.0 + radius * angle.cos();
             let y = center.1 + radius * angle.sin();
+
             self.nodes.push(Node {
-                id: drone.clone(),
+                id: drone.0.to_string(),  // Convert the drone ID to a String
                 position: (x, y),
             });
         }
