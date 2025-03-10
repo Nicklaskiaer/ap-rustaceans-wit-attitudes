@@ -80,6 +80,8 @@ impl SimulationController {
             .collect()
     }
 
+    //todo(packet drop rate)
+
     pub fn get_client_ids(&self) -> Vec<String> {
         self.clients.keys()
             .map(|node_id| format!("Client {}", node_id.to_string()))
@@ -115,9 +117,10 @@ impl SimulationController {
     pub fn get_server_event_recv(&self) -> &Receiver<ServerEvent> {
         &self.server_event_recv
     }
-    pub fn get_packet_channels(&self) -> &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)> {
-        &self.packet_channels
-    }
+
+    pub fn get_packet_channels(&self) -> &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)> {&self.packet_channels}
+
+
     
 }
 
