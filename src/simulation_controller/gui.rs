@@ -317,7 +317,18 @@ impl eframe::App for MyApp {
         //Refresh the list of drones in the side panel
         let current_drones: Vec<String> = self.simulation_controller.get_drone_ids();
         self.log_checkboxes.retain(|drone, _| current_drones.contains(drone));
-        self.open_popups.retain(|drone, _| current_drones.contains(drone));
+        // ✅ Only remove pop-ups for drones that no longer exist
+        let current_drone_ids: Vec<String> = self.simulation_controller.get_drone_ids();
+
+        self.open_popups.retain(|name, _| {
+            let is_drone = name.starts_with("Drone");
+            let is_client = name.starts_with("Client");
+            let is_server = name.starts_with("Server");
+
+            // ✅ Keep clients and servers, only remove crashed drones
+            !is_drone || current_drone_ids.contains(name)
+        });
+
 
         if ctx.input(|i| i.viewport().close_requested()) {
             if self.allowed_to_close {
@@ -578,6 +589,8 @@ impl NetworkTopology {
         let center = (300.0, 300.0);
         let radius = 100.0;
         let offset = 50.0;
+        let client_offset_x = -20.0; // Move clients slightly left
+        let server_offset_x = 20.0;  // Move servers slightly right
 
         let angle_increment = std::f32::consts::TAU / n as f32;
         let mut node_positions = HashMap::new();
@@ -598,17 +611,16 @@ impl NetworkTopology {
             });
         }
 
-        //Assign positions to clients
+        // Assign positions to clients
         for (client_id, (_, neighbors)) in clients {
             if let Some(neighbor_id) = neighbors.first() {
                 if let Some(&(dx, dy)) = node_positions.get(neighbor_id) {
-                    // Compute direction vector from drone to client
                     let direction = ((dx - center.0), (dy - center.1));
                     let norm = (direction.0.powi(2) + direction.1.powi(2)).sqrt();
 
                     if norm > 0.0 {
-                        let scale = (radius + offset) / norm;
-                        let x = center.0 + direction.0 * scale;
+                        let scale = (radius + offset * 2.0) / norm;
+                        let x = center.0 + direction.0 * scale + client_offset_x; // Move client left
                         let y = center.1 + direction.1 * scale;
 
                         node_positions.insert(*client_id, (x, y));
@@ -624,7 +636,7 @@ impl NetworkTopology {
             }
         }
 
-        //Assign positions to servers
+        // Assign positions to servers
         for (server_id, neighbors) in servers {
             if let Some(neighbor_id) = neighbors.first() {
                 if let Some(&(dx, dy)) = node_positions.get(neighbor_id) {
@@ -632,8 +644,8 @@ impl NetworkTopology {
                     let norm = (direction.0.powi(2) + direction.1.powi(2)).sqrt();
 
                     if norm > 0.0 {
-                        let scale = (radius + offset*2.0) / norm;
-                        let x = center.0 + direction.0 * scale;
+                        let scale = (radius + offset * 2.0) / norm;
+                        let x = center.0 + direction.0 * scale + server_offset_x; // Move server right
                         let y = center.1 + direction.1 * scale;
 
                         node_positions.insert(*server_id, (x, y));
