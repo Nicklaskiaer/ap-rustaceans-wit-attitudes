@@ -224,6 +224,7 @@ impl MyApp {
                                                 message,
                                             });
                                             self.simulation_controller.handle_crash(node_id, neighbors.clone());
+
                                         }
                                     }
                                 }
@@ -312,6 +313,11 @@ impl eframe::App for MyApp {
             }
             //TODO: real server log
         }
+
+        //Refresh the list of drones in the side panel
+        let current_drones: Vec<String> = self.simulation_controller.get_drone_ids();
+        self.log_checkboxes.retain(|drone, _| current_drones.contains(drone));
+        self.open_popups.retain(|drone, _| current_drones.contains(drone));
 
         if ctx.input(|i| i.viewport().close_requested()) {
             if self.allowed_to_close {
@@ -546,6 +552,8 @@ impl eframe::App for MyApp {
             self.test_executed = true;
             println!("test done");
         }
+
+        ctx.request_repaint()
     }
 }
 
@@ -624,7 +632,7 @@ impl NetworkTopology {
                     let norm = (direction.0.powi(2) + direction.1.powi(2)).sqrt();
 
                     if norm > 0.0 {
-                        let scale = (radius + offset*3.0) / norm;
+                        let scale = (radius + offset*2.0) / norm;
                         let x = center.0 + direction.0 * scale;
                         let y = center.1 + direction.1 * scale;
 
@@ -643,9 +651,9 @@ impl NetworkTopology {
 
         //Add connections
         for (node_id, (_, neighbors)) in drones.iter().chain(clients.iter()) {
-            if let Some(&pos1) = node_positions.get(node_id) {
+            if let Some(_pos1) = node_positions.get(node_id) {
                 for neighbor_id in neighbors {
-                    if let Some(&pos2) = node_positions.get(neighbor_id) {
+                    if let Some(_pos2) = node_positions.get(neighbor_id) {
                         let idx1 = self.nodes.iter().position(|n| n.id == node_id.to_string()).unwrap();
                         let idx2 = self.nodes.iter().position(|n| n.id == neighbor_id.to_string()).unwrap();
                         self.connections.push((idx1, idx2));
