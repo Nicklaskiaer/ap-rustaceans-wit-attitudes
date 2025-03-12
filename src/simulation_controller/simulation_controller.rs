@@ -60,7 +60,7 @@ impl SimulationController {
         let crashed_drone_sender = self.drones.get(&drone_sender_id).map(|(sender, _)| sender.clone());
 
         if let Some((_sender, _)) = self.drones.remove(&drone_sender_id) {
-            println!("Drone {} removed from network.", drone_sender_id);
+            println!("Removing {} from network...", drone_sender_id);
         }
 
         for neighbor in neighbors {
