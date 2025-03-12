@@ -27,7 +27,10 @@ struct LogEntry {
 struct Node {
     id: String,
     position: (f32, f32),
+    is_client: bool,
+    is_server: bool,
 }
+
 
 pub struct NetworkTopology {
     pub nodes: Vec<Node>,
@@ -137,7 +140,7 @@ impl MyApp {
                 .collapsible(true)
                 .open(is_open)
                 .show(ctx, |ui| {
-                    // Extract the node ID from the name (e.g., "Drone 21" -> 21)
+                    // Extract the node ID from the name
                     if let Some(node_id_str) = name.split_whitespace().nth(1) {
                         if let Ok(node_id) = node_id_str.parse::<NodeId>() {
                             // Handle Drone controls
@@ -176,9 +179,9 @@ impl MyApp {
                                         if ui.button("Add").clicked() {
                                             match self.sender_to_add.parse::<NodeId>() {
                                                 Ok(node_id) => {
-                                                    //self.simulation_controller.handle_add_sender(node_id);
+                                                    //self.simulation_controller.handle_add_sender(node_id); \\todo!(this)
 
-                                                    let message = format!("[COMMAND] Added sender {} to {}", name, node_id);
+                                                    let message = format!("[COMMAND] Added sender {} to {}", node_id, name);
                                                     self.logs.push(LogEntry {
                                                         timestamp: formatted_time.clone(),
                                                         message,
@@ -201,7 +204,7 @@ impl MyApp {
                                                 Ok(node_id) => {
                                                     //self.simulation_controller.handle_remove_sender(node_id);
 
-                                                    let message = format!("[COMMAND] Removed sender {} to {}", name, node_id);
+                                                    let message = format!("[COMMAND] Removed sender {} to {}", node_id, name);
                                                     self.logs.push(LogEntry {
                                                         timestamp: formatted_time.clone(),
                                                         message,
@@ -377,10 +380,15 @@ impl eframe::App for MyApp {
                 .show(ctx, |ui| {
                 match self.current_screen {
                     Screen::NetworkScreen => {
-                        // Synchronize the drones with the topology
-                        self.topology.update_drones(&self.simulation_controller.get_drones());
+                        // Synchronize the nodes with the topology
+                        self.topology.update_topology(
+                            &self.simulation_controller.get_drones(),
+                            &self.simulation_controller.get_clients(),
+                            &self.simulation_controller.get_servers(),
+                        );
 
-                            egui::SidePanel::left("network_menu")
+
+                        egui::SidePanel::left("network_menu")
                                 .min_width(140.0)
                                 .max_width(140.0)
                                 .show(ctx, |ui| {
@@ -455,24 +463,6 @@ impl eframe::App for MyApp {
                                 }
                             });
 
-                            // Filtering logs based on checkbox states
-                            let filtered_logs: Vec<&LogEntry> = self.logs.iter()
-                                .filter(|log| {
-                                    // Use regex to extract the noe ID from the log message
-                                    let re = Regex::new(r"\[EVENT\] .*Node (\d+)").unwrap();
-                                    if let Some(caps) = re.captures(&log.message) {
-                                        // Extract the node ID (assumes Node ID is numeric)
-                                        if let Some(node_id) = caps.get(1) {
-                                            let node_id_str = node_id.as_str();
-                                            // Check if the corresponding checkbox is checked
-                                            return *self.log_checkboxes.get(node_id_str).unwrap_or(&false);
-                                        }
-                                    }
-                                    // Default: Show the log if it doesn't contain a node ID
-                                    true
-                                })
-                                .collect();
-
                             egui::CentralPanel::default().show(ctx, |ui| {
                                 egui::ScrollArea::vertical().show(ui, |ui| {
                                     for log in &self.logs {
@@ -486,7 +476,7 @@ impl eframe::App for MyApp {
                                             text_parts.push(egui::RichText::new(&log.message[9..]).color(egui::Color32::WHITE));
                                         }
 
-                                        let formatted_log = egui::RichText::new(format!("{} | ", log.timestamp)).color(egui::Color32::WHITE);
+                                        let formatted_log = egui::RichText::new(format!("[{}] ", log.timestamp)).color(egui::Color32::WHITE);
 
                                         // Combine all parts and display the log
                                         ui.horizontal(|ui| {
@@ -515,6 +505,13 @@ impl eframe::App for MyApp {
             }
 
             if self.current_screen == Screen::NetworkScreen {
+
+                self.topology.update_topology(
+                    &self.simulation_controller.get_drones(),
+                    &self.simulation_controller.get_clients(),
+                    &self.simulation_controller.get_servers()
+                );
+
                 let legend_width = 150.0;
                 let legend_height = 100.0;
 
@@ -560,78 +557,149 @@ impl NetworkTopology {
         }
     }
 
-    pub fn update_drones(&mut self, drones: &HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)>) {
-        // Clear existing nodes and connections
+    pub fn update_topology(
+        &mut self,
+        drones: &HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)>,
+        clients: &HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)>,
+        servers: &HashMap<NodeId, Vec<NodeId>>
+    ) {
         self.nodes.clear();
         self.connections.clear();
 
-        // Determine the number of drones
         let n = drones.len();
-
-        // Center and radius of the circle.
         let center = (300.0, 300.0);
         let radius = 100.0;
+        let offset = 50.0;
 
-        // Calculate the angle between nodes
         let angle_increment = std::f32::consts::TAU / n as f32;
+        let mut node_positions = HashMap::new();
 
-        // Create nodes evenly spaced on the circle
-        for (i, drone) in drones.iter().enumerate() {
+        //Assign positions to drones
+        for (i, (node_id, _)) in drones.iter().enumerate() {
             let angle = i as f32 * angle_increment;
             let x = center.0 + radius * angle.cos();
             let y = center.1 + radius * angle.sin();
 
+            node_positions.insert(*node_id, (x, y));
+
             self.nodes.push(Node {
-                id: drone.0.to_string(),  // Convert the drone ID to a String
+                id: node_id.to_string(),
                 position: (x, y),
+                is_client: false,
+                is_server: false,
             });
         }
 
-        // Create connections to form a closed polygon
-        // This connects each node to the next and the last to the first.
-        for i in 0..n {
-            let next = (i + 1) % n; // wrap around for the last node
-            self.connections.push((i, next));
+        //Assign positions to clients
+        for (client_id, (_, neighbors)) in clients {
+            if let Some(neighbor_id) = neighbors.first() {
+                if let Some(&(dx, dy)) = node_positions.get(neighbor_id) {
+                    // Compute direction vector from drone to client
+                    let direction = ((dx - center.0), (dy - center.1));
+                    let norm = (direction.0.powi(2) + direction.1.powi(2)).sqrt();
+
+                    if norm > 0.0 {
+                        let scale = (radius + offset) / norm;
+                        let x = center.0 + direction.0 * scale;
+                        let y = center.1 + direction.1 * scale;
+
+                        node_positions.insert(*client_id, (x, y));
+
+                        self.nodes.push(Node {
+                            id: client_id.to_string(),
+                            position: (x, y),
+                            is_client: true,
+                            is_server: false,
+                        });
+                    }
+                }
+            }
+        }
+
+        //Assign positions to servers
+        for (server_id, neighbors) in servers {
+            if let Some(neighbor_id) = neighbors.first() {
+                if let Some(&(dx, dy)) = node_positions.get(neighbor_id) {
+                    let direction = ((dx - center.0), (dy - center.1));
+                    let norm = (direction.0.powi(2) + direction.1.powi(2)).sqrt();
+
+                    if norm > 0.0 {
+                        let scale = (radius + offset*3.0) / norm;
+                        let x = center.0 + direction.0 * scale;
+                        let y = center.1 + direction.1 * scale;
+
+                        node_positions.insert(*server_id, (x, y));
+
+                        self.nodes.push(Node {
+                            id: server_id.to_string(),
+                            position: (x, y),
+                            is_client: false,
+                            is_server: true,
+                        });
+                    }
+                }
+            }
+        }
+
+        //Add connections
+        for (node_id, (_, neighbors)) in drones.iter().chain(clients.iter()) {
+            if let Some(&pos1) = node_positions.get(node_id) {
+                for neighbor_id in neighbors {
+                    if let Some(&pos2) = node_positions.get(neighbor_id) {
+                        let idx1 = self.nodes.iter().position(|n| n.id == node_id.to_string()).unwrap();
+                        let idx2 = self.nodes.iter().position(|n| n.id == neighbor_id.to_string()).unwrap();
+                        self.connections.push((idx1, idx2));
+                    }
+                }
+            }
         }
     }
 
+
     fn draw(&self, ui: &mut egui::Ui) {
-        // Create a painter constrained to the available area
         let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::click());
 
-        // Draw connections
+        // **Draw connections**
         for &(node1_idx, node2_idx) in &self.connections {
-            let pos1 = self.nodes[node1_idx].position;
-            let pos2 = self.nodes[node2_idx].position;
+            let node1 = &self.nodes[node1_idx];
+            let node2 = &self.nodes[node2_idx];
 
-            // Calculate positions relative to the panel
-            let p1 = response.rect.min + egui::vec2(pos1.0, pos1.1);
-            let p2 = response.rect.min + egui::vec2(pos2.0, pos2.1);
+            let pos1 = response.rect.min + egui::vec2(node1.position.0, node1.position.1);
+            let pos2 = response.rect.min + egui::vec2(node2.position.0, node2.position.1);
 
-            // Draw the line for the edge
-            painter.line_segment([p1, p2], egui::Stroke::new(2.0, egui::Color32::LIGHT_GRAY));
+            let color = if node1.is_client || node2.is_client {
+                egui::Color32::RED
+            } else if node1.is_server || node2.is_server {
+                egui::Color32::GREEN
+            } else {
+                egui::Color32::LIGHT_GRAY
+            };
+
+            painter.line_segment([pos1, pos2], egui::Stroke::new(2.0, color));
         }
 
-        // Draw circles and labels
+        // **Draw nodes**
         for node in &self.nodes {
             let pos = response.rect.min + egui::vec2(node.position.0, node.position.1);
 
-            // Draw the circle for the node
-            painter.circle_filled(pos, 15.0, egui::Color32::BLUE);
+            let color = if node.is_client {
+                egui::Color32::RED
+            } else if node.is_server {
+                egui::Color32::GREEN
+            } else {
+                egui::Color32::BLUE };
 
-            // Offset the label by 20 pixels along this direction.
-            let label_pos = pos;
+            painter.circle_filled(pos, 15.0, color);
 
-            // Draw the node label at the offset position with the chosen alignment.
+            // Display only the number
             painter.text(
-                label_pos,
+                pos,
                 egui::Align2::CENTER_CENTER,
                 &node.id,
                 egui::FontId::default(),
                 egui::Color32::WHITE,
             );
         }
-
     }
 }
 
