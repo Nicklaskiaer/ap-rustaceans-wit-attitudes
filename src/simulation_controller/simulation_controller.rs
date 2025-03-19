@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use crossbeam_channel::{Receiver, Sender};
+use eframe::egui;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
@@ -132,6 +133,7 @@ impl SimulationController {
 
 pub fn simulation_controller_main(sc: SimulationController) -> Result<(), eframe::Error> {
     let native_options = eframe::NativeOptions::default();
+    let ctx = egui::Context::default();
     eframe::run_native(
         "Rustaceans Wit Attitudes",
         native_options,

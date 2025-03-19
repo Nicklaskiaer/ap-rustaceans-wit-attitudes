@@ -151,6 +151,7 @@ pub fn main() {
         node_event_recv_server.clone(),
         packet_channels.clone()
     );
+
     simulation_controller_main(sc).expect("GUI panicked!");
 }
 
