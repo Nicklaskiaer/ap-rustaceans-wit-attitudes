@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use crossbeam_channel::{Receiver, Sender};
+use eframe::egui;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
@@ -57,22 +58,28 @@ impl SimulationController {
     }
 
     pub fn handle_crash(&mut self, drone_sender_id: NodeId, neighbors: Vec<NodeId>) {
-        if let Some((crashed_drone_sender, _)) = self.drones.get(&drone_sender_id) {
-            // send crash command to the drone
-            crashed_drone_sender.send(DroneCommand::Crash).unwrap();
+        let crashed_drone_sender = self.drones.get(&drone_sender_id).map(|(sender, _)| sender.clone());
 
-            for neighbor in neighbors {
-                if let Some((neighbor_drone_sender, _)) = self.drones.get(&neighbor) {
-                    // remove drone from neighbor
-                    neighbor_drone_sender.send(DroneCommand::RemoveSender(drone_sender_id)).unwrap();
+        if let Some((_sender, _)) = self.drones.remove(&drone_sender_id) {
+            println!("Removing {} from network...", drone_sender_id);
+        }
 
-                    // remove neighbor form drone
-                    crashed_drone_sender.send(DroneCommand::RemoveSender(neighbor)).unwrap();
-                }
+        for neighbor in neighbors {
+            if let Some((neighbor_drone_sender, neighbor_list)) = self.drones.get_mut(&neighbor) {
+                // Remove the crashed drone from the neighbor's list
+                neighbor_list.retain(|&id| id != drone_sender_id);
+
+                // Send remove command to the neighbor
+                neighbor_drone_sender.send(DroneCommand::RemoveSender(drone_sender_id)).unwrap();
             }
+        }
 
+        //Send the crash command after removing the drone
+        if let Some(sender) = crashed_drone_sender {
+            sender.send(DroneCommand::Crash).unwrap();
         }
     }
+
 
     pub fn get_drone_ids(&self) -> Vec<String> {
         self.drones.keys()
@@ -126,6 +133,7 @@ impl SimulationController {
 
 pub fn simulation_controller_main(sc: SimulationController) -> Result<(), eframe::Error> {
     let native_options = eframe::NativeOptions::default();
+    let ctx = egui::Context::default();
     eframe::run_native(
         "Rustaceans Wit Attitudes",
         native_options,
