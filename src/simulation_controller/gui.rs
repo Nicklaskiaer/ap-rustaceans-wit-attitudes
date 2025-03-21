@@ -513,11 +513,17 @@ impl NetworkTopology {
         let center = (300.0, 300.0);
         let radius = 100.0;
         let offset = 50.0;
-        let client_offset_x = -20.0; // Move clients slightly left
-        let server_offset_x = 20.0;  // Move servers slightly right
+        let client_offset_y = -15.0;
+        let server_offset_y = 15.0;
+        let client_offset_x = -15.0;
+        let server_offset_x = 15.0;
 
         let angle_increment = std::f32::consts::TAU / n as f32;
         let mut node_positions = HashMap::new();
+
+        // Track counts for each drone's clients and servers
+        let mut client_counts = HashMap::new();
+        let mut server_counts = HashMap::new();
 
         //Assign positions to drones
         for (i, (node_id, _)) in drones.iter().enumerate() {
@@ -539,13 +545,18 @@ impl NetworkTopology {
         for (client_id, (_, neighbors)) in clients {
             if let Some(neighbor_id) = neighbors.first() {
                 if let Some(&(dx, dy)) = node_positions.get(neighbor_id) {
+                    // Get number of existing clients for this drone
+                    let count = client_counts.entry(*neighbor_id).or_insert(0);
+                    *count += 1;
+
                     let direction = ((dx - center.0), (dy - center.1));
                     let norm = (direction.0.powi(2) + direction.1.powi(2)).sqrt();
 
                     if norm > 0.0 {
                         let scale = (radius + offset * 2.0) / norm;
-                        let x = center.0 + direction.0 * scale + client_offset_x; // Move client left
-                        let y = center.1 + direction.1 * scale;
+                        let x = center.0 + direction.0 * scale + client_offset_x;
+                        // Add vertical offset based on client count
+                        let y = center.1 + direction.1 * scale + client_offset_y * (*count as f32);
 
                         node_positions.insert(*client_id, (x, y));
 
@@ -564,13 +575,18 @@ impl NetworkTopology {
         for (server_id, neighbors) in servers {
             if let Some(neighbor_id) = neighbors.first() {
                 if let Some(&(dx, dy)) = node_positions.get(neighbor_id) {
+                    // Get number of existing servers for this drone
+                    let count = server_counts.entry(*neighbor_id).or_insert(0);
+                    *count += 1;
+
                     let direction = ((dx - center.0), (dy - center.1));
                     let norm = (direction.0.powi(2) + direction.1.powi(2)).sqrt();
 
                     if norm > 0.0 {
                         let scale = (radius + offset * 2.0) / norm;
-                        let x = center.0 + direction.0 * scale + server_offset_x; // Move server right
-                        let y = center.1 + direction.1 * scale;
+                        let x = center.0 + direction.0 * scale + server_offset_x;
+                        // Add vertical offset based on server count
+                        let y = center.1 + direction.1 * scale + server_offset_y * (*count as f32);
 
                         node_positions.insert(*server_id, (x, y));
 
@@ -621,7 +637,7 @@ impl NetworkTopology {
             } else if node1.is_server || node2.is_server {
                 egui::Color32::GREEN
             } else {
-                egui::Color32::LIGHT_GRAY
+                egui::Color32::BLUE
             };
 
             painter.line_segment([pos1, pos2], egui::Stroke::new(2.0, color));
@@ -652,14 +668,27 @@ impl NetworkTopology {
                     egui::Color32::WHITE,
                 );
             }
-            
-            painter.text(
-                pos,
-                egui::Align2::CENTER_TOP,
-                &node.id,
-                egui::FontId::default(),
+
+            let mut text_pos = pos + egui::vec2(18.0, -18.0);
+            let text_rect = egui::Rect::from_center_size(text_pos, egui::Vec2::new(30.0, 16.0), );
+
+            painter.rect_filled(
+                text_rect,
+                2.0,
                 egui::Color32::WHITE,
             );
+
+            text_pos.x += 8.0;
+            text_pos.y -= 8.0;
+
+            painter.text(
+                text_pos,
+                egui::Align2::RIGHT_TOP,
+                &node.id,
+                egui::FontId::new(12.0, egui::FontFamily::Proportional),
+                egui::Color32::BLACK,
+            );
+
         }
     }
 }
