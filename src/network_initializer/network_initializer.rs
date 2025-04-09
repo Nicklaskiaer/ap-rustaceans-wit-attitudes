@@ -140,6 +140,8 @@ pub fn main() {
         });
     }
     
+    //TODO: start the first flood request
+    
     
     // INITIALIZE SIMULATION CONTROLLER AND GUI
     let sc = SimulationController::new(

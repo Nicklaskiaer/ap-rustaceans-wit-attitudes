@@ -12,6 +12,7 @@ use crossbeam_channel::{Receiver, Sender};
 use chrono::{DateTime, Local, Utc};
 use chrono_tz::Europe::Rome;
 use std::collections::HashMap;
+use std::time::Duration;
 
 pub struct MyApp {
     simulation_controller: SimulationController,
@@ -27,6 +28,7 @@ pub struct MyApp {
     client_texture: Option<egui::TextureHandle>,
     server_texture: Option<egui::TextureHandle>,
     drone_texture: Option<egui::TextureHandle>,
+    test_executed: bool,
 }
 
 pub struct NetworkTopology {
@@ -62,6 +64,7 @@ impl MyApp {
             client_texture: None,
             server_texture: None,
             drone_texture: None,
+            test_executed: false,
         }
     }
 
@@ -74,7 +77,7 @@ impl MyApp {
         let message = match event {
             Event::Drone(drone_event) => match drone_event {
                 DroneEvent::PacketSent(packet) => {
-                    format!("[EVENT] Packet Sent by Node {}.",
+                    format!("[EVENT] Packet Sent to Node {}.",
                             packet
                                 .routing_header
                                 .hops
@@ -84,7 +87,7 @@ impl MyApp {
                     )
                 }
                 DroneEvent::PacketDropped(packet) => {
-                    format!("[EVENT] Packet Dropped by Node {}",
+                    format!("[EVENT] Packet Dropped to Node {}",
                             packet
                                 .routing_header
                                 .hops
@@ -107,7 +110,7 @@ impl MyApp {
 
             Event::Client(client_event) => match client_event {
                 ClientEvent::PacketSent(packet) => {
-                    format!("[EVENT] Packet Sent by Client {}",
+                    format!("[EVENT] Packet Sent to Client {}",
                             packet
                                 .routing_header
                                 .hops
@@ -117,7 +120,7 @@ impl MyApp {
                     )
                 }
                 ClientEvent::PacketReceived(packet) => {
-                    format!("[EVENT] Packet Received by Client: {}.", packet
+                    format!("[EVENT] Packet Received to Client: {}.", packet
                         .routing_header
                         .hops
                         .get(packet.routing_header.hop_index)
@@ -181,6 +184,7 @@ impl MyApp {
                                             if let Ok(value) = packet_drop_rate.parse::<f32>() {
                                                 if value >= 0.0 && value <= 1.0 {
                                                     let message = format!("[COMMAND] Setting packet drop rate for {} to {}", name, value);
+                                                    // dbg!(self.drone_packet_drop_rates.clone());
                                                     self.logs_vec.push(LogEntry {
                                                         timestamp: formatted_time.clone(),
                                                         message,
@@ -262,6 +266,47 @@ impl MyApp {
         }
     }
 
+    fn drone_message_forward_test(&self) {
+        let msg = Packet::new_fragment(
+            SourceRoutingHeader {
+                hop_index: 1,
+                hops: vec![11, 21, 31, 32, 42],
+            },
+            1,
+            Fragment {
+                fragment_index: 1,
+                total_n_fragments: 1,
+                length: 128,
+                data: [1; 128],
+            },
+        );
+
+        //sends packet to D21
+        if let Some((c11, _)) = self.simulation_controller.get_packet_channels().get(&11) {
+            c11.send(msg.clone()).unwrap();
+        }
+    }
+
+    fn drone_error_in_routing_test(&self) {
+        let msg = Packet::new_fragment(
+            SourceRoutingHeader {
+                hop_index: 1,
+                hops: vec![11, 21, 31, 32, 41],
+            },
+            1,
+            Fragment {
+                fragment_index: 1,
+                total_n_fragments: 1,
+                length: 128,
+                data: [1; 128],
+            },
+        );
+
+        //sends packet to D21
+        if let Some((d21_sender, _)) = self.simulation_controller.get_packet_channels().get(&21) {
+            d21_sender.send(msg.clone()).unwrap();
+        }
+    }
 }
 
 impl eframe::App for MyApp{
@@ -489,6 +534,14 @@ impl eframe::App for MyApp{
                     });
             }
         }
+
+        if !self.test_executed {
+            const TIMEOUT: Duration = Duration::from_millis(400);
+            self.drone_message_forward_test();
+            // self.drone_error_in_routing_test();
+            self.test_executed = true;
+            println!("test done");
+        }
     }
 }
 
@@ -658,7 +711,7 @@ impl NetworkTopology {
                 egui::Align2::CENTER_TOP,
                 &node.id,
                 egui::FontId::default(),
-                egui::Color32::WHITE,
+                egui::Color32::RED,
             );
         }
     }

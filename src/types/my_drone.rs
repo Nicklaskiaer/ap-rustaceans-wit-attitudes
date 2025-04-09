@@ -149,6 +149,7 @@ impl MyDrone {
         self.controller_send.send(DroneEvent::PacketDropped(packet));
     }
     fn send_sent_to_sc(&mut self, packet: Packet){
+        dbg!(packet.clone());
         self.controller_send.send(DroneEvent::PacketSent(packet));
     }
     fn send_shortcut_to_sc(&mut self, packet: Packet){

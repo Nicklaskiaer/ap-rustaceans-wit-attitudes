@@ -15,7 +15,7 @@ pub struct Client {
     topology_map: HashSet<(NodeId, Vec<NodeId>)>,
     connected_drone_ids: Vec<NodeId>,
     controller_send: Sender<ClientEvent>,
-    controller_recv: Receiver<DroneCommand>,
+    controller_recv: Receiver<ClientCommand>,
     packet_send: HashMap<NodeId, Sender<Packet>>,
     packet_recv: Receiver<Packet>,
     assemblers: Vec<Assembler>,
@@ -26,6 +26,13 @@ pub struct Client {
 pub enum ClientEvent {
     PacketSent(Packet),
     PacketReceived(Packet),
+}
+
+pub enum ClientCommand {
+    RegistrationRequest(NodeId),
+    RequestServerList(NodeId), //list of all commenced clients
+    RequestFileList(NodeId),
+    SendChatMessage(NodeId, usize, String),
 }
 
 pub trait ClientTrait {
@@ -106,13 +113,14 @@ impl ClientTrait for Client {
                 recv(self.controller_recv) -> command => {
                     if let Ok(command) = command {
                         match command {
-                            _ => {
-                                return; // TODO handle other commands
+                            ClientCommand => {
+                                //TODO: find the best path and create a packet (for later split the message in fragments)
                             }
                         }
                     }
-                }
+                },
                 recv(self.packet_recv) -> packet => {
+                    // dbg!(packet.clone());
                     if let Ok(packet) = packet {
                         match &packet.pack_type {
                             PacketType::MsgFragment(fragment) => {
@@ -158,7 +166,14 @@ impl ClientTrait for Client {
                                 // handle ack
                             },
                             PacketType::Nack(_) => {
-                                // handle nack
+                                // send received packet to simulation controller
+                                let sc_send_res = self.send_recv_to_sc(packet.clone());
+                                match sc_send_res {
+                                    Ok(_) => {},
+                                    Err(e) => {
+                                        println!("Error: {}", e);
+                                    }
+                                }
                             },
                             PacketType::FloodRequest(_) => {
                                 // handle flood request
@@ -294,6 +309,8 @@ impl ClientTrait for Client {
         }
 
         return Err("node already in topology map".to_string());
+        
+        //TODO: after receving all flood request send request to all servers to get their type
     }
 
     // find the route to the node in the hashmap, and return the path

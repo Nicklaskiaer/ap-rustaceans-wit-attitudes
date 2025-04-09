@@ -78,6 +78,8 @@ impl SimulationController {
         if let Some(sender) = crashed_drone_sender {
             sender.send(DroneCommand::Crash).unwrap();
         }
+        
+        //TODO: start a new flood request for each client-server
     }
 
 
@@ -127,6 +129,9 @@ impl SimulationController {
 
     pub fn get_packet_channels(&self) -> &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)> {&self.packet_channels}
 
+    pub fn send_client_registration_request(&self) {
+        
+    }
 
     
 }
