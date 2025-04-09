@@ -18,7 +18,7 @@ pdr = 0.00
 
 [[drone]]
 id = 31
-connected_node_ids = [21, 22, 32, 41]
+connected_node_ids = [21, 22, 32, 41, 42]
 pdr = 0.00
 
 [[drone]]

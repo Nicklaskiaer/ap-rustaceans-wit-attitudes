@@ -203,7 +203,7 @@ fn check_toml_validity(config: &Config){
         // do drones have all unique connected_node_ids without their id and with no repetition?
         let mut c_drones_ids = HashSet::new();
         for connected_drone in &drone.connected_node_ids{
-            if !connected_drone == drone.id {
+            if *connected_drone == drone.id {
                 panic!("the drone {} has its id in connected_node_ids!", drone.id)
             }
             if !c_drones_ids.insert(connected_drone){
@@ -212,7 +212,7 @@ fn check_toml_validity(config: &Config){
         }
 
         // do drones have a pdr between 0.05% and 5%?
-        if !(drone.pdr >= min_pdr) && !(drone.pdr <= max_pdr){
+        if drone.pdr < min_pdr || drone.pdr > max_pdr {
             panic!("{} has an invalid PDR", drone.id)
         }
     }
@@ -235,7 +235,7 @@ fn check_toml_validity(config: &Config){
 
         // do client the right numbers of drones?
         let n_drones = client.connected_drone_ids.iter().len();
-        if !(n_drones >= min_drones) && !(n_drones <= max_drones){
+        if n_drones < min_drones || n_drones > max_drones {
             panic!("{} has an invalid number of drones", client.id)
         }
     }
@@ -264,50 +264,37 @@ fn check_toml_validity(config: &Config){
     // </editor-fold>
 
     // <editor-fold desc="check for bidirectional connectivity">
-    // Check drone connectivity
+    // Check bidirectional connectivity for all nodes
+    let mut connection_map: HashMap<NodeId, HashSet<NodeId>> = HashMap::new();
+
+    // Build connection map for all nodes
     for drone in &config.drone {
-        for &connected_id in &drone.connected_node_ids {
-            // Find the connected node
-            if let Some(connected_node) = config.drone.iter().find(|d| d.id == connected_id) {
-                // Check if the connection is bidirectional
-                if !connected_node.connected_node_ids.contains(&drone.id) {
-                    panic!(
-                        "Unidirectional connection: Drone {} is connected to {}, but {} is not connected back to {}",
-                        drone.id, connected_id, connected_id, drone.id
-                    );
-                }
-            }
-        }
+        connection_map.entry(drone.id)
+            .or_insert_with(HashSet::new)
+            .extend(&drone.connected_node_ids);
     }
 
-    // Check client-drone connectivity
     for client in &config.client {
-        for &connected_drone_id in &client.connected_drone_ids {
-            // Find the connected drone
-            if let Some(drone) = config.drone.iter().find(|d| d.id == connected_drone_id) {
-                // Check if the drone considers this client as a connection
-                if !drone.connected_node_ids.contains(&client.id) {
-                    panic!(
-                        "Unidirectional connection: Client {} is connected to Drone {}, but Drone {} does not recognize Client {}",
-                        client.id, connected_drone_id, connected_drone_id, client.id
-                    );
-                }
-            }
-        }
+        connection_map.entry(client.id)
+            .or_insert_with(HashSet::new)
+            .extend(&client.connected_drone_ids);
     }
 
-    // Check server-drone connectivity
     for server in &config.server {
-        for &connected_drone_id in &server.connected_drone_ids {
-            // Find the connected drone
-            if let Some(drone) = config.drone.iter().find(|d| d.id == connected_drone_id) {
-                // Check if the drone considers this server as a connection
-                if !drone.connected_node_ids.contains(&server.id) {
-                    panic!(
-                        "Unidirectional connection: Server {} is connected to Drone {}, but Drone {} does not recognize Server {}",
-                        server.id, connected_drone_id, connected_drone_id, server.id
-                    );
-                }
+        connection_map.entry(server.id)
+            .or_insert_with(HashSet::new)
+            .extend(&server.connected_drone_ids);
+    }
+
+    // Check that all connections are bidirectional
+    for (node_id, connections) in &connection_map {
+        for &connected_id in connections {
+            if !connection_map.get(&connected_id)
+                .map_or(false, |conns| conns.contains(node_id)) {
+                panic!(
+                    "Unidirectional connection: Node {} is connected to Node {}, but Node {} is not connected back to Node {}",
+                    node_id, connected_id, connected_id, node_id
+                );
             }
         }
     }
