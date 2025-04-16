@@ -3,14 +3,16 @@ use std::collections::HashSet;
 use std::{fs, thread};
 use std::collections::HashMap;
 use wg_2024::config::Config;
+use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
 use wg_2024::network::{NodeId};
 use wg_2024::packet::{Packet};
 
+use crate::client::ClientServerCommand::ClientServerCommand;
 use crate::simulation_controller::simulation_controller::{simulation_controller_main, SimulationController};
 use crate::types::my_drone::MyDrone;
-use crate::client::client::{Client, ClientTrait};
-use crate::server::server::{ContentServer, Server};
+use crate::client::client::{Client, ClientEvent, ClientTrait};
+use crate::server::server::{ContentServer, Server, ServerEvent};
 
 pub fn main() {
     // let current_path = env::current_dir().expect("Unable to get current directory");
@@ -33,12 +35,12 @@ pub fn main() {
     }
     
     // INITIALIZE DRONES
-    let (node_event_send_drone, node_event_recv_drone) = unbounded();
+    let (node_event_send_drone, node_event_recv_drone): (Sender<DroneEvent>, Receiver<DroneEvent>) = unbounded();
     let mut controller_drones = HashMap::new();
     for drone in config.drone.into_iter() {
         // controller
-        let (controller_drone_send, controller_drone_recv) = unbounded();
-        controller_drones.insert(drone.id, (controller_drone_send, drone.connected_node_ids.clone()));
+        let (controller_drone_send, controller_drone_recv): (Sender<DroneCommand>, Receiver<DroneCommand>) = unbounded();
+        controller_drones.insert(drone.id, (controller_drone_send, drone.connected_node_ids.clone(), drone.pdr));
         let node_event_send_drone = node_event_send_drone.clone();
         
         // packet
@@ -65,12 +67,12 @@ pub fn main() {
     }
 
     // INITIALIZE CLIENTS
-    let (node_event_send_client, node_event_recv_client) = unbounded();
+    let (node_event_send_client, node_event_recv_client): (Sender<ClientEvent>, Receiver<ClientEvent>) = unbounded();
     let mut controller_clients = HashMap::new();
     for client in config.client.into_iter() {
 
         // controller
-        let (controller_client_send, controller_client_recv) = unbounded();
+        let (controller_client_send, controller_client_recv): (Sender<ClientServerCommand>, Receiver<ClientServerCommand>) = unbounded();
         controller_clients.insert(client.id, (controller_client_send, client.connected_drone_ids.clone()));
         let node_event_send_client = node_event_send_client.clone();
 
@@ -103,12 +105,12 @@ pub fn main() {
     }
     
     // INITIALIZE SERVERS
-    let (node_event_send_server, node_event_recv_server) = unbounded();
+    let (node_event_send_server, node_event_recv_server): (Sender<ServerEvent>, Receiver<ServerEvent>) = unbounded();
     let mut controller_servers: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
     for server in config.server.into_iter() {
 
         // controller
-        let (controller_server_send, controller_server_recv) = unbounded();
+        let (controller_server_send, controller_server_recv): (Sender<ClientServerCommand>, Receiver<ClientServerCommand>) = unbounded();
         controller_servers.insert(server.id, server.connected_drone_ids.clone());
         let node_event_send_server = node_event_send_server.clone();
 
@@ -140,18 +142,16 @@ pub fn main() {
         });
     }
     
-    //TODO: start the first flood request
-    
-    
     // INITIALIZE SIMULATION CONTROLLER AND GUI
+    // THE SC WILL ALSO START THE FIRST FLOOD REQUEST
     let sc = SimulationController::new(
-        controller_drones.clone(),
-        controller_clients.clone(),
-        controller_servers.clone(),
-        node_event_recv_drone.clone(),
-        node_event_recv_client.clone(),
-        node_event_recv_server.clone(),
-        packet_channels.clone()
+        controller_drones,
+        controller_clients,
+        controller_servers,
+        node_event_recv_drone,
+        node_event_recv_client,
+        node_event_recv_server,
+        packet_channels
     );
 
     simulation_controller_main(sc).expect("GUI panicked!");

@@ -13,6 +13,7 @@ use chrono::{DateTime, Local, Utc};
 use chrono_tz::Europe::Rome;
 use std::collections::HashMap;
 use std::time::Duration;
+use crate::client::ClientServerCommand::ClientServerCommand;
 
 pub struct MyApp {
     simulation_controller: SimulationController,
@@ -173,7 +174,7 @@ impl MyApp {
 
                             // Handle Drone controls
                             if name.starts_with("Drone") {
-                                if let Some((sender, neighbours)) = self.simulation_controller.get_drones().get(&node_id) {
+                                if let Some((sender, neighbours, _)) = self.simulation_controller.get_drones().get(&node_id) {
                                     // Set Packet Drop Rate
                                     ui.horizontal(|ui| {
                                         ui.label("Packet Drop Rate:");
@@ -239,7 +240,7 @@ impl MyApp {
 
                                     // Crash Button
                                     if ui.button("Crash").clicked() {
-                                        if let Some((_, neighbors)) = self.simulation_controller.get_drones().get(&node_id) {
+                                        if let Some((_, neighbors, _)) = self.simulation_controller.get_drones().get(&node_id) {
                                             let message = format!("[COMMAND] Crashing {}", name);
                                             self.logs_vec.push(LogEntry {
                                                 timestamp: formatted_time.clone(),
@@ -518,7 +519,9 @@ impl eframe::App for MyApp{
             if self.current_screen == Screen::NetworkScreen {
 
                 self.topology.update_topology(
-                    &self.simulation_controller.get_drones(),
+                    &self.simulation_controller.get_drones().iter()
+                        .map(|(id, (sender, neighbors, _))| (*id, (sender.clone(), neighbors.clone())))
+                        .collect::<HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)>>(),
                     &self.simulation_controller.get_clients(),
                     &self.simulation_controller.get_servers()
                 );
@@ -556,7 +559,7 @@ impl NetworkTopology {
     pub fn update_topology(
         &mut self,
         drones: &HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)>,
-        clients: &HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)>,
+        clients: &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)>,
         servers: &HashMap<NodeId, Vec<NodeId>>
     ) {
         self.nodes.clear();
@@ -639,7 +642,33 @@ impl NetworkTopology {
         }
 
         //Add connections
-        for (node_id, (_, neighbors)) in drones.iter().chain(clients.iter()) {
+        // for (node_id, (_, neighbors)) in drones.iter().chain(clients.iter()) {
+        //     if let Some(_pos1) = node_positions.get(node_id) {
+        //         for neighbor_id in neighbors {
+        //             if let Some(_pos2) = node_positions.get(neighbor_id) {
+        //                 let idx1 = self.nodes.iter().position(|n| n.id == node_id.to_string()).unwrap();
+        //                 let idx2 = self.nodes.iter().position(|n| n.id == neighbor_id.to_string()).unwrap();
+        //                 self.connections.push((idx1, idx2));
+        //             }
+        //         }
+        //     }
+        // }
+
+        // Add connections for drones
+        for (node_id, (_, neighbors)) in drones.iter() {
+            if let Some(_pos1) = node_positions.get(node_id) {
+                for neighbor_id in neighbors {
+                    if let Some(_pos2) = node_positions.get(neighbor_id) {
+                        let idx1 = self.nodes.iter().position(|n| n.id == node_id.to_string()).unwrap();
+                        let idx2 = self.nodes.iter().position(|n| n.id == neighbor_id.to_string()).unwrap();
+                        self.connections.push((idx1, idx2));
+                    }
+                }
+            }
+        }
+
+        // Add connections for clients
+        for (node_id, (_, neighbors)) in clients.iter() {
             if let Some(_pos1) = node_positions.get(node_id) {
                 for neighbor_id in neighbors {
                     if let Some(_pos2) = node_positions.get(neighbor_id) {

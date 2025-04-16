@@ -5,8 +5,9 @@ use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet;
 use wg_2024::packet::{
     Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType,
-};
+}; 
 use crate::assembler::assembler::Assembler;
+use crate::client::ClientServerCommand::ClientServerCommand;
 use crate::server::message::{Message, TextRequest};
 use crate::server::server::ServerEvent;
 
@@ -15,7 +16,7 @@ pub struct Client {
     topology_map: HashSet<(NodeId, Vec<NodeId>)>,
     connected_drone_ids: Vec<NodeId>,
     controller_send: Sender<ClientEvent>,
-    controller_recv: Receiver<ClientCommand>,
+    controller_recv: Receiver<ClientServerCommand>,
     packet_send: HashMap<NodeId, Sender<Packet>>,
     packet_recv: Receiver<Packet>,
     assemblers: Vec<Assembler>,
@@ -28,19 +29,12 @@ pub enum ClientEvent {
     PacketReceived(Packet),
 }
 
-pub enum ClientCommand {
-    RegistrationRequest(NodeId),
-    RequestServerList(NodeId), //list of all commenced clients
-    RequestFileList(NodeId),
-    SendChatMessage(NodeId, usize, String),
-}
-
 pub trait ClientTrait {
     fn new(
         id: NodeId,
         connected_drone_ids: Vec<NodeId>,
         controller_send: Sender<ClientEvent>,
-        controller_recv: Receiver<DroneCommand>,
+        controller_recv: Receiver<ClientServerCommand>,
         packet_send: HashMap<NodeId, Sender<Packet>>,
         packet_recv: Receiver<Packet>,
         assemblers: Vec<Assembler>,
@@ -85,7 +79,7 @@ impl ClientTrait for Client {
         id: NodeId,
         connected_drone_ids: Vec<NodeId>,
         controller_send: Sender<ClientEvent>,
-        controller_recv: Receiver<DroneCommand>,
+        controller_recv: Receiver<ClientServerCommand>,
         packet_send: HashMap<NodeId, Sender<Packet>>,
         packet_recv: Receiver<Packet>,
         assemblers: Vec<Assembler>,
@@ -109,16 +103,35 @@ impl ClientTrait for Client {
 
     fn run(&mut self) {
         loop {
-            select_biased! {
-                recv(self.controller_recv) -> command => {
-                    if let Ok(command) = command {
-                        match command {
-                            ClientCommand => {
-                                //TODO: find the best path and create a packet (for later split the message in fragments)
+        select_biased! {
+            recv(self.controller_recv) -> command => {
+                if let Ok(command) = command {
+                    match command {
+                        ClientServerCommand::DroneCmd(drone_cmd) => {    
+                            //TODO: find the best path and create a packet (for later split the message in fragments)
+                            // Handle drone command
+                            match drone_cmd {
+                                DroneCommand::SetPacketDropRate(_) => {},
+                                DroneCommand::Crash => {},
+                                DroneCommand::AddSender(id, sender) => {},
+                                DroneCommand::RemoveSender(id) => {},
                             }
-                        }
+                        },
+                        ClientServerCommand::RegistrationRequest(node_id) => {
+                            // Handle registration request
+                        },
+                        ClientServerCommand::RequestServerList(node_id) => {
+                            // Handle server list request
+                        },
+                        ClientServerCommand::RequestFileList(node_id) => {
+                            // Handle file list request
+                        },
+                        ClientServerCommand::SendChatMessage(node_id, id, msg) => {
+                            // Handle chat message
+                        },
                     }
-                },
+                }
+            },
                 recv(self.packet_recv) -> packet => {
                     // dbg!(packet.clone());
                     if let Ok(packet) = packet {

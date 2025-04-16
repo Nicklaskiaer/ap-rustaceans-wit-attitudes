@@ -8,14 +8,14 @@ use wg_2024::packet;
 use wg_2024::packet::{
     Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType,
 };
-use crate::client::client::ClientCommand;
+use crate::client::ClientServerCommand::ClientServerCommand;
 
 pub struct ContentServer {
     id: NodeId,
     topology_map: HashSet<(NodeId, Vec<NodeId>)>,
     connected_drone_ids: Vec<NodeId>,
     controller_send: Sender<ServerEvent>,
-    controller_recv: Receiver<DroneCommand>,
+    controller_recv: Receiver<ClientServerCommand>,
     packet_send: HashMap<NodeId, Sender<Packet>>,
     packet_recv: Receiver<Packet>,
     assemblers: Vec<Assembler>,
@@ -28,7 +28,7 @@ pub struct CommunicationServer {
     topology_map: HashSet<(NodeId, Vec<NodeId>)>,
     connected_drone_ids: Vec<NodeId>,
     controller_send: Sender<ServerEvent>,
-    controller_recv: Receiver<ClientCommand>,
+    controller_recv: Receiver<ClientServerCommand>,
     packet_send: HashMap<NodeId, Sender<Packet>>,
     packet_recv: Receiver<Packet>,
     assemblers: Vec<Assembler>,
@@ -55,7 +55,7 @@ pub trait Server {
         id: NodeId,
         connected_drone_ids: Vec<NodeId>,
         controller_send: Sender<ServerEvent>,
-        controller_recv: Receiver<DroneCommand>,
+        controller_recv: Receiver<ClientServerCommand>,
         packet_send: HashMap<NodeId, Sender<Packet>>,
         packet_recv: Receiver<Packet>,
         assemblers: Vec<Assembler>,
@@ -103,7 +103,7 @@ impl Server for ContentServer {
         id: NodeId,
         connected_drone_ids: Vec<NodeId>,
         controller_send: Sender<ServerEvent>,
-        controller_recv: Receiver<DroneCommand>,
+        controller_recv: Receiver<ClientServerCommand>,
         packet_send: HashMap<NodeId, Sender<Packet>>,
         packet_recv: Receiver<Packet>,
         assemblers: Vec<Assembler>,
