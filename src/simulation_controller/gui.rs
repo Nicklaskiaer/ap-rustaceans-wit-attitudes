@@ -29,6 +29,7 @@ pub struct MyApp {
     client_texture: Option<egui::TextureHandle>,
     server_texture: Option<egui::TextureHandle>,
     drone_texture: Option<egui::TextureHandle>,
+    topology_needs_update: bool,
     test_executed: bool,
 }
 
@@ -65,6 +66,7 @@ impl MyApp {
             client_texture: None,
             server_texture: None,
             drone_texture: None,
+            topology_needs_update: true,
             test_executed: false,
         }
     }
@@ -268,9 +270,10 @@ impl MyApp {
     }
 
     fn drone_message_forward_test(&self) {
+        println!("start drone_message_forward_test, hops: 11, 21, 31, 32, 42");
         let msg = Packet::new_fragment(
             SourceRoutingHeader {
-                hop_index: 1,
+                hop_index: 0,
                 hops: vec![11, 21, 31, 32, 42],
             },
             1,
@@ -282,19 +285,21 @@ impl MyApp {
             },
         );
 
-        //sends packet to D21
-        if let Some((c11, _)) = self.simulation_controller.get_packet_channels().get(&11) {
-            c11.send(msg.clone()).unwrap();
+        //sends packet to C11
+        if let Some((c11_sender, _)) = self.simulation_controller.get_packet_channels().get(&11) {
+            c11_sender.send(msg.clone()).unwrap();
         }
+        println!("start drone_message_forward_test");
     }
 
     fn drone_error_in_routing_test(&self) {
+        println!("start drone_error_in_routing_test, hops: 11, 21, 31, 32, 41 (41 doesn't exist)");
         let msg = Packet::new_fragment(
             SourceRoutingHeader {
-                hop_index: 1,
+                hop_index: 0,
                 hops: vec![11, 21, 31, 32, 41],
             },
-            1,
+            2,
             Fragment {
                 fragment_index: 1,
                 total_n_fragments: 1,
@@ -303,9 +308,9 @@ impl MyApp {
             },
         );
 
-        //sends packet to D21
-        if let Some((d21_sender, _)) = self.simulation_controller.get_packet_channels().get(&21) {
-            d21_sender.send(msg.clone()).unwrap();
+        //sends packet to C11
+        if let Some((c11_sender, _)) = self.simulation_controller.get_packet_channels().get(&11) {
+            c11_sender.send(msg.clone()).unwrap();
         }
     }
 }
@@ -515,26 +520,29 @@ impl eframe::App for MyApp{
             for name in popups_to_show {
                 self.show_popup(ctx, &name);
             }
-
+            
             if self.current_screen == Screen::NetworkScreen {
-
-                self.topology.update_topology(
-                    &self.simulation_controller.get_drones().iter()
-                        .map(|(id, (sender, neighbors, _))| (*id, (sender.clone(), neighbors.clone())))
-                        .collect::<HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)>>(),
-                    &self.simulation_controller.get_clients(),
-                    &self.simulation_controller.get_servers()
-                );
-
+                if self.current_screen == Screen::NetworkScreen && self.topology_needs_update {
+                    self.topology.update_topology(
+                        &self.simulation_controller.get_drones().iter()
+                            .map(|(id, (sender, neighbors, _))| (*id, (sender.clone(), neighbors.clone())))
+                            .collect::<HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)>>(),
+                        &self.simulation_controller.get_clients(),
+                        &self.simulation_controller.get_servers()
+                    );
+                    self.topology_needs_update = false;
+                }
+            
                 let legend_width = 150.0;
                 let legend_height = 100.0;
-
+            
                 egui::Window::new("Legend").anchor(egui::Align2::RIGHT_TOP, [-10.0, 40.0]).collapsible(false).resizable(false).default_width(legend_width).default_height(legend_height)
                     .show(ctx, |ui| {
                         ui.horizontal(|ui| { ui.colored_label(egui::Color32::BLUE, " ● Drone"); });
                         ui.horizontal(|ui| { ui.colored_label(egui::Color32::RED, " ● Client"); });
-                        ui.horizontal(|ui| { ui.colored_label(egui::Color32::GREEN, " ● Server"); });
+                        ui.horizontal(|ui| { ui.colored_label(egui::Color32::GREEN, " ● Server"); }); 
                     });
+                
             }
         }
 
@@ -543,7 +551,7 @@ impl eframe::App for MyApp{
             self.drone_message_forward_test();
             // self.drone_error_in_routing_test();
             self.test_executed = true;
-            println!("test done");
+            println!("tests done");
         }
     }
 }

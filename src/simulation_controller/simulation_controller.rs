@@ -81,7 +81,7 @@ impl SimulationController {
         }
         
         // initialize the first flooding
-        self.start_flooding();
+        self.start_flood_request_for_all();
     }
 
 
@@ -135,8 +135,10 @@ impl SimulationController {
         
     }
 
-    pub fn start_flooding(&self){
-        //TODO: write it
+    pub fn start_flood_request_for_all(&self){
+        for (_, (sender,_)) in &self.clients{
+            sender.send(ClientServerCommand::StartFloodRequest).unwrap();
+        }
     }
 }
 

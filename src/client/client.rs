@@ -102,36 +102,83 @@ impl ClientTrait for Client {
     }
 
     fn run(&mut self) {
-        loop {
-        select_biased! {
-            recv(self.controller_recv) -> command => {
-                if let Ok(command) = command {
-                    match command {
-                        ClientServerCommand::DroneCmd(drone_cmd) => {    
-                            //TODO: find the best path and create a packet (for later split the message in fragments)
-                            // Handle drone command
-                            match drone_cmd {
-                                DroneCommand::SetPacketDropRate(_) => {},
-                                DroneCommand::Crash => {},
-                                DroneCommand::AddSender(id, sender) => {},
-                                DroneCommand::RemoveSender(id) => {},
-                            }
-                        },
-                        ClientServerCommand::RegistrationRequest(node_id) => {
-                            // Handle registration request
-                        },
-                        ClientServerCommand::RequestServerList(node_id) => {
-                            // Handle server list request
-                        },
-                        ClientServerCommand::RequestFileList(node_id) => {
-                            // Handle file list request
-                        },
-                        ClientServerCommand::SendChatMessage(node_id, id, msg) => {
-                            // Handle chat message
-                        },
+        loop { 
+            select_biased! {
+                recv(self.controller_recv) -> command => {
+                    if let Ok(command) = command {
+                        match command {
+                            ClientServerCommand::DroneCmd(drone_cmd) => {
+                                // Handle drone command
+                                match drone_cmd {
+                                    DroneCommand::SetPacketDropRate(_) => {},
+                                    DroneCommand::Crash => {},
+                                    DroneCommand::AddSender(id, sender) => {},
+                                    DroneCommand::RemoveSender(id) => {},
+                                }
+                            },
+                            ClientServerCommand::RegistrationRequest(node_id) => {
+                                // Handle registration request
+                            },
+                            ClientServerCommand::RequestServerList(node_id) => {
+                                // Handle server list request
+                            },
+                            ClientServerCommand::RequestFileList(node_id) => {
+                                // Handle file list request
+                            },
+                            ClientServerCommand::SendChatMessage(node_id, id, msg) => {
+                                // Handle chat message
+                            },
+                            ClientServerCommand::StartFloodRequest => {
+                                 println!("StartFloodRequest {}", self.id);
+                                // Generate a unique flood ID using current time
+                                let flood_id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+                                
+                                // Create path trace with just this client
+                                let path_trace = vec![(self.id, NodeType::Client)];
+                                
+                                // Send flood request to all connected drones
+                                for drone_id in &self.connected_drone_ids {
+                                    if let Some(sender) = self.packet_send.get(drone_id) {
+                                        let flood_request = Packet::new_flood_request(
+                                            SourceRoutingHeader {
+                                                hop_index: 1,
+                                                hops: vec![self.id, *drone_id],
+                                            },
+                                            flood_id,
+                                            FloodRequest {
+                                                flood_id,
+                                                initiator_id: self.id,
+                                                path_trace: path_trace.clone(),
+                                            },
+                                        );
+                                        
+                                        // Send the packet and notify the sc
+                                        match sender.send(flood_request.clone()) {
+                                            Ok(_) => {},
+                                            Err(e) => {
+                                                println!("Error sending flood request to drone {}: {}", drone_id, e);
+                                            }
+                                        }
+                                        
+                                        
+                                        
+                                        // Send the packet and notify the sc
+                                        // match sender.send(flood_request.clone()) {
+                                        //     Ok(_) => {
+                                        //         if let Err(e) = self.send_sent_to_sc(flood_request) {
+                                        //             println!("Error sending to simulation controller: {}", e);
+                                        //         }
+                                        //     },
+                                        //     Err(e) => {
+                                        //         println!("Error sending flood request to drone {}: {}", drone_id, e);
+                                        //     }
+                                        // }
+                                    }
+                                }
+                            },
+                        }
                     }
-                }
-            },
+                },
                 recv(self.packet_recv) -> packet => {
                     // dbg!(packet.clone());
                     if let Ok(packet) = packet {
