@@ -3,14 +3,16 @@ use std::collections::HashSet;
 use std::{fs, thread};
 use std::collections::HashMap;
 use wg_2024::config::Config;
+use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
 use wg_2024::network::{NodeId};
 use wg_2024::packet::{Packet};
 
+use crate::client::ClientServerCommand::ClientServerCommand;
 use crate::simulation_controller::simulation_controller::{simulation_controller_main, SimulationController};
 use crate::types::my_drone::MyDrone;
-use crate::client::client::{Client, ClientTrait};
-use crate::server::server::{ContentServer, Server};
+use crate::client::client::{Client, ClientEvent, ClientTrait};
+use crate::server::server::{ContentServer, Server, ServerEvent};
 
 pub fn main() {
     // let current_path = env::current_dir().expect("Unable to get current directory");
@@ -33,12 +35,12 @@ pub fn main() {
     }
     
     // INITIALIZE DRONES
-    let (node_event_send_drone, node_event_recv_drone) = unbounded();
+    let (node_event_send_drone, node_event_recv_drone): (Sender<DroneEvent>, Receiver<DroneEvent>) = unbounded();
     let mut controller_drones = HashMap::new();
     for drone in config.drone.into_iter() {
         // controller
-        let (controller_drone_send, controller_drone_recv) = unbounded();
-        controller_drones.insert(drone.id, (controller_drone_send, drone.connected_node_ids.clone()));
+        let (controller_drone_send, controller_drone_recv): (Sender<DroneCommand>, Receiver<DroneCommand>) = unbounded();
+        controller_drones.insert(drone.id, (controller_drone_send, drone.connected_node_ids.clone(), drone.pdr));
         let node_event_send_drone = node_event_send_drone.clone();
         
         // packet
@@ -65,12 +67,12 @@ pub fn main() {
     }
 
     // INITIALIZE CLIENTS
-    let (node_event_send_client, node_event_recv_client) = unbounded();
+    let (node_event_send_client, node_event_recv_client): (Sender<ClientEvent>, Receiver<ClientEvent>) = unbounded();
     let mut controller_clients = HashMap::new();
     for client in config.client.into_iter() {
 
         // controller
-        let (controller_client_send, controller_client_recv) = unbounded();
+        let (controller_client_send, controller_client_recv): (Sender<ClientServerCommand>, Receiver<ClientServerCommand>) = unbounded();
         controller_clients.insert(client.id, (controller_client_send, client.connected_drone_ids.clone()));
         let node_event_send_client = node_event_send_client.clone();
 
@@ -103,12 +105,12 @@ pub fn main() {
     }
     
     // INITIALIZE SERVERS
-    let (node_event_send_server, node_event_recv_server) = unbounded();
+    let (node_event_send_server, node_event_recv_server): (Sender<ServerEvent>, Receiver<ServerEvent>) = unbounded();
     let mut controller_servers: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
     for server in config.server.into_iter() {
 
         // controller
-        let (controller_server_send, controller_server_recv) = unbounded();
+        let (controller_server_send, controller_server_recv): (Sender<ClientServerCommand>, Receiver<ClientServerCommand>) = unbounded();
         controller_servers.insert(server.id, server.connected_drone_ids.clone());
         let node_event_send_server = node_event_send_server.clone();
 
@@ -140,16 +142,16 @@ pub fn main() {
         });
     }
     
-    
     // INITIALIZE SIMULATION CONTROLLER AND GUI
+    // THE SC WILL ALSO START THE FIRST FLOOD REQUEST
     let sc = SimulationController::new(
-        controller_drones.clone(),
-        controller_clients.clone(),
-        controller_servers.clone(),
-        node_event_recv_drone.clone(),
-        node_event_recv_client.clone(),
-        node_event_recv_server.clone(),
-        packet_channels.clone()
+        controller_drones,
+        controller_clients,
+        controller_servers,
+        node_event_recv_drone,
+        node_event_recv_client,
+        node_event_recv_server,
+        packet_channels
     );
 
     simulation_controller_main(sc).expect("GUI panicked!");
@@ -203,7 +205,7 @@ fn check_toml_validity(config: &Config){
         // do drones have all unique connected_node_ids without their id and with no repetition?
         let mut c_drones_ids = HashSet::new();
         for connected_drone in &drone.connected_node_ids{
-            if !connected_drone == drone.id {
+            if *connected_drone == drone.id {
                 panic!("the drone {} has its id in connected_node_ids!", drone.id)
             }
             if !c_drones_ids.insert(connected_drone){
@@ -212,7 +214,7 @@ fn check_toml_validity(config: &Config){
         }
 
         // do drones have a pdr between 0.05% and 5%?
-        if !(drone.pdr >= min_pdr) && !(drone.pdr <= max_pdr){
+        if drone.pdr < min_pdr || drone.pdr > max_pdr {
             panic!("{} has an invalid PDR", drone.id)
         }
     }
@@ -235,7 +237,7 @@ fn check_toml_validity(config: &Config){
 
         // do client the right numbers of drones?
         let n_drones = client.connected_drone_ids.iter().len();
-        if !(n_drones >= min_drones) && !(n_drones <= max_drones){
+        if n_drones < min_drones || n_drones > max_drones {
             panic!("{} has an invalid number of drones", client.id)
         }
     }
@@ -264,50 +266,37 @@ fn check_toml_validity(config: &Config){
     // </editor-fold>
 
     // <editor-fold desc="check for bidirectional connectivity">
-    // Check drone connectivity
+    // Check bidirectional connectivity for all nodes
+    let mut connection_map: HashMap<NodeId, HashSet<NodeId>> = HashMap::new();
+
+    // Build connection map for all nodes
     for drone in &config.drone {
-        for &connected_id in &drone.connected_node_ids {
-            // Find the connected node
-            if let Some(connected_node) = config.drone.iter().find(|d| d.id == connected_id) {
-                // Check if the connection is bidirectional
-                if !connected_node.connected_node_ids.contains(&drone.id) {
-                    panic!(
-                        "Unidirectional connection: Drone {} is connected to {}, but {} is not connected back to {}",
-                        drone.id, connected_id, connected_id, drone.id
-                    );
-                }
-            }
-        }
+        connection_map.entry(drone.id)
+            .or_insert_with(HashSet::new)
+            .extend(&drone.connected_node_ids);
     }
 
-    // Check client-drone connectivity
     for client in &config.client {
-        for &connected_drone_id in &client.connected_drone_ids {
-            // Find the connected drone
-            if let Some(drone) = config.drone.iter().find(|d| d.id == connected_drone_id) {
-                // Check if the drone considers this client as a connection
-                if !drone.connected_node_ids.contains(&client.id) {
-                    panic!(
-                        "Unidirectional connection: Client {} is connected to Drone {}, but Drone {} does not recognize Client {}",
-                        client.id, connected_drone_id, connected_drone_id, client.id
-                    );
-                }
-            }
-        }
+        connection_map.entry(client.id)
+            .or_insert_with(HashSet::new)
+            .extend(&client.connected_drone_ids);
     }
 
-    // Check server-drone connectivity
     for server in &config.server {
-        for &connected_drone_id in &server.connected_drone_ids {
-            // Find the connected drone
-            if let Some(drone) = config.drone.iter().find(|d| d.id == connected_drone_id) {
-                // Check if the drone considers this server as a connection
-                if !drone.connected_node_ids.contains(&server.id) {
-                    panic!(
-                        "Unidirectional connection: Server {} is connected to Drone {}, but Drone {} does not recognize Server {}",
-                        server.id, connected_drone_id, connected_drone_id, server.id
-                    );
-                }
+        connection_map.entry(server.id)
+            .or_insert_with(HashSet::new)
+            .extend(&server.connected_drone_ids);
+    }
+
+    // Check that all connections are bidirectional
+    for (node_id, connections) in &connection_map {
+        for &connected_id in connections {
+            if !connection_map.get(&connected_id)
+                .map_or(false, |conns| conns.contains(node_id)) {
+                panic!(
+                    "Unidirectional connection: Node {} is connected to Node {}, but Node {} is not connected back to Node {}",
+                    node_id, connected_id, connected_id, node_id
+                );
             }
         }
     }

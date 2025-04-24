@@ -5,8 +5,9 @@ use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet;
 use wg_2024::packet::{
     Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType,
-};
+}; 
 use crate::assembler::assembler::Assembler;
+use crate::client::ClientServerCommand::ClientServerCommand;
 use crate::server::message::{Message, TextRequest};
 use crate::server::server::ServerEvent;
 
@@ -15,7 +16,7 @@ pub struct Client {
     topology_map: HashSet<(NodeId, Vec<NodeId>)>,
     connected_drone_ids: Vec<NodeId>,
     controller_send: Sender<ClientEvent>,
-    controller_recv: Receiver<DroneCommand>,
+    controller_recv: Receiver<ClientServerCommand>,
     packet_send: HashMap<NodeId, Sender<Packet>>,
     packet_recv: Receiver<Packet>,
     assemblers: Vec<Assembler>,
@@ -33,7 +34,7 @@ pub trait ClientTrait {
         id: NodeId,
         connected_drone_ids: Vec<NodeId>,
         controller_send: Sender<ClientEvent>,
-        controller_recv: Receiver<DroneCommand>,
+        controller_recv: Receiver<ClientServerCommand>,
         packet_send: HashMap<NodeId, Sender<Packet>>,
         packet_recv: Receiver<Packet>,
         assemblers: Vec<Assembler>,
@@ -78,7 +79,7 @@ impl ClientTrait for Client {
         id: NodeId,
         connected_drone_ids: Vec<NodeId>,
         controller_send: Sender<ClientEvent>,
-        controller_recv: Receiver<DroneCommand>,
+        controller_recv: Receiver<ClientServerCommand>,
         packet_send: HashMap<NodeId, Sender<Packet>>,
         packet_recv: Receiver<Packet>,
         assemblers: Vec<Assembler>,
@@ -101,18 +102,85 @@ impl ClientTrait for Client {
     }
 
     fn run(&mut self) {
-        loop {
+        loop { 
             select_biased! {
                 recv(self.controller_recv) -> command => {
                     if let Ok(command) = command {
                         match command {
-                            _ => {
-                                return; // TODO handle other commands
-                            }
+                            ClientServerCommand::DroneCmd(drone_cmd) => {
+                                // Handle drone command
+                                match drone_cmd {
+                                    DroneCommand::SetPacketDropRate(_) => {},
+                                    DroneCommand::Crash => {},
+                                    DroneCommand::AddSender(id, sender) => {},
+                                    DroneCommand::RemoveSender(id) => {},
+                                }
+                            },
+                            ClientServerCommand::RegistrationRequest(node_id) => {
+                                // Handle registration request
+                            },
+                            ClientServerCommand::RequestServerList(node_id) => {
+                                // Handle server list request
+                            },
+                            ClientServerCommand::RequestFileList(node_id) => {
+                                // Handle file list request
+                            },
+                            ClientServerCommand::SendChatMessage(node_id, id, msg) => {
+                                // Handle chat message
+                            },
+                            ClientServerCommand::StartFloodRequest => {
+                                 println!("StartFloodRequest {}", self.id);
+                                // Generate a unique flood ID using current time
+                                let flood_id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+                                
+                                // Create path trace with just this client
+                                let path_trace = vec![(self.id, NodeType::Client)];
+                                
+                                // Send flood request to all connected drones
+                                for drone_id in &self.connected_drone_ids {
+                                    if let Some(sender) = self.packet_send.get(drone_id) {
+                                        let flood_request = Packet::new_flood_request(
+                                            SourceRoutingHeader {
+                                                hop_index: 1,
+                                                hops: vec![self.id, *drone_id],
+                                            },
+                                            flood_id,
+                                            FloodRequest {
+                                                flood_id,
+                                                initiator_id: self.id,
+                                                path_trace: path_trace.clone(),
+                                            },
+                                        );
+                                        
+                                        // Send the packet and notify the sc
+                                        match sender.send(flood_request.clone()) {
+                                            Ok(_) => {},
+                                            Err(e) => {
+                                                println!("Error sending flood request to drone {}: {}", drone_id, e);
+                                            }
+                                        }
+                                        
+                                        
+                                        
+                                        // Send the packet and notify the sc
+                                        // match sender.send(flood_request.clone()) {
+                                        //     Ok(_) => {
+                                        //         if let Err(e) = self.send_sent_to_sc(flood_request) {
+                                        //             println!("Error sending to simulation controller: {}", e);
+                                        //         }
+                                        //     },
+                                        //     Err(e) => {
+                                        //         println!("Error sending flood request to drone {}: {}", drone_id, e);
+                                        //     }
+                                        // }
+                                    }
+                                }
+                            },
                         }
                     }
-                }
+                },
                 recv(self.packet_recv) -> packet => {
+                    // dbg!(packet.clone());
                     if let Ok(packet) = packet {
                         match &packet.pack_type {
                             PacketType::MsgFragment(fragment) => {
@@ -158,7 +226,14 @@ impl ClientTrait for Client {
                                 // handle ack
                             },
                             PacketType::Nack(_) => {
-                                // handle nack
+                                // send received packet to simulation controller
+                                let sc_send_res = self.send_recv_to_sc(packet.clone());
+                                match sc_send_res {
+                                    Ok(_) => {},
+                                    Err(e) => {
+                                        println!("Error: {}", e);
+                                    }
+                                }
                             },
                             PacketType::FloodRequest(_) => {
                                 // handle flood request
@@ -294,6 +369,8 @@ impl ClientTrait for Client {
         }
 
         return Err("node already in topology map".to_string());
+        
+        //TODO: after receving all flood request send request to all servers to get their type
     }
 
     // find the route to the node in the hashmap, and return the path

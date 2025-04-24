@@ -12,6 +12,8 @@ use crossbeam_channel::{Receiver, Sender};
 use chrono::{DateTime, Local, Utc};
 use chrono_tz::Europe::Rome;
 use std::collections::HashMap;
+use std::time::Duration;
+use crate::client::ClientServerCommand::ClientServerCommand;
 
 pub struct MyApp {
     simulation_controller: SimulationController,
@@ -27,6 +29,8 @@ pub struct MyApp {
     client_texture: Option<egui::TextureHandle>,
     server_texture: Option<egui::TextureHandle>,
     drone_texture: Option<egui::TextureHandle>,
+    topology_needs_update: bool,
+    test_executed: bool,
 }
 
 pub struct NetworkTopology {
@@ -62,6 +66,8 @@ impl MyApp {
             client_texture: None,
             server_texture: None,
             drone_texture: None,
+            topology_needs_update: true,
+            test_executed: false,
         }
     }
 
@@ -74,7 +80,7 @@ impl MyApp {
         let message = match event {
             Event::Drone(drone_event) => match drone_event {
                 DroneEvent::PacketSent(packet) => {
-                    format!("[EVENT] Packet Sent by Node {}.",
+                    format!("[EVENT] Packet Sent to Node {}.",
                             packet
                                 .routing_header
                                 .hops
@@ -84,7 +90,7 @@ impl MyApp {
                     )
                 }
                 DroneEvent::PacketDropped(packet) => {
-                    format!("[EVENT] Packet Dropped by Node {}",
+                    format!("[EVENT] Packet Dropped to Node {}",
                             packet
                                 .routing_header
                                 .hops
@@ -107,7 +113,7 @@ impl MyApp {
 
             Event::Client(client_event) => match client_event {
                 ClientEvent::PacketSent(packet) => {
-                    format!("[EVENT] Packet Sent by Client {}",
+                    format!("[EVENT] Packet Sent to Client {}",
                             packet
                                 .routing_header
                                 .hops
@@ -117,7 +123,7 @@ impl MyApp {
                     )
                 }
                 ClientEvent::PacketReceived(packet) => {
-                    format!("[EVENT] Packet Received by Client: {}.", packet
+                    format!("[EVENT] Packet Received to Client: {}.", packet
                         .routing_header
                         .hops
                         .get(packet.routing_header.hop_index)
@@ -170,7 +176,7 @@ impl MyApp {
 
                             // Handle Drone controls
                             if name.starts_with("Drone") {
-                                if let Some((sender, neighbours)) = self.simulation_controller.get_drones().get(&node_id) {
+                                if let Some((sender, neighbours, _)) = self.simulation_controller.get_drones().get(&node_id) {
                                     // Set Packet Drop Rate
                                     ui.horizontal(|ui| {
                                         ui.label("Packet Drop Rate:");
@@ -181,6 +187,7 @@ impl MyApp {
                                             if let Ok(value) = packet_drop_rate.parse::<f32>() {
                                                 if value >= 0.0 && value <= 1.0 {
                                                     let message = format!("[COMMAND] Setting packet drop rate for {} to {}", name, value);
+                                                    // dbg!(self.drone_packet_drop_rates.clone());
                                                     self.logs_vec.push(LogEntry {
                                                         timestamp: formatted_time.clone(),
                                                         message,
@@ -235,7 +242,7 @@ impl MyApp {
 
                                     // Crash Button
                                     if ui.button("Crash").clicked() {
-                                        if let Some((_, neighbors)) = self.simulation_controller.get_drones().get(&node_id) {
+                                        if let Some((_, neighbors, _)) = self.simulation_controller.get_drones().get(&node_id) {
                                             let message = format!("[COMMAND] Crashing {}", name);
                                             self.logs_vec.push(LogEntry {
                                                 timestamp: formatted_time.clone(),
@@ -262,6 +269,50 @@ impl MyApp {
         }
     }
 
+    fn drone_message_forward_test(&self) {
+        println!("start drone_message_forward_test, hops: 11, 21, 31, 32, 42");
+        let msg = Packet::new_fragment(
+            SourceRoutingHeader {
+                hop_index: 0,
+                hops: vec![11, 21, 31, 32, 42],
+            },
+            1,
+            Fragment {
+                fragment_index: 1,
+                total_n_fragments: 1,
+                length: 128,
+                data: [1; 128],
+            },
+        );
+
+        //sends packet to C11
+        if let Some((c11_sender, _)) = self.simulation_controller.get_packet_channels().get(&11) {
+            c11_sender.send(msg.clone()).unwrap();
+        }
+        println!("start drone_message_forward_test");
+    }
+
+    fn drone_error_in_routing_test(&self) {
+        println!("start drone_error_in_routing_test, hops: 11, 21, 31, 32, 41 (41 doesn't exist)");
+        let msg = Packet::new_fragment(
+            SourceRoutingHeader {
+                hop_index: 0,
+                hops: vec![11, 21, 31, 32, 41],
+            },
+            2,
+            Fragment {
+                fragment_index: 1,
+                total_n_fragments: 1,
+                length: 128,
+                data: [1; 128],
+            },
+        );
+
+        //sends packet to C11
+        if let Some((c11_sender, _)) = self.simulation_controller.get_packet_channels().get(&11) {
+            c11_sender.send(msg.clone()).unwrap();
+        }
+    }
 }
 
 impl eframe::App for MyApp{
@@ -469,25 +520,38 @@ impl eframe::App for MyApp{
             for name in popups_to_show {
                 self.show_popup(ctx, &name);
             }
-
+            
             if self.current_screen == Screen::NetworkScreen {
-
-                self.topology.update_topology(
-                    &self.simulation_controller.get_drones(),
-                    &self.simulation_controller.get_clients(),
-                    &self.simulation_controller.get_servers()
-                );
-
+                if self.current_screen == Screen::NetworkScreen && self.topology_needs_update {
+                    self.topology.update_topology(
+                        &self.simulation_controller.get_drones().iter()
+                            .map(|(id, (sender, neighbors, _))| (*id, (sender.clone(), neighbors.clone())))
+                            .collect::<HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)>>(),
+                        &self.simulation_controller.get_clients(),
+                        &self.simulation_controller.get_servers()
+                    );
+                    self.topology_needs_update = false;
+                }
+            
                 let legend_width = 150.0;
                 let legend_height = 100.0;
-
+            
                 egui::Window::new("Legend").anchor(egui::Align2::RIGHT_TOP, [-10.0, 40.0]).collapsible(false).resizable(false).default_width(legend_width).default_height(legend_height)
                     .show(ctx, |ui| {
                         ui.horizontal(|ui| { ui.colored_label(egui::Color32::BLUE, " ● Drone"); });
                         ui.horizontal(|ui| { ui.colored_label(egui::Color32::RED, " ● Client"); });
-                        ui.horizontal(|ui| { ui.colored_label(egui::Color32::GREEN, " ● Server"); });
+                        ui.horizontal(|ui| { ui.colored_label(egui::Color32::GREEN, " ● Server"); }); 
                     });
+                
             }
+        }
+
+        if !self.test_executed {
+            const TIMEOUT: Duration = Duration::from_millis(400);
+            self.drone_message_forward_test();
+            // self.drone_error_in_routing_test();
+            self.test_executed = true;
+            println!("tests done");
         }
     }
 }
@@ -503,7 +567,7 @@ impl NetworkTopology {
     pub fn update_topology(
         &mut self,
         drones: &HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)>,
-        clients: &HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)>,
+        clients: &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)>,
         servers: &HashMap<NodeId, Vec<NodeId>>
     ) {
         self.nodes.clear();
@@ -586,7 +650,33 @@ impl NetworkTopology {
         }
 
         //Add connections
-        for (node_id, (_, neighbors)) in drones.iter().chain(clients.iter()) {
+        // for (node_id, (_, neighbors)) in drones.iter().chain(clients.iter()) {
+        //     if let Some(_pos1) = node_positions.get(node_id) {
+        //         for neighbor_id in neighbors {
+        //             if let Some(_pos2) = node_positions.get(neighbor_id) {
+        //                 let idx1 = self.nodes.iter().position(|n| n.id == node_id.to_string()).unwrap();
+        //                 let idx2 = self.nodes.iter().position(|n| n.id == neighbor_id.to_string()).unwrap();
+        //                 self.connections.push((idx1, idx2));
+        //             }
+        //         }
+        //     }
+        // }
+
+        // Add connections for drones
+        for (node_id, (_, neighbors)) in drones.iter() {
+            if let Some(_pos1) = node_positions.get(node_id) {
+                for neighbor_id in neighbors {
+                    if let Some(_pos2) = node_positions.get(neighbor_id) {
+                        let idx1 = self.nodes.iter().position(|n| n.id == node_id.to_string()).unwrap();
+                        let idx2 = self.nodes.iter().position(|n| n.id == neighbor_id.to_string()).unwrap();
+                        self.connections.push((idx1, idx2));
+                    }
+                }
+            }
+        }
+
+        // Add connections for clients
+        for (node_id, (_, neighbors)) in clients.iter() {
             if let Some(_pos1) = node_positions.get(node_id) {
                 for neighbor_id in neighbors {
                     if let Some(_pos2) = node_positions.get(neighbor_id) {
@@ -658,7 +748,7 @@ impl NetworkTopology {
                 egui::Align2::CENTER_TOP,
                 &node.id,
                 egui::FontId::default(),
-                egui::Color32::WHITE,
+                egui::Color32::RED,
             );
         }
     }
