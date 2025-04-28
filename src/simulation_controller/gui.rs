@@ -22,7 +22,7 @@ pub struct MyApp {
     show_confirmation_dialog: bool,
     allowed_to_close: bool,
     open_popups: HashMap<String, bool>,
-    drone_packet_drop_rates: HashMap<String, String>,
+    slider_temp_pdrs: HashMap<NodeId, f32>,
     sender_to_rem: String,
     sender_to_add: String,
     topology: NetworkTopology,
@@ -59,7 +59,7 @@ impl MyApp {
             show_confirmation_dialog: false,
             allowed_to_close: false,
             open_popups: HashMap::new(),
-            drone_packet_drop_rates: HashMap::new(),
+            slider_temp_pdrs: HashMap::new(),
             sender_to_rem: String::new(),
             sender_to_add: String::new(),
             topology: NetworkTopology::new(),
@@ -75,7 +75,7 @@ impl MyApp {
     fn logs(&mut self, event: Event) {
         let current_time: DateTime<Utc> = Utc::now();
         let local_time = current_time.with_timezone(&Rome);
-        let formatted_time = local_time.format("%d-%m-&Y %H:%M:%S").to_string();
+        let formatted_time = local_time.format("%d-%m-%y %H:%M:%S").to_string();
 
         let message = match event {
             Event::Drone(drone_event) => match drone_event {
@@ -123,7 +123,7 @@ impl MyApp {
                     )
                 }
                 ClientEvent::PacketReceived(packet) => {
-                    format!("[EVENT] Packet Received to Client: {}.", packet
+                    format!("[EVENT] Packet Received by Client: {}.", packet
                         .routing_header
                         .hops
                         .get(packet.routing_header.hop_index)
@@ -176,27 +176,28 @@ impl MyApp {
 
                             // Handle Drone controls
                             if name.starts_with("Drone") {
-                                if let Some((sender, neighbours, _)) = self.simulation_controller.get_drones().get(&node_id) {
-                                    // Set Packet Drop Rate
-                                    ui.horizontal(|ui| {
-                                        ui.label("Packet Drop Rate:");
-                                        let packet_drop_rate = self.drone_packet_drop_rates.entry(name.to_string()).or_insert_with(String::new);
-                                        ui.text_edit_singleline(packet_drop_rate);
+                                if let Some((_, _, drop_rate)) = self.simulation_controller.get_drones().get(&node_id) {
+                                    ui.label(format!("Current PDR: {:.2}%", drop_rate * 100.0)); //todo! non si auto aggiorna porcodio.
 
-                                        if ui.button("Set").clicked() {
-                                            if let Ok(value) = packet_drop_rate.parse::<f32>() {
-                                                if value >= 0.0 && value <= 1.0 {
-                                                    let message = format!("[COMMAND] Setting packet drop rate for {} to {}", name, value);
-                                                    // dbg!(self.drone_packet_drop_rates.clone());
-                                                    self.logs_vec.push(LogEntry {
-                                                        timestamp: formatted_time.clone(),
-                                                        message,
-                                                    });
-                                                    self.simulation_controller.handle_set_packet_drop_rate(node_id, value);
-                                                }
+                                    // Set Packet Drop Rate
+                                    let entry = self.slider_temp_pdrs.entry(node_id).or_insert(*drop_rate);
+
+                                    ui.horizontal(|ui| {
+                                        ui.label("New Drop Rate:");
+                                        ui.add(egui::Slider::new(entry, 0.0..=1.0).text(""));
+
+                                        if ui.button("Update").clicked() {
+                                            if (*entry - drop_rate).abs() > f32::EPSILON {
+                                                self.simulation_controller.handle_set_packet_drop_rate(node_id, *entry);
+
+                                                self.logs_vec.push(LogEntry {
+                                                    timestamp: formatted_time.clone(),
+                                                    message: format!("[COMMAND] Updated PDR of {} to {:.2}%", node_id, *entry * 100.0),
+                                                });
                                             }
                                         }
                                     });
+
 
                                     // Add sender
                                     ui.horizontal(|ui| {
@@ -690,7 +691,7 @@ impl NetworkTopology {
     }
 
     fn draw(
-        &self,
+        &mut self,
         ui: &mut egui::Ui,
         client_tex: Option<&egui::TextureHandle>,
         server_tex: Option<&egui::TextureHandle>,
@@ -718,9 +719,22 @@ impl NetworkTopology {
         }
 
         // **Draw nodes**
-        for node in &self.nodes {
-            let pos = response.rect.min + egui::vec2(node.position.0, node.position.1);
+        for node in &mut self.nodes {
+            let icon_size = egui::Vec2::new(50.0, 50.0);
+            let center_pos = response.rect.min + egui::vec2(node.position.0, node.position.1);
+            let icon_rect = egui::Rect::from_center_size(center_pos, icon_size);
 
+            // Enable click + drag
+            let interact = ui.interact(icon_rect, egui::Id::new(&node.id), egui::Sense::click_and_drag());
+
+            // Handle dragging: update position based on mouse delta
+            if interact.dragged() {
+                let delta = interact.drag_delta();
+                node.position.0 += delta.x;
+                node.position.1 += delta.y;
+            }
+
+            // Choose correct texture
             let texture = if node.is_client {
                 client_tex
             } else if node.is_server {
@@ -729,27 +743,30 @@ impl NetworkTopology {
                 drone_tex
             };
 
-            let rect = egui::Rect::from_center_size(
-                pos,
-                egui::Vec2::new(40.0, 40.0),
-            );
-
+            // Draw icon
             if let Some(texture_handle) = texture {
-                painter.image(
+                ui.painter().image(
                     texture_handle.id(),
-                    rect,
+                    icon_rect,
                     egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                     egui::Color32::WHITE,
                 );
             }
-            
-            painter.text(
-                pos,
-                egui::Align2::CENTER_TOP,
+
+            // Label background + text
+            let label_rect = egui::Rect::from_center_size(
+                center_pos,
+                egui::Vec2::new(32.0, 18.0),
+            );
+            ui.painter().rect_filled(label_rect, 4.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 180));
+            ui.painter().text(
+                center_pos,
+                egui::Align2::CENTER_CENTER,
                 &node.id,
-                egui::FontId::default(),
-                egui::Color32::RED,
+                egui::TextStyle::Monospace.resolve(ui.style()),
+                egui::Color32::WHITE,
             );
         }
+
     }
 }
