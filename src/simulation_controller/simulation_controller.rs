@@ -52,8 +52,9 @@ impl SimulationController {
         }
     }
 
-    pub fn handle_set_packet_drop_rate(&self, drone_sender_id: NodeId, drop_rate: f32) {
-        if let Some((drone_sender, _, _)) = self.drones.get(&drone_sender_id) {
+    pub fn handle_set_packet_drop_rate(&mut self, drone_sender_id: NodeId, drop_rate: f32) {
+        if let Some((drone_sender, _, stored_rate)) = self.drones.get_mut(&drone_sender_id) {
+            *stored_rate = drop_rate;
             drone_sender.send(DroneCommand::SetPacketDropRate(drop_rate)).unwrap();
         }
     }

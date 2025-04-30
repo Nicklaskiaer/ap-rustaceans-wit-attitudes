@@ -22,9 +22,9 @@ pub struct MyApp {
     show_confirmation_dialog: bool,
     allowed_to_close: bool,
     open_popups: HashMap<String, bool>,
+    open_serverlist_popups: HashMap<NodeId, bool>,
     slider_temp_pdrs: HashMap<NodeId, f32>,
-    sender_to_rem: String,
-    sender_to_add: String,
+    drone_text_inputs: HashMap<NodeId, String>,
     topology: NetworkTopology,
     client_texture: Option<egui::TextureHandle>,
     server_texture: Option<egui::TextureHandle>,
@@ -59,9 +59,9 @@ impl MyApp {
             show_confirmation_dialog: false,
             allowed_to_close: false,
             open_popups: HashMap::new(),
+            open_serverlist_popups: HashMap::new(),
             slider_temp_pdrs: HashMap::new(),
-            sender_to_rem: String::new(),
-            sender_to_add: String::new(),
+            drone_text_inputs: HashMap::new(),
             topology: NetworkTopology::new(),
             client_texture: None,
             server_texture: None,
@@ -165,7 +165,7 @@ impl MyApp {
     fn show_popup(&mut self, ctx: &egui::Context, name: &str) {
         let current_time: DateTime<Utc> = Utc::now(); // Get current time
         let italian_time = current_time.with_timezone(&Rome); // Convert to Italian time
-        let formatted_time = italian_time.format("%d-%m-%Y %H:%M:%S").to_string(); // Format as string
+        let formatted_time = italian_time.format("%d-%m-%y %H:%M:%S").to_string(); // Format as string
 
         if let Some(is_open) = self.open_popups.get_mut(name) {
             egui::Window::new(format!("Controls for {}", name)).resizable(true).collapsible(true).open(is_open)
@@ -176,11 +176,22 @@ impl MyApp {
 
                             // Handle Drone controls
                             if name.starts_with("Drone") {
-                                if let Some((_, _, drop_rate)) = self.simulation_controller.get_drones().get(&node_id) {
+                                let drop_rate = self
+                                    .simulation_controller
+                                    .get_drones()
+                                    .get(&node_id)
+                                    .map(|(_, _, rate)| *rate);
+
+                                let input_text = self
+                                    .drone_text_inputs
+                                    .entry(node_id)
+                                    .or_insert_with(String::new);
+
+                                if let Some(drop_rate) = drop_rate{
                                     ui.label(format!("Current PDR: {:.2}%", drop_rate * 100.0)); //todo! non si auto aggiorna porcodio.
 
                                     // Set Packet Drop Rate
-                                    let entry = self.slider_temp_pdrs.entry(node_id).or_insert(*drop_rate);
+                                    let entry = self.slider_temp_pdrs.entry(node_id).or_insert(drop_rate);
 
                                     ui.horizontal(|ui| {
                                         ui.label("New Drop Rate:");
@@ -198,44 +209,42 @@ impl MyApp {
                                         }
                                     });
 
-
-                                    // Add sender
+                                    //Add/Remove Sender
                                     ui.horizontal(|ui| {
-                                        ui.label("Add Sender:");
-                                        ui.text_edit_singleline(&mut self.sender_to_add);
+                                        ui.text_edit_singleline(input_text);
+                                    });
 
-                                        if ui.button("Add").clicked() {
-                                            match self.sender_to_add.parse::<NodeId>() {
+                                    ui.horizontal(|ui| {
+                                        if ui.button("Add Sender").clicked() {
+                                            match input_text.parse::<NodeId>() {
                                                 Ok(node_id) => {
-                                                    //self.simulation_controller.handle_add_sender(node_id); todo
+                                                    // self.simulation_controller.handle_add_sender(...)
 
                                                     let message = format!("[COMMAND] Added sender {} to {}", node_id, name);
                                                     self.logs_vec.push(LogEntry {
                                                         timestamp: formatted_time.clone(),
                                                         message,
                                                     });
+
+                                                    *input_text = String::new(); // clear input after action
                                                 }
                                                 Err(_) => println!("Invalid input! Please enter a valid NodeId."),
                                             }
                                         }
-                                    });
 
-                                    // Remove sender
-                                    ui.horizontal(|ui| {
-                                        ui.label("Remove sender:");
-                                        ui.text_edit_singleline(&mut self.sender_to_rem);
-
-                                        if ui.button("Remove").clicked() {
-                                            match self.sender_to_rem.parse::<NodeId>() {
+                                        if ui.button("Remove Sender").clicked() {
+                                            match input_text.parse::<NodeId>() {
                                                 Ok(node_id) => {
-                                                    //self.simulation_controller.handle_remove_sender(node_id);
+                                                    // self.simulation_controller.handle_remove_sender(...)
 
-                                                    let message = format!("[COMMAND] Removed sender {} to {}", node_id, name);
+                                                    let message = format!("[COMMAND] Removed sender {} from {}", node_id, name);
                                                     self.logs_vec.push(LogEntry {
                                                         timestamp: formatted_time.clone(),
                                                         message,
                                                     });
-                                                },
+
+                                                    *input_text = String::new(); // clear input after action
+                                                }
                                                 Err(_) => println!("Invalid input! Please enter a valid NodeId."),
                                             }
                                         }
@@ -257,7 +266,34 @@ impl MyApp {
 
                             // Handle Client controls
                             else if name.starts_with("Client") {
-                                ui.label("Client controls coming soon...");
+                                let popup_flag = self
+                                    .open_serverlist_popups
+                                    .entry(node_id)
+                                    .or_insert(false);
+
+                                if ui.button("Open Server List").clicked() {
+                                    *popup_flag = true;
+                                }
+
+                                let mut open_popup = *popup_flag;
+
+                                egui::Window::new("Server List")
+                                    .open(&mut open_popup)
+                                    .collapsible(false)
+                                    .resizable(true)
+                                    .show(ctx, |ui| {
+                                        ui.separator();
+                                        ui.label("Available Servers:");
+
+                                        for server in self.simulation_controller.get_server_ids() {
+                                            if ui.button(server).clicked() {
+
+                                            }
+                                        }
+                                    });
+
+                                // sync back visibility state
+                                *popup_flag = open_popup;
                             }
 
                             // Handle Server controls
