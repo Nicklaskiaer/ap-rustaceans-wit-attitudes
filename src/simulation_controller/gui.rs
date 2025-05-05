@@ -490,14 +490,6 @@ impl eframe::App for MyApp{
                                 }
 
                                 ui.separator();
-                                ui.label("Servers:");
-                                for server in &self.simulation_controller.get_server_ids() {
-                                    if ui.button(server).clicked() {
-                                        self.open_popups.insert(server.clone(), true);
-                                    }
-                                }
-
-                                ui.separator();
                                 ui.label("Drones:");
                                 for drones in &self.simulation_controller.get_drone_ids() {
                                     if ui.button(drones).clicked() {
@@ -575,7 +567,7 @@ impl eframe::App for MyApp{
             
                 egui::Window::new("Legend").anchor(egui::Align2::RIGHT_TOP, [-10.0, 40.0]).collapsible(false).resizable(false).default_width(legend_width).default_height(legend_height)
                     .show(ctx, |ui| {
-                        ui.horizontal(|ui| { ui.colored_label(egui::Color32::BLUE, " ● Drone"); });
+                        ui.horizontal(|ui| { ui.colored_label(egui::Color32::WHITE, " ● Drone"); });
                         ui.horizontal(|ui| { ui.colored_label(egui::Color32::RED, " ● Client"); });
                         ui.horizontal(|ui| { ui.colored_label(egui::Color32::GREEN, " ● Server"); }); 
                     });
