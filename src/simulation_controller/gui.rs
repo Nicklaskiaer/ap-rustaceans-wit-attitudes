@@ -6,6 +6,8 @@ use crate::simulation_controller::simulation_controller::SimulationController;
 use crate::simulation_controller::gui_structs::*;
 use crate::client::client::ClientEvent;
 use crate::server::server::ServerEvent;
+use crate::simulation_controller::popup_handler;
+use crate::simulation_controller::logs_handler;
 
 use eframe::egui;
 use crossbeam_channel::{Receiver, Sender};
@@ -16,29 +18,30 @@ use std::time::Duration;
 use crate::client::ClientServerCommand::ClientServerCommand;
 
 pub struct MyApp {
-    simulation_controller: SimulationController,
-    current_screen: Screen,
-    logs_vec: Vec<LogEntry>,
-    show_confirmation_dialog: bool,
-    allowed_to_close: bool,
-    open_popups: HashMap<String, bool>,
-    open_serverlist_popups: HashMap<NodeId, bool>,
-    slider_temp_pdrs: HashMap<NodeId, f32>,
-    drone_text_inputs: HashMap<NodeId, String>,
+    pub(crate) simulation_controller: SimulationController,
+    current_screen: Screen, //Network diagram or Logs Page screen.
+    pub(crate) logs_vec: Vec<LogEntry>, //Vector of logs shown in the Logs page
+    show_confirmation_dialog: bool, //Confirmation dialog box when clicking "X" button of the window.
+    allowed_to_close: bool, //Confirm closing the program window.
+    pub(crate) open_popups: HashMap<String, bool>, //Hashmap of popup windows for clients and drones.
+    pub(crate) open_serverlist_popups: HashMap<NodeId, bool>, //Hashmap of popup windows of list of servers for client.
+    pub(crate) server_action_popups: HashMap<(NodeId, NodeId), bool>, //Hashmap of popup windows for options of clients related to a server.
+    pub(crate) slider_temp_pdrs: HashMap<NodeId, f32>, //Hashmap of displayed PDR's of drones.
+    pub(crate) drone_text_inputs: HashMap<NodeId, String>, //Hashmap of inputs for drones (add/rem sender id).
     topology: NetworkTopology,
-    client_texture: Option<egui::TextureHandle>,
-    server_texture: Option<egui::TextureHandle>,
-    drone_texture: Option<egui::TextureHandle>,
+    client_texture: Option<egui::TextureHandle>, //Icon for clients in diagram.
+    server_texture: Option<egui::TextureHandle>, //Icon for servers in diagram.
+    drone_texture: Option<egui::TextureHandle>,  //Icon for drones in diagram.
     topology_needs_update: bool,
     test_executed: bool,
 }
 
 pub struct NetworkTopology {
-    pub nodes: Vec<Node>,
-    pub connections: Vec<(usize, usize)>,
+    pub nodes: Vec<Node>, //Vector of nodes (clients, servers and drones) in the network topology graph.
+    pub connections: Vec<(usize, usize)>, //Connections (lines) between nodes.
 }
 
-fn load_image(path: &str) -> Result<egui::ColorImage, image::ImageError> {
+fn load_image(path: &str) -> Result<egui::ColorImage, image::ImageError> {  //Function to load Icons of clients, server and drones.
     let image_bytes = std::fs::read(path)?;
     let image = image::load_from_memory(&image_bytes)?;
     let size = [image.width() as usize, image.height() as usize];
@@ -60,6 +63,7 @@ impl MyApp {
             allowed_to_close: false,
             open_popups: HashMap::new(),
             open_serverlist_popups: HashMap::new(),
+            server_action_popups: HashMap::new(),
             slider_temp_pdrs: HashMap::new(),
             drone_text_inputs: HashMap::new(),
             topology: NetworkTopology::new(),
@@ -71,239 +75,12 @@ impl MyApp {
         }
     }
 
-    //Function to log events/commands from drones, clients and server.
-    fn logs(&mut self, event: Event) {
-        let current_time: DateTime<Utc> = Utc::now();
-        let local_time = current_time.with_timezone(&Rome);
-        let formatted_time = local_time.format("%d-%m-%y %H:%M:%S").to_string();
-
-        let message = match event {
-            Event::Drone(drone_event) => match drone_event {
-                DroneEvent::PacketSent(packet) => {
-                    format!("[EVENT] Packet Sent to Node {}.",
-                            packet
-                                .routing_header
-                                .hops
-                                .get(packet.routing_header.hop_index)
-                                .map(|&hop| hop.to_string()) // Convert u8 to String if it exists
-                                .unwrap_or_else(|| "None".to_string()) // Handle the None case
-                    )
-                }
-                DroneEvent::PacketDropped(packet) => {
-                    format!("[EVENT] Packet Dropped to Node {}",
-                            packet
-                                .routing_header
-                                .hops
-                                .get(packet.routing_header.hop_index)
-                                .map(|&hop| hop.to_string()) // Convert u8 to String if it exists
-                                .unwrap_or_else(|| "None".to_string()) // Handle the None case
-                    )
-                }
-                DroneEvent::ControllerShortcut(packet) => {
-                    format!("[EVENT] Packet Routed through Controller by Node {}.",
-                            packet
-                                .routing_header
-                                .hops
-                                .get(packet.routing_header.hop_index)
-                                .map(|&hop| hop.to_string()) // Convert u8 to String if it exists
-                                .unwrap_or_else(|| "None".to_string()) // Handle the None case
-                    )
-                }
-            },
-
-            Event::Client(client_event) => match client_event {
-                ClientEvent::PacketSent(packet) => {
-                    format!("[EVENT] Packet Sent to Client {}",
-                            packet
-                                .routing_header
-                                .hops
-                                .get(packet.routing_header.hop_index)
-                                .map(|&hop| hop.to_string()) // Convert u8 to String if it exists
-                                .unwrap_or_else(|| "None".to_string()) // Handle the None case
-                    )
-                }
-                ClientEvent::PacketReceived(packet) => {
-                    format!("[EVENT] Packet Received by Client: {}.", packet
-                        .routing_header
-                        .hops
-                        .get(packet.routing_header.hop_index)
-                        .map(|&hop| hop.to_string()) // Convert u8 to String if it exists
-                        .unwrap_or_else(|| "None".to_string()) // Handle the None case
-                    )
-                }
-            },
-
-            Event::Server(server_event) => match server_event {
-                ServerEvent::PacketSent(packet) => {
-                    format!("[EVENT] Packet Sent by Server: {}.", packet
-                        .routing_header
-                        .hops
-                        .get(packet.routing_header.hop_index)
-                        .map(|&hop| hop.to_string()) // Convert u8 to String if it exists
-                        .unwrap_or_else(|| "None".to_string()) // Handle the None case
-                    )
-                }
-                ServerEvent::PacketReceived(packet) => {
-                    format!("[EVENT] Packet Received by Server: {}.", packet
-                        .routing_header
-                        .hops
-                        .get(packet.routing_header.hop_index)
-                        .map(|&hop| hop.to_string()) // Convert u8 to String if it exists
-                        .unwrap_or_else(|| "None".to_string()) // Handle the None case
-                    )
-                }
-            },
-        };
-
-        //Add log entry
-        self.logs_vec.push(LogEntry {
-            timestamp: formatted_time,
-            message,
-        });
+    fn show_popup(&mut self, ctx: &egui::Context, name: &str) {
+        popup_handler::show_popup(self, ctx, name);
     }
 
-    fn show_popup(&mut self, ctx: &egui::Context, name: &str) {
-        let current_time: DateTime<Utc> = Utc::now(); // Get current time
-        let italian_time = current_time.with_timezone(&Rome); // Convert to Italian time
-        let formatted_time = italian_time.format("%d-%m-%y %H:%M:%S").to_string(); // Format as string
-
-        if let Some(is_open) = self.open_popups.get_mut(name) {
-            egui::Window::new(format!("Controls for {}", name)).resizable(true).collapsible(true).open(is_open)
-                .show(ctx, |ui| {
-                    // Extract the node ID from the name
-                    if let Some(node_id_str) = name.split_whitespace().nth(1) {
-                        if let Ok(node_id) = node_id_str.parse::<NodeId>() {
-
-                            // Handle Drone controls
-                            if name.starts_with("Drone") {
-                                let drop_rate = self
-                                    .simulation_controller
-                                    .get_drones()
-                                    .get(&node_id)
-                                    .map(|(_, _, rate)| *rate);
-
-                                let input_text = self
-                                    .drone_text_inputs
-                                    .entry(node_id)
-                                    .or_insert_with(String::new);
-
-                                if let Some(drop_rate) = drop_rate{
-                                    ui.label(format!("Current PDR: {:.2}%", drop_rate * 100.0)); //todo! non si auto aggiorna porcodio.
-
-                                    // Set Packet Drop Rate
-                                    let entry = self.slider_temp_pdrs.entry(node_id).or_insert(drop_rate);
-
-                                    ui.horizontal(|ui| {
-                                        ui.label("New Drop Rate:");
-                                        ui.add(egui::Slider::new(entry, 0.0..=1.0).text(""));
-
-                                        if ui.button("Update").clicked() {
-                                            if (*entry - drop_rate).abs() > f32::EPSILON {
-                                                self.simulation_controller.handle_set_packet_drop_rate(node_id, *entry);
-
-                                                self.logs_vec.push(LogEntry {
-                                                    timestamp: formatted_time.clone(),
-                                                    message: format!("[COMMAND] Updated PDR of {} to {:.2}%", node_id, *entry * 100.0),
-                                                });
-                                            }
-                                        }
-                                    });
-
-                                    //Add/Remove Sender
-                                    ui.horizontal(|ui| {
-                                        ui.text_edit_singleline(input_text);
-                                    });
-
-                                    ui.horizontal(|ui| {
-                                        if ui.button("Add Sender").clicked() {
-                                            match input_text.parse::<NodeId>() {
-                                                Ok(node_id) => {
-                                                    // self.simulation_controller.handle_add_sender(...)
-
-                                                    let message = format!("[COMMAND] Added sender {} to {}", node_id, name);
-                                                    self.logs_vec.push(LogEntry {
-                                                        timestamp: formatted_time.clone(),
-                                                        message,
-                                                    });
-
-                                                    *input_text = String::new(); // clear input after action
-                                                }
-                                                Err(_) => println!("Invalid input! Please enter a valid NodeId."),
-                                            }
-                                        }
-
-                                        if ui.button("Remove Sender").clicked() {
-                                            match input_text.parse::<NodeId>() {
-                                                Ok(node_id) => {
-                                                    // self.simulation_controller.handle_remove_sender(...)
-
-                                                    let message = format!("[COMMAND] Removed sender {} from {}", node_id, name);
-                                                    self.logs_vec.push(LogEntry {
-                                                        timestamp: formatted_time.clone(),
-                                                        message,
-                                                    });
-
-                                                    *input_text = String::new(); // clear input after action
-                                                }
-                                                Err(_) => println!("Invalid input! Please enter a valid NodeId."),
-                                            }
-                                        }
-                                    });
-
-                                    // Crash Button
-                                    if ui.button("Crash").clicked() {
-                                        if let Some((_, neighbors, _)) = self.simulation_controller.get_drones().get(&node_id) {
-                                            let message = format!("[COMMAND] Crashing {}", name);
-                                            self.logs_vec.push(LogEntry {
-                                                timestamp: formatted_time.clone(),
-                                                message,
-                                            });
-                                            self.simulation_controller.handle_crash(node_id, neighbors.clone());
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Handle Client controls
-                            else if name.starts_with("Client") {
-                                let popup_flag = self
-                                    .open_serverlist_popups
-                                    .entry(node_id)
-                                    .or_insert(false);
-
-                                if ui.button("Open Server List").clicked() {
-                                    *popup_flag = true;
-                                }
-
-                                let mut open_popup = *popup_flag;
-
-                                egui::Window::new("Server List")
-                                    .open(&mut open_popup)
-                                    .collapsible(false)
-                                    .resizable(true)
-                                    .show(ctx, |ui| {
-                                        ui.separator();
-                                        ui.label("Available Servers:");
-
-                                        for server in self.simulation_controller.get_server_ids() {
-                                            if ui.button(server).clicked() {
-
-                                            }
-                                        }
-                                    });
-
-                                // sync back visibility state
-                                *popup_flag = open_popup;
-                            }
-
-                            // Handle Server controls
-                            else if name.starts_with("Server") {
-                                ui.label("Server controls coming soon...");
-                            }
-                        }
-                    }
-                });
-        }
+    fn logs(&mut self, event: Event){
+        logs_handler::logs(self, event);
     }
 
     fn drone_message_forward_test(&self) {
@@ -354,7 +131,7 @@ impl MyApp {
 
 impl eframe::App for MyApp{
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Poll for new events and log them
+        //Poll for new events and log them.
         while let Ok(event) = self.simulation_controller.get_drone_event_recv().try_recv(){
             match event {
                 DroneEvent::PacketSent(_) => {println!("drone PacketSent")}
@@ -380,6 +157,7 @@ impl eframe::App for MyApp{
             self.logs(Event::Server(event));
         }
 
+        //Load icon textures for nodes in graph.
         if self.client_texture.is_none() {
             if let Ok(image) = load_image("images/client.png") {
                 self.client_texture = Some(ctx.load_texture(
@@ -410,18 +188,18 @@ impl eframe::App for MyApp{
             }
         }
 
-        let current_drone_ids: Vec<String> = self.simulation_controller.get_drone_ids();
+        /*let current_drone_ids: Vec<String> = self.simulation_controller.get_drone_ids();
         self.open_popups.retain(|name, _| {
             let is_drone = name.starts_with("Drone");
             let is_client = name.starts_with("Client");
             let is_server = name.starts_with("Server");
 
             !is_drone || current_drone_ids.contains(name)
-        });
+        });*/
 
         if ctx.input(|i| i.viewport().close_requested()) {
             if self.allowed_to_close {
-                // do nothing
+                //dn.
             } else {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
                 self.show_confirmation_dialog = true;
