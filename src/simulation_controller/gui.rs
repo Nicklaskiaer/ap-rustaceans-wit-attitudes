@@ -6,6 +6,8 @@ use crate::simulation_controller::simulation_controller::SimulationController;
 use crate::simulation_controller::gui_structs::*;
 use crate::client::client::ClientEvent;
 use crate::server::server::ServerEvent;
+use crate::simulation_controller::popup_handler;
+use crate::simulation_controller::logs_handler;
 
 use eframe::egui;
 use crossbeam_channel::{Receiver, Sender};
@@ -16,29 +18,30 @@ use std::time::Duration;
 use crate::client::ClientServerCommand::ClientServerCommand;
 
 pub struct MyApp {
-    simulation_controller: SimulationController,
-    current_screen: Screen,
-    logs_vec: Vec<LogEntry>,
-    show_confirmation_dialog: bool,
-    allowed_to_close: bool,
-    open_popups: HashMap<String, bool>,
-    drone_packet_drop_rates: HashMap<String, String>,
-    sender_to_rem: String,
-    sender_to_add: String,
+    pub(crate) simulation_controller: SimulationController,
+    current_screen: Screen, //Network diagram or Logs Page screen.
+    pub(crate) logs_vec: Vec<LogEntry>, //Vector of logs shown in the Logs page
+    show_confirmation_dialog: bool, //Confirmation dialog box when clicking "X" button of the window.
+    allowed_to_close: bool, //Confirm closing the program window.
+    pub(crate) open_popups: HashMap<String, bool>, //Hashmap of popup windows for clients and drones.
+    pub(crate) open_serverlist_popups: HashMap<NodeId, bool>, //Hashmap of popup windows of list of servers for client.
+    pub(crate) server_action_popups: HashMap<(NodeId, NodeId), bool>, //Hashmap of popup windows for options of clients related to a server.
+    pub(crate) slider_temp_pdrs: HashMap<NodeId, f32>, //Hashmap of displayed PDR's of drones.
+    pub(crate) drone_text_inputs: HashMap<NodeId, String>, //Hashmap of inputs for drones (add/rem sender id).
     topology: NetworkTopology,
-    client_texture: Option<egui::TextureHandle>,
-    server_texture: Option<egui::TextureHandle>,
-    drone_texture: Option<egui::TextureHandle>,
+    client_texture: Option<egui::TextureHandle>, //Icon for clients in diagram.
+    server_texture: Option<egui::TextureHandle>, //Icon for servers in diagram.
+    drone_texture: Option<egui::TextureHandle>,  //Icon for drones in diagram.
     topology_needs_update: bool,
     test_executed: bool,
 }
 
 pub struct NetworkTopology {
-    pub nodes: Vec<Node>,
-    pub connections: Vec<(usize, usize)>,
+    pub nodes: Vec<Node>, //Vector of nodes (clients, servers and drones) in the network topology graph.
+    pub connections: Vec<(usize, usize)>, //Connections (lines) between nodes.
 }
 
-fn load_image(path: &str) -> Result<egui::ColorImage, image::ImageError> {
+fn load_image(path: &str) -> Result<egui::ColorImage, image::ImageError> {  //Function to load Icons of clients, server and drones.
     let image_bytes = std::fs::read(path)?;
     let image = image::load_from_memory(&image_bytes)?;
     let size = [image.width() as usize, image.height() as usize];
@@ -59,9 +62,10 @@ impl MyApp {
             show_confirmation_dialog: false,
             allowed_to_close: false,
             open_popups: HashMap::new(),
-            drone_packet_drop_rates: HashMap::new(),
-            sender_to_rem: String::new(),
-            sender_to_add: String::new(),
+            open_serverlist_popups: HashMap::new(),
+            server_action_popups: HashMap::new(),
+            slider_temp_pdrs: HashMap::new(),
+            drone_text_inputs: HashMap::new(),
             topology: NetworkTopology::new(),
             client_texture: None,
             server_texture: None,
@@ -71,202 +75,12 @@ impl MyApp {
         }
     }
 
-    //Function to log events/commands from drones, clients and server.
-    fn logs(&mut self, event: Event) {
-        let current_time: DateTime<Utc> = Utc::now();
-        let local_time = current_time.with_timezone(&Rome);
-        let formatted_time = local_time.format("%d-%m-&Y %H:%M:%S").to_string();
-
-        let message = match event {
-            Event::Drone(drone_event) => match drone_event {
-                DroneEvent::PacketSent(packet) => {
-                    format!("[EVENT] Packet Sent to Node {}.",
-                            packet
-                                .routing_header
-                                .hops
-                                .get(packet.routing_header.hop_index)
-                                .map(|&hop| hop.to_string()) // Convert u8 to String if it exists
-                                .unwrap_or_else(|| "None".to_string()) // Handle the None case
-                    )
-                }
-                DroneEvent::PacketDropped(packet) => {
-                    format!("[EVENT] Packet Dropped to Node {}",
-                            packet
-                                .routing_header
-                                .hops
-                                .get(packet.routing_header.hop_index)
-                                .map(|&hop| hop.to_string()) // Convert u8 to String if it exists
-                                .unwrap_or_else(|| "None".to_string()) // Handle the None case
-                    )
-                }
-                DroneEvent::ControllerShortcut(packet) => {
-                    format!("[EVENT] Packet Routed through Controller by Node {}.",
-                            packet
-                                .routing_header
-                                .hops
-                                .get(packet.routing_header.hop_index)
-                                .map(|&hop| hop.to_string()) // Convert u8 to String if it exists
-                                .unwrap_or_else(|| "None".to_string()) // Handle the None case
-                    )
-                }
-            },
-
-            Event::Client(client_event) => match client_event {
-                ClientEvent::PacketSent(packet) => {
-                    format!("[EVENT] Packet Sent to Client {}",
-                            packet
-                                .routing_header
-                                .hops
-                                .get(packet.routing_header.hop_index)
-                                .map(|&hop| hop.to_string()) // Convert u8 to String if it exists
-                                .unwrap_or_else(|| "None".to_string()) // Handle the None case
-                    )
-                }
-                ClientEvent::PacketReceived(packet) => {
-                    format!("[EVENT] Packet Received to Client: {}.", packet
-                        .routing_header
-                        .hops
-                        .get(packet.routing_header.hop_index)
-                        .map(|&hop| hop.to_string()) // Convert u8 to String if it exists
-                        .unwrap_or_else(|| "None".to_string()) // Handle the None case
-                    )
-                }
-            },
-
-            Event::Server(server_event) => match server_event {
-                ServerEvent::PacketSent(packet) => {
-                    format!("[EVENT] Packet Sent by Server: {}.", packet
-                        .routing_header
-                        .hops
-                        .get(packet.routing_header.hop_index)
-                        .map(|&hop| hop.to_string()) // Convert u8 to String if it exists
-                        .unwrap_or_else(|| "None".to_string()) // Handle the None case
-                    )
-                }
-                ServerEvent::PacketReceived(packet) => {
-                    format!("[EVENT] Packet Received by Server: {}.", packet
-                        .routing_header
-                        .hops
-                        .get(packet.routing_header.hop_index)
-                        .map(|&hop| hop.to_string()) // Convert u8 to String if it exists
-                        .unwrap_or_else(|| "None".to_string()) // Handle the None case
-                    )
-                }
-            },
-        };
-
-        //Add log entry
-        self.logs_vec.push(LogEntry {
-            timestamp: formatted_time,
-            message,
-        });
+    fn show_popup(&mut self, ctx: &egui::Context, name: &str) {
+        popup_handler::show_popup(self, ctx, name);
     }
 
-    fn show_popup(&mut self, ctx: &egui::Context, name: &str) {
-        let current_time: DateTime<Utc> = Utc::now(); // Get current time
-        let italian_time = current_time.with_timezone(&Rome); // Convert to Italian time
-        let formatted_time = italian_time.format("%d-%m-%Y %H:%M:%S").to_string(); // Format as string
-
-        if let Some(is_open) = self.open_popups.get_mut(name) {
-            egui::Window::new(format!("Controls for {}", name)).resizable(true).collapsible(true).open(is_open)
-                .show(ctx, |ui| {
-                    // Extract the node ID from the name
-                    if let Some(node_id_str) = name.split_whitespace().nth(1) {
-                        if let Ok(node_id) = node_id_str.parse::<NodeId>() {
-
-                            // Handle Drone controls
-                            if name.starts_with("Drone") {
-                                if let Some((sender, neighbours, _)) = self.simulation_controller.get_drones().get(&node_id) {
-                                    // Set Packet Drop Rate
-                                    ui.horizontal(|ui| {
-                                        ui.label("Packet Drop Rate:");
-                                        let packet_drop_rate = self.drone_packet_drop_rates.entry(name.to_string()).or_insert_with(String::new);
-                                        ui.text_edit_singleline(packet_drop_rate);
-
-                                        if ui.button("Set").clicked() {
-                                            if let Ok(value) = packet_drop_rate.parse::<f32>() {
-                                                if value >= 0.0 && value <= 1.0 {
-                                                    let message = format!("[COMMAND] Setting packet drop rate for {} to {}", name, value);
-                                                    // dbg!(self.drone_packet_drop_rates.clone());
-                                                    self.logs_vec.push(LogEntry {
-                                                        timestamp: formatted_time.clone(),
-                                                        message,
-                                                    });
-                                                    self.simulation_controller.handle_set_packet_drop_rate(node_id, value);
-                                                }
-                                            }
-                                        }
-                                    });
-
-                                    // Add sender
-                                    ui.horizontal(|ui| {
-                                        ui.label("Add Sender:");
-                                        ui.text_edit_singleline(&mut self.sender_to_add);
-
-                                        if ui.button("Add").clicked() {
-                                            match self.sender_to_add.parse::<NodeId>() {
-                                                Ok(node_id) => {
-                                                    //self.simulation_controller.handle_add_sender(node_id); todo
-
-                                                    let message = format!("[COMMAND] Added sender {} to {}", node_id, name);
-                                                    self.logs_vec.push(LogEntry {
-                                                        timestamp: formatted_time.clone(),
-                                                        message,
-                                                    });
-                                                }
-                                                Err(_) => println!("Invalid input! Please enter a valid NodeId."),
-                                            }
-                                        }
-                                    });
-
-                                    // Remove sender
-                                    ui.horizontal(|ui| {
-                                        ui.label("Remove sender:");
-                                        ui.text_edit_singleline(&mut self.sender_to_rem);
-
-                                        if ui.button("Remove").clicked() {
-                                            match self.sender_to_rem.parse::<NodeId>() {
-                                                Ok(node_id) => {
-                                                    //self.simulation_controller.handle_remove_sender(node_id);
-
-                                                    let message = format!("[COMMAND] Removed sender {} to {}", node_id, name);
-                                                    self.logs_vec.push(LogEntry {
-                                                        timestamp: formatted_time.clone(),
-                                                        message,
-                                                    });
-                                                },
-                                                Err(_) => println!("Invalid input! Please enter a valid NodeId."),
-                                            }
-                                        }
-                                    });
-
-                                    // Crash Button
-                                    if ui.button("Crash").clicked() {
-                                        if let Some((_, neighbors, _)) = self.simulation_controller.get_drones().get(&node_id) {
-                                            let message = format!("[COMMAND] Crashing {}", name);
-                                            self.logs_vec.push(LogEntry {
-                                                timestamp: formatted_time.clone(),
-                                                message,
-                                            });
-                                            self.simulation_controller.handle_crash(node_id, neighbors.clone());
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Handle Client controls
-                            else if name.starts_with("Client") {
-                                ui.label("Client controls coming soon...");
-                            }
-
-                            // Handle Server controls
-                            else if name.starts_with("Server") {
-                                ui.label("Server controls coming soon...");
-                            }
-                        }
-                    }
-                });
-        }
+    fn logs(&mut self, event: Event){
+        logs_handler::logs(self, event);
     }
 
     fn drone_message_forward_test(&self) {
@@ -317,7 +131,7 @@ impl MyApp {
 
 impl eframe::App for MyApp{
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Poll for new events and log them
+        //Poll for new events and log them.
         while let Ok(event) = self.simulation_controller.get_drone_event_recv().try_recv(){
             match event {
                 DroneEvent::PacketSent(_) => {println!("drone PacketSent")}
@@ -343,6 +157,7 @@ impl eframe::App for MyApp{
             self.logs(Event::Server(event));
         }
 
+        //Load icon textures for nodes in graph.
         if self.client_texture.is_none() {
             if let Ok(image) = load_image("images/client.png") {
                 self.client_texture = Some(ctx.load_texture(
@@ -373,18 +188,18 @@ impl eframe::App for MyApp{
             }
         }
 
-        let current_drone_ids: Vec<String> = self.simulation_controller.get_drone_ids();
+        /*let current_drone_ids: Vec<String> = self.simulation_controller.get_drone_ids();
         self.open_popups.retain(|name, _| {
             let is_drone = name.starts_with("Drone");
             let is_client = name.starts_with("Client");
             let is_server = name.starts_with("Server");
 
             !is_drone || current_drone_ids.contains(name)
-        });
+        });*/
 
         if ctx.input(|i| i.viewport().close_requested()) {
             if self.allowed_to_close {
-                // do nothing
+                //dn.
             } else {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
                 self.show_confirmation_dialog = true;
@@ -449,14 +264,6 @@ impl eframe::App for MyApp{
                                 for client in &self.simulation_controller.get_client_ids() {
                                     if ui.button(client).clicked() {
                                         self.open_popups.insert(client.clone(), true);
-                                    }
-                                }
-
-                                ui.separator();
-                                ui.label("Servers:");
-                                for server in &self.simulation_controller.get_server_ids() {
-                                    if ui.button(server).clicked() {
-                                        self.open_popups.insert(server.clone(), true);
                                     }
                                 }
 
@@ -538,7 +345,7 @@ impl eframe::App for MyApp{
             
                 egui::Window::new("Legend").anchor(egui::Align2::RIGHT_TOP, [-10.0, 40.0]).collapsible(false).resizable(false).default_width(legend_width).default_height(legend_height)
                     .show(ctx, |ui| {
-                        ui.horizontal(|ui| { ui.colored_label(egui::Color32::BLUE, " ● Drone"); });
+                        ui.horizontal(|ui| { ui.colored_label(egui::Color32::WHITE, " ● Drone"); });
                         ui.horizontal(|ui| { ui.colored_label(egui::Color32::RED, " ● Client"); });
                         ui.horizontal(|ui| { ui.colored_label(egui::Color32::GREEN, " ● Server"); }); 
                     });
@@ -690,7 +497,7 @@ impl NetworkTopology {
     }
 
     fn draw(
-        &self,
+        &mut self,
         ui: &mut egui::Ui,
         client_tex: Option<&egui::TextureHandle>,
         server_tex: Option<&egui::TextureHandle>,
@@ -718,9 +525,22 @@ impl NetworkTopology {
         }
 
         // **Draw nodes**
-        for node in &self.nodes {
-            let pos = response.rect.min + egui::vec2(node.position.0, node.position.1);
+        for node in &mut self.nodes {
+            let icon_size = egui::Vec2::new(50.0, 50.0);
+            let center_pos = response.rect.min + egui::vec2(node.position.0, node.position.1);
+            let icon_rect = egui::Rect::from_center_size(center_pos, icon_size);
 
+            // Enable click + drag
+            let interact = ui.interact(icon_rect, egui::Id::new(&node.id), egui::Sense::click_and_drag());
+
+            // Handle dragging: update position based on mouse delta
+            if interact.dragged() {
+                let delta = interact.drag_delta();
+                node.position.0 += delta.x;
+                node.position.1 += delta.y;
+            }
+
+            // Choose correct texture
             let texture = if node.is_client {
                 client_tex
             } else if node.is_server {
@@ -729,27 +549,30 @@ impl NetworkTopology {
                 drone_tex
             };
 
-            let rect = egui::Rect::from_center_size(
-                pos,
-                egui::Vec2::new(40.0, 40.0),
-            );
-
+            // Draw icon
             if let Some(texture_handle) = texture {
-                painter.image(
+                ui.painter().image(
                     texture_handle.id(),
-                    rect,
+                    icon_rect,
                     egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                     egui::Color32::WHITE,
                 );
             }
-            
-            painter.text(
-                pos,
-                egui::Align2::CENTER_TOP,
+
+            // Label background + text
+            let label_rect = egui::Rect::from_center_size(
+                center_pos,
+                egui::Vec2::new(32.0, 18.0),
+            );
+            ui.painter().rect_filled(label_rect, 4.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 180));
+            ui.painter().text(
+                center_pos,
+                egui::Align2::CENTER_CENTER,
                 &node.id,
-                egui::FontId::default(),
-                egui::Color32::RED,
+                egui::TextStyle::Monospace.resolve(ui.style()),
+                egui::Color32::WHITE,
             );
         }
+
     }
 }
