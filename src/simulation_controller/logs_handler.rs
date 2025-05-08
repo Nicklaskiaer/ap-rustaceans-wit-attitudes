@@ -98,3 +98,34 @@ pub fn logs(app: &mut MyApp, event: Event) {
         message,
     });
 }
+
+pub fn filtered_logs(app: &mut MyApp) -> Vec<&LogEntry> {
+    app.logs_vec.iter()
+        .filter(|log| {
+            // Filter by log type
+            let matches_type = match log.message.split_whitespace().next() {
+                Some("[EVENT]") => app.log_filters.show_events,
+                Some("[COMMAND]") => app.log_filters.show_commands,
+                _ => true,
+            };
+
+            // Filter by component
+            let matches_component = if log.message.contains("Drone") {
+                app.log_filters.show_drones
+            } else if log.message.contains("Client") {
+                app.log_filters.show_clients
+            } else if log.message.contains("Server") {
+                app.log_filters.show_servers
+            } else {
+                true
+            };
+
+            // Filter by search text
+            let matches_search = app.log_filters.search_text.is_empty() ||
+                log.message.to_lowercase().contains(&app.log_filters.search_text.to_lowercase()) ||
+                log.timestamp.to_lowercase().contains(&app.log_filters.search_text.to_lowercase());
+
+            matches_type && matches_component && matches_search
+        })
+        .collect()
+}

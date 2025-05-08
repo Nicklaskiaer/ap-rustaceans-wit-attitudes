@@ -26,6 +26,7 @@ pub struct MyApp {
     pub(crate) open_popups: HashMap<String, bool>, //Hashmap of popup windows for clients and drones.
     pub(crate) slider_temp_pdrs: HashMap<NodeId, f32>, //Hashmap of displayed PDR's of drones.
     pub(crate) drone_text_inputs: HashMap<NodeId, String>, //Hashmap of inputs for drones (add/rem sender id).
+    pub log_filters: LogFilters,
     pub client_message_inputs: HashMap<NodeId, String>,
     pub selected_server: HashMap<NodeId, String>,
     pub client_popup_screens: HashMap<NodeId, ClientPopupScreen>,
@@ -65,6 +66,7 @@ impl MyApp {
             open_popups: HashMap::new(),
             slider_temp_pdrs: HashMap::new(),
             drone_text_inputs: HashMap::new(),
+            log_filters: LogFilters::default(),
             client_message_inputs: HashMap::new(),
             selected_server: HashMap::new(),
             client_popup_screens: HashMap::new(),
@@ -289,9 +291,31 @@ impl eframe::App for MyApp{
                     },
 
                     Screen::LogsScreen => {
+                        egui::SidePanel::left("log_filters")
+                            .min_width(140.0)
+                            .max_width(140.0)
+                            .show(ctx, |ui| {
+                                ui.heading("Log Filters");
+                                ui.separator();
+
+                                ui.checkbox(&mut self.log_filters.show_events, "Show Events");
+                                ui.checkbox(&mut self.log_filters.show_commands, "Show Commands");
+
+                                ui.separator();
+
+                                ui.checkbox(&mut self.log_filters.show_drones, "Show Drones");
+                                ui.checkbox(&mut self.log_filters.show_clients, "Show Clients");
+                                ui.checkbox(&mut self.log_filters.show_servers, "Show Servers");
+
+                                ui.separator();
+
+                                ui.label("Search:");
+                                ui.text_edit_singleline(&mut self.log_filters.search_text);
+                            });
+
                         egui::CentralPanel::default().show(ctx, |ui| {
                             egui::ScrollArea::vertical().show(ui, |ui| {
-                                for log in &self.logs_vec {
+                                for log in logs_handler::filtered_logs(self) {
                                     let mut text_parts: Vec<egui::RichText> = Vec::new();
 
                                     if log.message.starts_with("[EVENT]") {
@@ -304,7 +328,6 @@ impl eframe::App for MyApp{
 
                                     let formatted_log = egui::RichText::new(format!("[{}] ", log.timestamp)).color(egui::Color32::WHITE);
 
-                                    // Combine all parts and display the log
                                     ui.horizontal(|ui| {
                                         ui.label(formatted_log);
                                         for part in text_parts {

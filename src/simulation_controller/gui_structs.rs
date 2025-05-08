@@ -14,6 +14,28 @@ pub enum ClientPopupScreen {
     Other,
 }
 
+pub struct LogFilters {
+    pub show_events: bool,
+    pub show_commands: bool,
+    pub show_drones: bool,
+    pub show_clients: bool,
+    pub show_servers: bool,
+    pub search_text: String,
+}
+
+impl Default for LogFilters {
+    fn default() -> Self {
+        Self{
+            show_events: true,
+            show_commands: true,
+            show_drones: true,
+            show_clients: true,
+            show_servers: true,
+            search_text: String::new(),
+        }
+    }
+}
+
 pub struct LogEntry {
     pub(crate) timestamp: String,
     pub(crate) message: String,
