@@ -8,6 +8,12 @@ pub enum Screen {
     LogsScreen,
 }
 
+#[derive(PartialEq)]
+pub enum ClientPopupScreen {
+    Chatroom,
+    Other,
+}
+
 pub struct LogEntry {
     pub(crate) timestamp: String,
     pub(crate) message: String,

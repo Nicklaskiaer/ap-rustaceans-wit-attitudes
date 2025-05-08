@@ -24,10 +24,11 @@ pub struct MyApp {
     show_confirmation_dialog: bool, //Confirmation dialog box when clicking "X" button of the window.
     allowed_to_close: bool, //Confirm closing the program window.
     pub(crate) open_popups: HashMap<String, bool>, //Hashmap of popup windows for clients and drones.
-    pub(crate) open_serverlist_popups: HashMap<NodeId, bool>, //Hashmap of popup windows of list of servers for client.
-    pub(crate) server_action_popups: HashMap<(NodeId, NodeId), bool>, //Hashmap of popup windows for options of clients related to a server.
     pub(crate) slider_temp_pdrs: HashMap<NodeId, f32>, //Hashmap of displayed PDR's of drones.
     pub(crate) drone_text_inputs: HashMap<NodeId, String>, //Hashmap of inputs for drones (add/rem sender id).
+    pub client_message_inputs: HashMap<NodeId, String>,
+    pub selected_server: HashMap<NodeId, String>,
+    pub client_popup_screens: HashMap<NodeId, ClientPopupScreen>,
     topology: NetworkTopology,
     client_texture: Option<egui::TextureHandle>, //Icon for clients in diagram.
     server_texture: Option<egui::TextureHandle>, //Icon for servers in diagram.
@@ -62,10 +63,11 @@ impl MyApp {
             show_confirmation_dialog: false,
             allowed_to_close: false,
             open_popups: HashMap::new(),
-            open_serverlist_popups: HashMap::new(),
-            server_action_popups: HashMap::new(),
             slider_temp_pdrs: HashMap::new(),
             drone_text_inputs: HashMap::new(),
+            client_message_inputs: HashMap::new(),
+            selected_server: HashMap::new(),
+            client_popup_screens: HashMap::new(),
             topology: NetworkTopology::new(),
             client_texture: None,
             server_texture: None,
