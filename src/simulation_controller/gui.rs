@@ -13,7 +13,8 @@ use chrono::{DateTime, Local, Utc};
 use chrono_tz::Europe::Rome;
 use std::collections::HashMap;
 use std::time::Duration;
-use crate::client::ClientServerCommand::ClientServerCommand;
+use crate::client::client_server_command::ClientServerCommand;
+use crate::testing;
 
 pub struct MyApp {
     simulation_controller: SimulationController,
@@ -30,7 +31,6 @@ pub struct MyApp {
     server_texture: Option<egui::TextureHandle>,
     drone_texture: Option<egui::TextureHandle>,
     topology_needs_update: bool,
-    test_executed: bool,
 }
 
 pub struct NetworkTopology {
@@ -67,7 +67,6 @@ impl MyApp {
             server_texture: None,
             drone_texture: None,
             topology_needs_update: true,
-            test_executed: false,
         }
     }
 
@@ -266,51 +265,6 @@ impl MyApp {
                         }
                     }
                 });
-        }
-    }
-
-    fn drone_message_forward_test(&self) {
-        println!("start drone_message_forward_test, hops: 11, 21, 31, 32, 42");
-        let msg = Packet::new_fragment(
-            SourceRoutingHeader {
-                hop_index: 0,
-                hops: vec![11, 21, 31, 32, 42],
-            },
-            1,
-            Fragment {
-                fragment_index: 1,
-                total_n_fragments: 1,
-                length: 128,
-                data: [1; 128],
-            },
-        );
-
-        //sends packet to C11
-        if let Some((c11_sender, _)) = self.simulation_controller.get_packet_channels().get(&11) {
-            c11_sender.send(msg.clone()).unwrap();
-        }
-        println!("start drone_message_forward_test");
-    }
-
-    fn drone_error_in_routing_test(&self) {
-        println!("start drone_error_in_routing_test, hops: 11, 21, 31, 32, 41 (41 doesn't exist)");
-        let msg = Packet::new_fragment(
-            SourceRoutingHeader {
-                hop_index: 0,
-                hops: vec![11, 21, 31, 32, 41],
-            },
-            2,
-            Fragment {
-                fragment_index: 1,
-                total_n_fragments: 1,
-                length: 128,
-                data: [1; 128],
-            },
-        );
-
-        //sends packet to C11
-        if let Some((c11_sender, _)) = self.simulation_controller.get_packet_channels().get(&11) {
-            c11_sender.send(msg.clone()).unwrap();
         }
     }
 }
@@ -545,14 +499,6 @@ impl eframe::App for MyApp{
                 
             }
         }
-
-        if !self.test_executed {
-            const TIMEOUT: Duration = Duration::from_millis(400);
-            self.drone_message_forward_test();
-            // self.drone_error_in_routing_test();
-            self.test_executed = true;
-            println!("tests done");
-        }
     }
 }
 
@@ -568,7 +514,7 @@ impl NetworkTopology {
         &mut self,
         drones: &HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)>,
         clients: &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)>,
-        servers: &HashMap<NodeId, Vec<NodeId>>
+        servers: &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)>
     ) {
         self.nodes.clear();
         self.connections.clear();
@@ -625,7 +571,7 @@ impl NetworkTopology {
         }
 
         // Assign positions to servers
-        for (server_id, neighbors) in servers {
+        for (server_id, (_, neighbors)) in servers {
             if let Some(neighbor_id) = neighbors.first() {
                 if let Some(&(dx, dy)) = node_positions.get(neighbor_id) {
                     let direction = ((dx - center.0), (dy - center.1));

@@ -5,14 +5,14 @@ use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
 use crate::client::client::ClientEvent;
-use crate::client::ClientServerCommand::ClientServerCommand;
+use crate::client::client_server_command::ClientServerCommand;
 use crate::server::server::ServerEvent;
 use crate::simulation_controller::gui::MyApp;
 
 pub struct SimulationController {
     drones: HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>, f32)>,
     clients: HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)>,
-    servers: HashMap<NodeId, Vec<NodeId>>,
+    servers: HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)>,
     drone_event_recv: Receiver<DroneEvent>,
     client_event_recv: Receiver<ClientEvent>,
     server_event_recv: Receiver<ServerEvent>,
@@ -23,7 +23,7 @@ impl SimulationController {
     pub fn new(
         drones: HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>, f32)>,
         clients: HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)>,
-        servers: HashMap<NodeId, Vec<NodeId>>,
+        servers: HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)>,
         drone_event_recv: Receiver<DroneEvent>,
         client_event_recv: Receiver<ClientEvent>,
         server_event_recv: Receiver<ServerEvent>,
@@ -62,7 +62,7 @@ impl SimulationController {
         let crashed_drone_sender = self.drones.get(&drone_sender_id).map(|(sender, _, _)| sender.clone());
 
         if let Some((_sender, _, _)) = self.drones.remove(&drone_sender_id) {
-            println!("Removing {} from network...", drone_sender_id);
+            // println!("Removing {} from network...", drone_sender_id);
         }
 
         for neighbor in neighbors {
@@ -113,7 +113,7 @@ impl SimulationController {
         &self.clients
     }
 
-    pub fn get_servers(&self) -> &HashMap<NodeId, Vec<NodeId>> {
+    pub fn get_servers(&self) -> &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)> {
         &self.servers
     }
 
@@ -131,10 +131,6 @@ impl SimulationController {
 
     pub fn get_packet_channels(&self) -> &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)> {&self.packet_channels}
 
-    pub fn send_client_registration_request(&self) {
-        
-    }
-
     pub fn start_flood_request_for_all(&self){
         for (_, (sender,_)) in &self.clients{
             sender.send(ClientServerCommand::StartFloodRequest).unwrap();
@@ -143,6 +139,15 @@ impl SimulationController {
 }
 
 pub fn simulation_controller_main(sc: SimulationController) -> Result<(), eframe::Error> {
+    // Setup Client and Server
+    sc.start_flood_request_for_all();
+
+    #[cfg(feature = "testing")]
+    {
+        crate::testing::run_tests(&sc);
+    }
+
+    // start GUI
     let native_options = eframe::NativeOptions::default();
     let ctx = egui::Context::default();
     eframe::run_native(
