@@ -1,23 +1,39 @@
+#[cfg(feature = "debug")]
+use crate::debug;
+
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::collections::HashSet;
 use std::{fs, thread};
 use std::collections::HashMap;
+use std::time::Duration;
+use crossbeam_channel::internal::SelectHandle;
+use egui::Order::Debug;
 use wg_2024::config::Config;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
-use wg_2024::network::{NodeId};
+use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{Packet};
 
-use crate::client::ClientServerCommand::ClientServerCommand;
+use crate::client::client_server_command::ClientServerCommand;
 use crate::simulation_controller::simulation_controller::{simulation_controller_main, SimulationController};
 use crate::types::my_drone::MyDrone;
 use crate::client::client::{Client, ClientEvent, ClientTrait};
-use crate::server::server::{ContentServer, Server, ServerEvent};
+use crate::server::communication_server::{CommunicationServer1, ServerTrait};
+use crate::server::server::{CommunicationServer, ContentServer, Server, ServerEvent};
 
 pub fn main() {
     // let current_path = env::current_dir().expect("Unable to get current directory");
     // println!("Current path: {:?}", current_path);
-    let config = parse_config("src/config.toml");
+    let config;
+    #[cfg(feature = "testing")]
+    {
+        config = parse_config("src/test_config.toml");
+    }
+
+    #[cfg(not(feature = "testing"))]
+    {
+        config = parse_config("src/config.toml");
+    }
 
     // check for errors in the toml
     check_toml_validity(&config);
@@ -106,12 +122,12 @@ pub fn main() {
     
     // INITIALIZE SERVERS
     let (node_event_send_server, node_event_recv_server): (Sender<ServerEvent>, Receiver<ServerEvent>) = unbounded();
-    let mut controller_servers: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+    let mut controller_servers = HashMap::new();
+    let mut server_count = 0;
     for server in config.server.into_iter() {
-
         // controller
         let (controller_server_send, controller_server_recv): (Sender<ClientServerCommand>, Receiver<ClientServerCommand>) = unbounded();
-        controller_servers.insert(server.id, server.connected_drone_ids.clone());
+        controller_servers.insert(server.id, (controller_server_send, server.connected_drone_ids.clone()));
         let node_event_send_server = node_event_send_server.clone();
 
         // packet
@@ -125,21 +141,53 @@ pub fn main() {
         // spawn
         let (assembler_send, assembler_recv) = unbounded();
         thread::spawn(move || {
-            let mut server = ContentServer::new(
+            let mut server = CommunicationServer::new(
                 server.id,
                 server.connected_drone_ids,
                 node_event_send_server,
                 controller_server_recv,
                 packet_send,
-                packet_recv,
+                packet_recv.clone(),
                 vec![],
                 HashSet::new(),
                 assembler_send,
                 assembler_recv
             );
-
             server.run();
+
+            // Alternate between ContentServer and CommunicationServer
+            // if server_count % 2 == 0 {
+            //     let mut server = CommunicationServer::new(
+            //         server.id,
+            //         server.connected_drone_ids,
+            //         node_event_send_server,
+            //         controller_server_recv,
+            //         packet_send,
+            //         packet_recv,
+            //         vec![],
+            //         HashSet::new(),
+            //         assembler_send,
+            //         assembler_recv
+            //     );
+            //     server.run();
+            // } else {
+            //     let mut server = CommunicationServer::new(
+            //         server.id,
+            //         server.connected_drone_ids,
+            //         node_event_send_server,
+            //         controller_server_recv,
+            //         packet_send,
+            //         packet_recv,
+            //         vec![],
+            //         HashSet::new(),
+            //         assembler_send,
+            //         assembler_recv
+            //     );
+            //     server.run();
+            // }
         });
+
+        server_count += 1;
     }
     
     // INITIALIZE SIMULATION CONTROLLER AND GUI
