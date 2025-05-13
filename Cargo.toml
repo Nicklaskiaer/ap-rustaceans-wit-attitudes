@@ -15,3 +15,8 @@ eframe = "0.31.1"
 chrono = "0.4"
 chrono-tz = "0.10"
 image = "0.24"
+
+[features]
+debug = [] # cargo run --features debug
+testing = [] # cargo run --features testing
+# both cargo run --features "debug testing"

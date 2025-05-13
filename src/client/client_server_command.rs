@@ -5,9 +5,11 @@ use crossbeam_channel::Sender;
 
 pub enum ClientServerCommand {
     StartFloodRequest,
-    RegistrationRequest(NodeId),
-    RequestServerList(NodeId), //list of all commenced clients
-    RequestFileList(NodeId),
+    // RegistrationRequest(NodeId),
+    // RequestServerType(NodeId), // client request the server type
+    // ResponseServerType(NodeId), // server send its server type
+    // RequestServerList(NodeId), // client request the server a list of all connected clients
+    // RequestFileList(NodeId),
     SendChatMessage(NodeId, usize, String),
 
     // Drone commands

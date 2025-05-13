@@ -1,2 +1,2 @@
 pub mod client;
-pub mod ClientServerCommand;
+pub mod client_server_command;
