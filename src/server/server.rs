@@ -586,16 +586,21 @@ impl CommunicationServer {
                 debug!("Server: {:?} received a MsgFragment {:?}", self.id, _fragment);
 
                 // Send to assembler
-                if let Ok(_) = self.send_fragment_to_assembler(packet.clone()) {
-                    // Check if this is the last/only fragment
-                    if _fragment.fragment_index == _fragment.total_n_fragments - 1 {
-                        // Try to process after assembly is complete
-                        if let Ok(data) = self.assembler_recv.try_recv() {
-                            if let Ok(str_data) = std::str::from_utf8(&data) {
-                                debug!("Assembled message: {}", str_data);
-                                println!("Server {} received assembled message: {}", self.id, str_data);
+                match self.send_fragment_to_assembler(packet.clone()) {
+                    Ok(m) => {
+                        debug!("Server: {:?} send a MsgFragment to the assembler: {:?}", self.id, m);
+                        // Check if this is the last/only fragment
+                        if _fragment.fragment_index == _fragment.total_n_fragments - 1 {
+                            // Try to process after assembly is complete
+                            if let Ok(data) = self.assembler_recv.try_recv() {
+                                if let Ok(str_data) = std::str::from_utf8(&data) {
+                                    debug!("Server {:?} received assembled message: {:?}", self.id, str_data);
+                                }
                             }
                         }
+                    }
+                    Err(e) => {
+                        debug!("Server: {:?} couldn't assemble the message: {:?}", self.id, e);
                     }
                 }
 
@@ -628,7 +633,7 @@ impl CommunicationServer {
                 // handle nack
             },
             PacketType::FloodRequest(_flood_request) => {
-                debug!("Server: {:?} received a FloodResponse {:?}", self.id, _flood_request);
+                debug!("Server: {:?} received a FloodRequest {:?}", self.id, _flood_request);
 
                 // send a flood response
                 // add node to the path trace
@@ -636,7 +641,7 @@ impl CommunicationServer {
                 flood_request.increment(self.id, NodeType::Drone);
                 // generate a flood response
                 let mut flood_response_packet = flood_request.generate_response(packet.session_id);
-                debug!("Server: {:?} is generating a flood_request: {:?}", self.id, flood_response_packet);
+                debug!("Server: {:?} is generating a FloodResponse: {:?}", self.id, flood_response_packet);
                 flood_response_packet.routing_header.increase_hop_index();
 
                 // Try to send packet

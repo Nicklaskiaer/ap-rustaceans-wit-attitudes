@@ -151,48 +151,119 @@ impl Client {
             // ClientServerCommand::RequestFileList(node_id) => {
             //     // Handle file list request
             // },
+            // ClientServerCommand::SendChatMessage(node_id, id, msg) => {
+            //     debug!("Client: {:?} sending chat message to {:?}: {}", self.id, node_id, msg);
+            //
+            //     // Create a session ID
+            //     // let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+            //     // let session_id = timestamp ^ random::<u64>();
+            //     let session_id = id as u64;
+            //
+            //     // Compute path to the destination node
+            //     match self.compute_path_to_node(node_id) {
+            //         Ok(path) => {
+            //             debug!("Client: {:?} found path to {:?}: {:?}", self.id, node_id, path);
+            //
+            //             // create packet
+            //             let target_node_id = 1;
+            //             let source_routing_header = SourceRoutingHeader::new(path, target_node_id);
+            //             let packet = Packet::new_fragment(
+            //                 source_routing_header,
+            //                 session_id,
+            //                 Fragment::new(0, 1, [0; 128]), // example data,
+            //             );
+            //
+            //             // Send the message
+            //             if let Some(sender) = self.packet_send.get(&node_id) {
+            //                 match sender.send(packet) {
+            //                     Ok(_) => {
+            //                         debug!("Client: {:?} sent chat message to {:?}", self.id, node_id);
+            //                     },
+            //                     Err(e) => {
+            //                         debug!("ERROR: Client: {:?} failed to send chat message to {:?}: {:?}", self.id, node_id, e);
+            //                     }
+            //                 }
+            //             }
+            //         },
+            //         Err(e) => {
+            //             debug!("ERROR: Client: {:?} could not compute path to {:?}: {}", self.id, node_id, e);
+            //         }
+            //     }
+            // },
             ClientServerCommand::SendChatMessage(node_id, id, msg) => {
                 debug!("Client: {:?} sending chat message to {:?}: {}", self.id, node_id, msg);
 
-                // Create a session ID using the current timestamp and message ID
-                let timestamp = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_millis() as u64;
-                let session_id = timestamp ^ (id as u64);
+                // Create a session ID
+                // let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+                // let session_id = timestamp ^ random::<u64>();
+                let session_id = id as u64;
 
-                // Create a TextRequest message
-                // Note: In a real implementation, we would serialize the chat message
-                // properly, but for this example we'll use TextRequest
-                let message = Message {
-                    source_id: self.id,
-                    session_id,
-                    content: TextRequest::Text(id as u64), // Ideally we'd encode the message
-                };
+                // Convert message to bytes
+                let msg_bytes = msg.into_bytes();
+
+                // Calculate how many fragments needed
+                let total_fragments = (msg_bytes.len() + 127) / 128;
 
                 // Compute path to the destination node
                 match self.compute_path_to_node(node_id) {
                     Ok(path) => {
                         debug!("Client: {:?} found path to {:?}: {:?}", self.id, node_id, path);
 
-                        // Send the message
-                        match self.send_response(message) {
-                            Ok(packet) => {
-                                debug!("Client: {:?} sent chat message to {:?}", self.id, node_id);
-                            },
-                            Err(e) => {
-                                debug!("ERROR: Client: {:?} failed to send chat message to {:?}: {:?}", 
-                                  self.id, node_id, e);
+                        // create source_routing_header
+                        let target_node_id = 1;
+                        let source_routing_header = SourceRoutingHeader::new(path.clone(), target_node_id);
+
+                        // Split message into fragments and send
+                        for i in 0..total_fragments {
+                            let start = i * 128;
+                            let end = std::cmp::min((i + 1) * 128, msg_bytes.len());
+                            let chunk_size = end - start;
+
+                            // Create data array with 128 bytes, fill with message data
+                            let mut data = [0u8; 128];
+                            data[..chunk_size].copy_from_slice(&msg_bytes[start..end]);
+
+                            // Create fragment
+                            let fragment = Fragment {
+                                fragment_index: i as u64,
+                                total_n_fragments: total_fragments as u64,
+                                length: chunk_size as u8,
+                                data,
+                            };
+
+                            // Create packet
+                            let packet = Packet::new_fragment(
+                                source_routing_header.clone(),
+                                session_id,
+                                fragment,
+                            );
+
+                            // Send the packet to the first hop in the path
+                            if let Some(sender) = self.packet_send.get(&path[1]) {
+                                match sender.send(packet.clone()) {
+                                    Ok(_) => {
+                                        // Notify simulation controller
+                                        if let Err(e) = self.send_sent_to_sc(packet.clone()) {
+                                            debug!("ERROR: Failed to notify SC about sent packet: {:?}", e);
+                                        }
+                                        debug!("Client: {:?} sent fragment {} of message to {:?}",
+                                  self.id, i, node_id);
+                                    },
+                                    Err(e) => {
+                                        debug!("ERROR: Client: {:?} failed to send fragment {} to {:?}: {:?}",
+                                  self.id, i, node_id, e);
+                                    }
+                                }
+                            } else {
+                                debug!("ERROR: Client: {:?} no sender for node {:?}", self.id, path[1]);
                             }
-                        };
+                        }
                     },
                     Err(e) => {
-                        debug!("ERROR: Client: {:?} could not compute path to {:?}: {}", 
-                          self.id, node_id, e);
+                        debug!("ERROR: Client: {:?} could not compute path to {:?}: {}", self.id, node_id, e);
                     }
                 }
             },
-
             ClientServerCommand::StartFloodRequest => {
                 debug!("Client: {:?} received StartFloodRequest command", self.id);
 
@@ -251,35 +322,26 @@ impl Client {
             PacketType::FloodResponse(_flood_response) => {
                 debug!("Client: {:?} received a FloodResponse {:?}", self.id, _flood_response);
 
-                // Extract path from flood response and add current node
                 let mut new_path: Vec<u8> = _flood_response.path_trace.iter().map(|(id, _)| *id).collect();
-                new_path.push(self.id);
+                let target_node_id: u8 = new_path.last().unwrap().clone();
 
-                // Get sender node ID from packet routing header
-                let sender_node_id = packet.routing_header.hops[packet.routing_header.hop_index];
-
-                // Update topology map based on new path information
-                let update_result = if !self.topology_map.contains(&(sender_node_id, new_path.clone())) {
+                // Update topology map with target as the key
+                if !self.topology_map.contains(&(target_node_id, new_path.clone())) {
                     // Case 1: New node entry
-                    self.topology_map.insert((sender_node_id, new_path));
-                    "new node added to topology map"
+                    self.topology_map.insert((target_node_id, new_path));
                 } else {
-                    // Case 2: Existing node - check if new path has better information
-                    if let Some((_, existing_path)) = self.topology_map.iter().find(|(id, _)| *id == sender_node_id) {
+                    // Case 2: Existing node - check if new path is better
+                    if let Some((_, existing_path)) = self.topology_map.iter().find(|(id, _)| *id == target_node_id) {
                         if _flood_response.path_trace.len() > existing_path.len() {
                             // Replace with better path
-                            self.topology_map.remove(&(sender_node_id, existing_path.clone()));
-                            self.topology_map.insert((sender_node_id, new_path));
-                            "node found in topology map but updated with better path"
-                        } else {
-                            "node already in topology map with equal or better path"
+                            self.topology_map.remove(&(target_node_id, existing_path.clone()));
+                            self.topology_map.insert((target_node_id, new_path));
+                            debug!("Client: {:?} received a FloodResponse {:?}", self.id, _flood_response);
                         }
-                    } else {
-                        "inconsistent topology map state"
                     }
                 };
 
-                debug!("Client: {:?} - {}: {:?}", self.id, update_result, self.topology_map);
+                debug!("Client: {:?}, updated topology_map: {:?}", self.id, self.topology_map);
 
                 //TODO: after receiving all flood request send request to all servers to get their type
             },
@@ -347,22 +409,15 @@ impl Client {
 
         return Ok("Sent fragment to assembler".to_string());
     }
-    fn send_response(&mut self, message: Message<TextRequest>) -> Result<Packet, SendError<Packet>> {
-        // compute the hops
-        let mut hops = Vec::new();
-        if let Ok(computed_hops) = self.compute_path_to_node(message.source_id) {
-            hops = computed_hops;
-        }
-
-        // create source header
-        let source_routing_header = SourceRoutingHeader::new(hops, 1);
-
+    fn send_response(&mut self, message: Message<TextRequest>, path: Vec<NodeId>) -> Result<Packet, SendError<Packet>> {
+        // create packet
+        let target_node_id = 1;
+        let source_routing_header = SourceRoutingHeader::new(path, target_node_id);
         let packet = Packet::new_fragment(
             source_routing_header,
             message.session_id,
             Fragment::new(0, 1, [0; 128]), // example data
         );
-        debug!("assssssssssssssssss {:?}", packet);
 
         // send packet
         if let Some(sender) = self.packet_send.get(&message.source_id) {
@@ -386,36 +441,18 @@ impl Client {
         }
     }
     // find the route to the node in the hashmap, and return the path
-    // fn compute_path_to_node(&self, target_node_id: NodeId) -> Result<Vec<NodeId>, String> {
-    //     debug!("compute_path_to_node, target_node_id: {:?}", target_node_id);
-    //     debug!("compute_path_to_node, self.topology_map): {:?}", self.topology_map);
-    //     
-    //     let path = self
-    //         .topology_map
-    //         .iter()
-    //         .find(|(id, _)| *id == target_node_id);
-    // 
-    //     match path {
-    //         Some((_, path)) => Ok(path.clone()),
-    //         None => Err("Path not found".to_string()),
-    //     }
-    // }
-
     fn compute_path_to_node(&self, target_node_id: NodeId) -> Result<Vec<NodeId>, String> {
-        debug!("compute_path_to_node, target_node_id: {:?}", target_node_id);
-        debug!("compute_path_to_node, self.topology_map): {:?}", self.topology_map);
+        // debug!("compute_path_to_node, target_node_id: {:?}", target_node_id);
+        // debug!("compute_path_to_node, self.topology_map): {:?}", self.topology_map);
 
-        // Find paths that contain the target node
-        for (_, path) in &self.topology_map {
-            // Check if the target node is in this path
-            if let Some(pos) = path.iter().position(|&id| id == target_node_id) {
-                // Found the target node in this path
-                // Extract the subpath from the beginning up to and including the target node
-                return Ok(path[0..=pos].to_vec());
-            }
+        let path = self
+            .topology_map
+            .iter()
+            .find(|(id, _)| *id == target_node_id);
+
+        match path {
+            Some((_, path)) => Ok(path.clone()),
+            None => Err("Path not found".to_string()),
         }
-
-        // No path found containing the target node
-        Err("Path not found".to_string())
     }
 }
