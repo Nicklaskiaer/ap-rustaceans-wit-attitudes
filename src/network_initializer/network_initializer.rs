@@ -18,8 +18,9 @@ use crate::client::client_server_command::ClientServerCommand;
 use crate::simulation_controller::simulation_controller::{simulation_controller_main, SimulationController};
 use crate::types::my_drone::MyDrone;
 use crate::client::client::{Client, ClientEvent, ClientTrait};
-use crate::server::communication_server::{CommunicationServer1, ServerTrait};
-use crate::server::server::{CommunicationServer, ContentServer, Server, ServerEvent};
+use crate::server::server::{Server, ServerEvent};
+use crate::server::communication_server::{CommunicationServer};
+use crate::server::content_server::{ContentServer};
 
 pub fn main() {
     // let current_path = env::current_dir().expect("Unable to get current directory");
@@ -89,7 +90,7 @@ pub fn main() {
 
         // controller
         let (controller_client_send, controller_client_recv): (Sender<ClientServerCommand>, Receiver<ClientServerCommand>) = unbounded();
-        controller_clients.insert(client.id, (controller_client_send, client.connected_drone_ids.clone()));
+        controller_clients.insert(client.id, (controller_client_send.clone(), client.connected_drone_ids.clone()));
         let node_event_send_client = node_event_send_client.clone();
 
         // packet
@@ -107,6 +108,7 @@ pub fn main() {
                 client.id,
                 client.connected_drone_ids,
                 node_event_send_client,
+                controller_client_send,
                 controller_client_recv,
                 packet_send,
                 packet_recv,
@@ -142,7 +144,7 @@ pub fn main() {
         // spawn
         let (assembler_send, assembler_recv) = unbounded();
         thread::spawn(move || {
-            let mut server = CommunicationServer::new(
+            let mut server = ContentServer::new(
                 server.id,
                 server.connected_drone_ids,
                 node_event_send_server,
