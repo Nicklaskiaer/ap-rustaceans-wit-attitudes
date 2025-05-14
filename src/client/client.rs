@@ -15,11 +15,12 @@ use rand::{Rng, thread_rng, random};
 use crate::assembler::assembler::Assembler;
 use crate::client::client_server_command::ClientServerCommand;
 use crate::server::message::{Message, TextRequest};
-use crate::server::server::ServerEvent;
+use crate::server::server::{ServerEvent, ServerType};
 
 pub struct Client {
     id: NodeId,
     topology_map: HashSet<(NodeId, Vec<NodeId>)>,
+    server_type_map: HashMap<NodeId, ServerType>,
     connected_drone_ids: Vec<NodeId>,
     controller_send: Sender<ClientEvent>,
     controller_recv: Receiver<ClientServerCommand>,
@@ -45,6 +46,7 @@ pub trait ClientTrait {
         packet_recv: Receiver<Packet>,
         assemblers: Vec<Assembler>,
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
+        server_type_map: HashMap<NodeId, ServerType>,
         assembler_send: Sender<Vec<u8>>,
         assembler_recv: Receiver<Vec<u8>>,
     ) -> Self;
@@ -90,6 +92,7 @@ impl ClientTrait for Client {
         packet_recv: Receiver<Packet>,
         assemblers: Vec<Assembler>,
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
+        server_type_map: HashMap<NodeId, ServerType>,
         assembler_send: Sender<Vec<u8>>,
         assembler_recv: Receiver<Vec<u8>>,
     ) -> Self {
@@ -102,6 +105,7 @@ impl ClientTrait for Client {
             packet_send,
             assemblers,
             topology_map,
+            server_type_map,
             assembler_send,
             assembler_recv,
         }
@@ -329,6 +333,7 @@ impl Client {
                 if !self.topology_map.contains(&(target_node_id, new_path.clone())) {
                     // Case 1: New node entry
                     self.topology_map.insert((target_node_id, new_path));
+                    self.add_server_type(target_node_id);
                 } else {
                     // Case 2: Existing node - check if new path is better
                     if let Some((_, existing_path)) = self.topology_map.iter().find(|(id, _)| *id == target_node_id) {
@@ -342,8 +347,6 @@ impl Client {
                 };
 
                 debug!("Client: {:?}, updated topology_map: {:?}", self.id, self.topology_map);
-
-                //TODO: after receiving all flood request send request to all servers to get their type
             },
             PacketType::Ack(_ack) => {
                 debug!("Client: {:?} received a Ack {:?}", self.id, _ack);
@@ -453,6 +456,16 @@ impl Client {
         match path {
             Some((_, path)) => Ok(path.clone()),
             None => Err("Path not found".to_string()),
+        }
+    }
+
+    fn add_server_type(&mut self, server_id: NodeId) {
+        if !self.server_type_map.contains_key(&server_id){
+            //TODO: send request type message
+            let server_type = ServerType::Content;
+            
+            debug!("");
+            self.server_type_map.insert(server_id, server_type);
         }
     }
 }

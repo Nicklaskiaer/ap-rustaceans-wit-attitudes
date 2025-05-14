@@ -112,6 +112,7 @@ pub fn main() {
                 packet_recv,
                 vec![],
                 HashSet::new(),
+                HashMap::new(),
                 assembler_send,
                 assembler_recv
             );
