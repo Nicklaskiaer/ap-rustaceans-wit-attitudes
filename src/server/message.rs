@@ -1,8 +1,10 @@
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use wg_2024::network::NodeId;
+use crate::server::server::{ServerEvent, ServerType};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(bound(deserialize = "M: DeserializeOwned"))]
 pub struct Message<M: DroneSend> {
     pub source_id: NodeId,
     pub session_id: u64,
@@ -171,5 +173,45 @@ impl Response for ChatResponse {
             ChatResponse::MessageFrom { .. } => "MessageFrom".to_string(),
             ChatResponse::MessageSent => "MessageSent".to_string(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ServerTypeRequest {
+    GetServerType,
+}
+
+impl DroneSend for ServerTypeRequest {
+    fn stringify(&self) -> String {
+        serde_json::to_string(self).unwrap()
+    }
+    fn from_string(raw: String) -> Result<Self, String> {
+        serde_json::from_str(raw.as_str()).map_err(|e| e.to_string())
+    }
+}
+
+impl Request for ServerTypeRequest {
+    fn request_type(&self) -> String {
+        "GetServerType".to_string()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ServerTypeResponse {
+    ServerType(ServerType),
+}
+
+impl DroneSend for ServerTypeResponse {
+    fn stringify(&self) -> String {
+        serde_json::to_string(self).unwrap()
+    }
+    fn from_string(raw: String) -> Result<Self, String> {
+        serde_json::from_str(raw.as_str()).map_err(|e| e.to_string())
+    }
+}
+
+impl Response for ServerTypeResponse {
+    fn response_type(&self) -> String {
+        "GetServerType".to_string()
     }
 }
