@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use wg_2024::network::NodeId;
@@ -152,7 +153,7 @@ impl Response for MediaResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ChatResponse {
-    ClientList(Vec<NodeId>),
+    ClientList(HashSet<NodeId>),
     MessageFrom { from: NodeId, message: Vec<u8> },
     MessageSent,
 }

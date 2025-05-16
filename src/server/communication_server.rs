@@ -126,7 +126,7 @@ impl CommunicationServer {
             },
 
             ClientServerCommand::SendChatMessage(target_id, msg) => {
-                debug!("Server: {:?} sending chat message to {:?}: {:?}", self.id, target_id, msg);
+                /*Not used by server*/
             },
 
             ClientServerCommand::StartFloodRequest => {
@@ -221,18 +221,36 @@ impl CommunicationServer {
         }
     }
 
-    fn handle_assembler_data(&mut self, mut data: Vec<u8>) {
+    fn handle_assembler_data(&mut self, data: Vec<u8>) {
         debug!("please print this {:?}", data);
         if let Ok(str_data) = String::from_utf8(data.clone()) {
             debug!("Server {:?} received assembled message: {:?}", self.id, str_data);
 
-            // Try to parse as ServerTypeRequest
+            // First try to parse as ServerTypeRequest
             if let Ok(message) = serde_json::from_str::<Message<ServerTypeRequest>>(&str_data) {
                 match message.content {
                     ServerTypeRequest::GetServerType => {
                         debug!("Server: {:?} received ServerTypeRequest from {:?}", self.id, message.source_id);
                         self.send_server_type_response(message.source_id, message.session_id);
-                    }
+                    },
+                }
+            }
+            // Then try to parse as ChatRequest
+            else if let Ok(message) = serde_json::from_str::<Message<ChatRequest>>(&str_data) {
+                match message.content {
+                    ChatRequest::Register(client_id) => {
+                        debug!("Server: {:?} received registration request from client {:?}", self.id, client_id);
+
+                        self.registered_clients.insert(client_id);
+
+                        debug!("Server: {:?} now has registered clients: {:?}", self.id, self.registered_clients);
+                    },
+                    ChatRequest::ClientList => {
+                        debug!("Server: {:?} received ClientList request from {:?}", self.id, message.source_id);
+
+                        self.send_server_client_list(message.source_id, message.session_id);
+                    },
+                    _ => {}
                 }
             }
         }
@@ -249,6 +267,19 @@ impl CommunicationServer {
         };
 
         send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map);
+    }
+
+    fn send_server_client_list(&mut self, client_id: NodeId, session_id: u64) {
+        debug!("Server: {:?} sending client list to {:?}", self.id, client_id);
+
+        // Create response message with the client list
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: ChatResponse::ClientList(self.registered_clients.clone()),
+        };
+
+        send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map, );
     }
 }
 
