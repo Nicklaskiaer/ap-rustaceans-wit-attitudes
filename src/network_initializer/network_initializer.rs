@@ -18,7 +18,7 @@ use crate::client::client_server_command::ClientServerCommand;
 use crate::simulation_controller::simulation_controller::{simulation_controller_main, SimulationController};
 use crate::types::my_drone::MyDrone;
 use crate::client::client::{Client, ClientEvent, ClientTrait};
-use crate::server::server::{Server, ServerEvent};
+use crate::server::server::{Server, ServerEvent, ServerType};
 use crate::server::communication_server::{CommunicationServer};
 use crate::server::content_server::{ContentServer};
 
@@ -130,7 +130,7 @@ pub fn main() {
     for server in config.server.into_iter() {
         // controller
         let (controller_server_send, controller_server_recv): (Sender<ClientServerCommand>, Receiver<ClientServerCommand>) = unbounded();
-        controller_servers.insert(server.id, (controller_server_send, server.connected_drone_ids.clone()));
+        controller_servers.insert(server.id, (controller_server_send, server.connected_drone_ids.clone(), ServerType::ContentServer));
         let node_event_send_server = node_event_send_server.clone();
 
         // packet

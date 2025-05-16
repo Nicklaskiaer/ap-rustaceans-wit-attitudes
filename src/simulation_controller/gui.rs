@@ -5,7 +5,7 @@ use wg_2024::controller::{DroneCommand, DroneEvent};
 use crate::simulation_controller::simulation_controller::SimulationController;
 use crate::simulation_controller::gui_structs::*;
 use crate::client::client::ClientEvent;
-use crate::server::server::ServerEvent;
+use crate::server::server::{ServerEvent, ServerType};
 use crate::simulation_controller::popup_handler;
 use crate::simulation_controller::logs_handler;
 
@@ -346,7 +346,7 @@ impl NetworkTopology {
         &mut self,
         drones: &HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)>,
         clients: &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)>,
-        servers: &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)>
+        servers: &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>, ServerType)>
     ) {
         self.nodes.clear();
         self.connections.clear();
@@ -403,7 +403,7 @@ impl NetworkTopology {
         }
 
         // Assign positions to servers
-        for (server_id, (_, neighbors)) in servers {
+        for (server_id, (_, neighbors, _)) in servers {
             if let Some(neighbor_id) = neighbors.first() {
                 if let Some(&(dx, dy)) = node_positions.get(neighbor_id) {
                     let direction = ((dx - center.0), (dy - center.1));

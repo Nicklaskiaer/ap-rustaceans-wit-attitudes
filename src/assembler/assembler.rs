@@ -33,6 +33,7 @@ impl Assembler {
         loop {
             select_biased! {
                 recv(self.packet_recv) -> packet => {
+                    debug!("Assembler received packet: {:?}", packet);
                     if let Ok(packet) = packet {
                         match packet.pack_type {
                             PacketType::MsgFragment(fragment) => {
