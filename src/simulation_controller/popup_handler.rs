@@ -172,10 +172,11 @@ fn show_client_controls(
                     .show_ui(ui, |ui| {
                         for server_id in app.simulation_controller.get_server_ids() {
                             if ui.selectable_label(selected_server == &server_id, &server_id).clicked() {
-                                *selected_server = server_id.clone();
+                                *selected_server = server_id.clone(); //todo(Retrieve all Text servers)
                             }
                         }
                     });
+
                 if ui.button("Register").clicked() {
                     //todo!(Manage connection)
                 }
@@ -190,19 +191,6 @@ fn show_client_controls(
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     //todo!(Insert messages)
-                    ui.label("Client 1: Test");
-                    ui.label("Client 2: Test");
-                    ui.label("Client 1: Test");
-                    ui.label("Client 2: Test");
-                    ui.label("Client 1: Test");
-                    ui.label("Client 2: Test");
-                    ui.label("Client 1: Test");
-                    ui.label("Client 2: Test");
-                    ui.label("Client 1: Test");
-                    ui.label("Client 2: Test");
-                    ui.label("Client 1: Test");
-                    ui.label("Client 2: Test");
-                    ui.label("Client 1: Test");
                 });
 
             ui.separator();

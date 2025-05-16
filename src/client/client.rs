@@ -123,7 +123,7 @@ impl Client {
                     DroneCommand::RemoveSender(id) => {},
                 }
             },
-            ClientServerCommand::SendChatMessage(node_id, id, msg) => {
+            ClientServerCommand::SendChatMessage(node_id, msg) => {
                 debug!("Client: {:?} sending chat message to {:?}: {}", self.id, node_id, msg);
             },
             ClientServerCommand::StartFloodRequest => {

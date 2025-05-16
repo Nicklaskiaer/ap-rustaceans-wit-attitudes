@@ -115,6 +115,8 @@ impl eframe::App for MyApp{
             self.logs(Event::Server(event));
         }
 
+        //todo(Poll for chat messages)
+
         //Load icon textures for nodes in graph.
         if self.client_texture.is_none() {
             if let Ok(image) = load_image("images/client.png") {
