@@ -32,32 +32,6 @@ pub struct CommunicationServer {
 impl Server for CommunicationServer {
     type RequestType = ChatRequest;
     type ResponseType = ChatResponse;
-    
-    fn new(
-        id: NodeId,
-        connected_drone_ids: Vec<NodeId>,
-        controller_send: Sender<ServerEvent>,
-        controller_recv: Receiver<ClientServerCommand>,
-        packet_send: HashMap<NodeId, Sender<Packet>>,
-        packet_recv: Receiver<Packet>,
-        assemblers: Vec<Assembler>,
-        topology_map: HashSet<(NodeId, Vec<NodeId>)>,
-        assembler_send: Sender<Vec<u8>>,
-        assembler_recv: Receiver<Vec<u8>>,
-    ) -> Self {
-        Self {
-            id,
-            connected_drone_ids,
-            controller_send,
-            controller_recv,
-            packet_recv,
-            packet_send,
-            assemblers,
-            topology_map,
-            assembler_send,
-            assembler_recv,
-        }
-    }
 
     fn run(&mut self) {
         debug!("Communication Server: {:?} started and waiting for packets", self.id);
@@ -111,6 +85,32 @@ impl Server for CommunicationServer {
 }
 
 impl CommunicationServer {
+    pub fn new(
+        id: NodeId,
+        connected_drone_ids: Vec<NodeId>,
+        controller_send: Sender<ServerEvent>,
+        controller_recv: Receiver<ClientServerCommand>,
+        packet_send: HashMap<NodeId, Sender<Packet>>,
+        packet_recv: Receiver<Packet>,
+        assemblers: Vec<Assembler>,
+        topology_map: HashSet<(NodeId, Vec<NodeId>)>,
+        assembler_send: Sender<Vec<u8>>,
+        assembler_recv: Receiver<Vec<u8>>,
+    ) -> Self {
+        Self {
+            id,
+            connected_drone_ids,
+            controller_send,
+            controller_recv,
+            packet_recv,
+            packet_send,
+            assemblers,
+            topology_map,
+            assembler_send,
+            assembler_recv,
+        }
+    }
+    
     fn handle_command(&mut self, command: ClientServerCommand) {
         match command {
             ClientServerCommand::DroneCmd(drone_cmd) => {
