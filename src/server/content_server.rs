@@ -14,7 +14,7 @@ use wg_2024::packet::{
 };
 use crate::client::client::Client;
 use crate::client::client_server_command::{compute_path_to_node, send_fragment_to_assembler, send_message_in_fragments, try_send_packet, try_send_packet_with_target_id, update_topology_with_flood_response, ClientServerCommand};
-use crate::server::server::{Server, ServerEvent, ServerType};
+use crate::server::server::{ContentType, Server, ServerEvent, ServerType};
 
 pub struct ContentServer {
     id: NodeId,
@@ -27,37 +27,13 @@ pub struct ContentServer {
     assemblers: Vec<Assembler>,
     assembler_send: Sender<Vec<u8>>,
     assembler_recv: Receiver<Vec<u8>>,
+    content_type: ContentType,
+    files: Vec<u64>, 
 }
 
 impl Server for ContentServer {
     type RequestType = TextRequest;
     type ResponseType = TextResponse;
-
-    fn new(
-        id: NodeId,
-        connected_drone_ids: Vec<NodeId>,
-        controller_send: Sender<ServerEvent>,
-        controller_recv: Receiver<ClientServerCommand>,
-        packet_send: HashMap<NodeId, Sender<Packet>>,
-        packet_recv: Receiver<Packet>,
-        assemblers: Vec<Assembler>,
-        topology_map: HashSet<(NodeId, Vec<NodeId>)>,
-        assembler_send: Sender<Vec<u8>>,
-        assembler_recv: Receiver<Vec<u8>>,
-    ) -> Self {
-        Self {
-            id,
-            connected_drone_ids,
-            controller_send,
-            controller_recv,
-            packet_recv,
-            packet_send,
-            assemblers,
-            topology_map,
-            assembler_send,
-            assembler_recv,
-        }
-    }
 
     fn run(&mut self) {
         debug!("Content Server: {:?} started and waiting for packets", self.id);
@@ -111,6 +87,36 @@ impl Server for ContentServer {
 }
 
 impl ContentServer {
+    pub fn new(
+        id: NodeId,
+        connected_drone_ids: Vec<NodeId>,
+        controller_send: Sender<ServerEvent>,
+        controller_recv: Receiver<ClientServerCommand>,
+        packet_send: HashMap<NodeId, Sender<Packet>>,
+        packet_recv: Receiver<Packet>,
+        assemblers: Vec<Assembler>,
+        topology_map: HashSet<(NodeId, Vec<NodeId>)>,
+        assembler_send: Sender<Vec<u8>>,
+        assembler_recv: Receiver<Vec<u8>>,
+        content_type: ContentType,
+        files: Vec<u64>,
+    ) -> Self {
+        Self {
+            id,
+            connected_drone_ids,
+            controller_send,
+            controller_recv,
+            packet_recv,
+            packet_send,
+            assemblers,
+            topology_map,
+            assembler_send,
+            assembler_recv,
+            content_type,
+            files,
+        }
+    }
+    
     fn handle_command(&mut self, command: ClientServerCommand) {
         match command {
             ClientServerCommand::DroneCmd(drone_cmd) => {
@@ -234,7 +240,7 @@ impl ContentServer {
         let message = Message {
             source_id: self.id,
             session_id,
-            content: ServerTypeResponse::ServerType(ServerType::CommunicationServer),
+            content: ServerTypeResponse::ServerType(ServerType::ContentServer(self.content_type.clone())),
         };
 
         send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map);

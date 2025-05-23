@@ -217,7 +217,7 @@ impl Client {
                 // send a flood response
                 // add node to the path trace
                 let mut flood_request = _flood_request.clone();
-                flood_request.increment(self.id, NodeType::Server);
+                flood_request.increment(self.id, NodeType::Client);
                 // generate a flood response
                 let mut flood_response_packet = flood_request.generate_response(packet.session_id);
                 debug!("Server: {:?} is generating a FloodResponse: {:?}", self.id, flood_response_packet);
