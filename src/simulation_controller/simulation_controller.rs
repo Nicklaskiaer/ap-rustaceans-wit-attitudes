@@ -6,13 +6,13 @@ use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
 use crate::client::client::ClientEvent;
 use crate::client::client_server_command::ClientServerCommand;
-use crate::server::server::ServerEvent;
+use crate::server::server::{ServerEvent, ServerType};
 use crate::simulation_controller::gui::MyApp;
 
 pub struct SimulationController {
     drones: HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>, f32)>,
     clients: HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)>,
-    servers: HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)>,
+    servers: HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>, ServerType)>,
     drone_event_recv: Receiver<DroneEvent>,
     client_event_recv: Receiver<ClientEvent>,
     server_event_recv: Receiver<ServerEvent>,
@@ -23,7 +23,7 @@ impl SimulationController {
     pub fn new(
         drones: HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>, f32)>,
         clients: HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)>,
-        servers: HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)>,
+        servers: HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>, ServerType)>,
         drone_event_recv: Receiver<DroneEvent>,
         client_event_recv: Receiver<ClientEvent>,
         server_event_recv: Receiver<ServerEvent>,
@@ -114,7 +114,7 @@ impl SimulationController {
         &self.clients
     }
 
-    pub fn get_servers(&self) -> &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)> {
+    pub fn get_servers(&self) -> &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>, ServerType)> {
         &self.servers
     }
 

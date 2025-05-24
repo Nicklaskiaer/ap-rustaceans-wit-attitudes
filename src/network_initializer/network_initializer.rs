@@ -8,6 +8,8 @@ use std::collections::HashMap;
 use std::time::Duration;
 use crossbeam_channel::internal::SelectHandle;
 use egui::Order::Debug;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 use wg_2024::config::Config;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
@@ -18,9 +20,11 @@ use crate::client::client_server_command::ClientServerCommand;
 use crate::simulation_controller::simulation_controller::{simulation_controller_main, SimulationController};
 use crate::types::my_drone::MyDrone;
 use crate::client::client::{Client, ClientEvent, ClientTrait};
-use crate::server::server::{Server, ServerEvent};
+use crate::server::server::{ContentType, Server, ServerEvent, ServerType};
 use crate::server::communication_server::{CommunicationServer};
 use crate::server::content_server::{ContentServer};
+
+const NUM_CONTENT_SERVERS: usize = 4;
 
 pub fn main() {
     // let current_path = env::current_dir().expect("Unable to get current directory");
@@ -124,13 +128,69 @@ pub fn main() {
     }
     
     // INITIALIZE SERVERS
+    // Ensure that there are enough servers
+    if config.server.len() < NUM_CONTENT_SERVERS {
+        panic!("Not enough servers to allocate {} content servers", NUM_CONTENT_SERVERS);
+    }
+    // Load file IDs from directories
+    let text_files: Vec<u64> = match fs::read_dir("server_content/text_files") {
+        Ok(entries) => entries.filter_map(|entry| {
+            let path = entry.ok()?.path();
+            let file_name = path.file_stem()?.to_str()?;
+            file_name.parse::<u64>().ok()
+        }).collect(),
+        Err(_) => vec![]
+    };
+    let media_files: Vec<u64> = match fs::read_dir("server_content/media_files") {
+        Ok(entries) => entries.filter_map(|entry| {
+            let path = entry.ok()?.path();
+            let file_name = path.file_stem()?.to_str()?;
+            file_name.parse::<u64>().ok()
+        }).collect(),
+        Err(_) => vec![]
+    };
+    debug!("Found {} text files and {} media files", text_files.len(), media_files.len());
+    // Split files for each content server
+    let mut available_text_files = text_files.clone();
+    let mut available_media_files = media_files.clone();
+    available_text_files.shuffle(&mut thread_rng());
+    available_media_files.shuffle(&mut thread_rng());
+    // Create server type assignments with content distribution
+    let server_types_with_content = {
+        let mut types = Vec::with_capacity(config.server.len());
+
+        // Create content servers (half text, half media)
+        let text_server_count = NUM_CONTENT_SERVERS / 2 + NUM_CONTENT_SERVERS % 2;
+        let media_server_count = NUM_CONTENT_SERVERS - text_server_count;
+
+        // Text content servers
+        for i in 0..text_server_count {
+            let start_idx = i * available_text_files.len() / text_server_count;
+            let end_idx = (i + 1) * available_text_files.len() / text_server_count;
+            let server_files = available_text_files[start_idx..end_idx].to_vec();
+            types.push((ServerType::ContentServer(ContentType::Text), server_files));
+        }
+
+        // Media content servers
+        for i in 0..media_server_count {
+            let start_idx = i * available_media_files.len() / media_server_count;
+            let end_idx = (i + 1) * available_media_files.len() / media_server_count;
+            let server_files = available_media_files[start_idx..end_idx].to_vec();
+            types.push((ServerType::ContentServer(ContentType::Media), server_files));
+        }
+
+        // Remaining servers are communication servers
+        types.extend(vec![(ServerType::CommunicationServer, vec![]); config.server.len() - NUM_CONTENT_SERVERS]);
+        types.shuffle(&mut thread_rng());
+        types
+    };
     let (node_event_send_server, node_event_recv_server): (Sender<ServerEvent>, Receiver<ServerEvent>) = unbounded();
     let mut controller_servers = HashMap::new();
-    let mut server_count = 0;
-    for server in config.server.into_iter() {
+    for (server, (server_type, files)) in config.server.into_iter().zip(server_types_with_content.into_iter()) {
+
         // controller
         let (controller_server_send, controller_server_recv): (Sender<ClientServerCommand>, Receiver<ClientServerCommand>) = unbounded();
-        controller_servers.insert(server.id, (controller_server_send, server.connected_drone_ids.clone()));
+        controller_servers.insert(server.id, (controller_server_send, server.connected_drone_ids.clone(), server_type.clone()));
         let node_event_send_server = node_event_send_server.clone();
 
         // packet
@@ -143,54 +203,49 @@ pub fn main() {
 
         // spawn
         let (assembler_send, assembler_recv) = unbounded();
-        thread::spawn(move || {
-            let mut server = ContentServer::new(
-                server.id,
-                server.connected_drone_ids,
-                node_event_send_server,
-                controller_server_recv,
-                packet_send,
-                packet_recv.clone(),
-                vec![],
-                HashSet::new(),
-                assembler_send,
-                assembler_recv
-            );
-            server.run();
+        match server_type {
+            ServerType::ContentServer(content_type) => {
+                debug!("Creating ContentServer id={} with content_type={:?} and {} files", server.id, content_type, files.len());
 
-            // Alternate between ContentServer and CommunicationServer
-            // if server_count % 2 == 0 {
-            //     let mut server = CommunicationServer::new(
-            //         server.id,
-            //         server.connected_drone_ids,
-            //         node_event_send_server,
-            //         controller_server_recv,
-            //         packet_send,
-            //         packet_recv,
-            //         vec![],
-            //         HashSet::new(),
-            //         assembler_send,
-            //         assembler_recv
-            //     );
-            //     server.run();
-            // } else {
-            //     let mut server = CommunicationServer::new(
-            //         server.id,
-            //         server.connected_drone_ids,
-            //         node_event_send_server,
-            //         controller_server_recv,
-            //         packet_send,
-            //         packet_recv,
-            //         vec![],
-            //         HashSet::new(),
-            //         assembler_send,
-            //         assembler_recv
-            //     );
-            //     server.run();
-            // }
-        });
+                let content_type_clone = content_type.clone();
+                let files_clone = files.clone();
 
-        server_count += 1;
+                thread::spawn(move || {
+                    let mut server = ContentServer::new(
+                        server.id,
+                        server.connected_drone_ids,
+                        node_event_send_server,
+                        controller_server_recv,
+                        packet_send,
+                        packet_recv.clone(),
+                        vec![],
+                        HashSet::new(),
+                        assembler_send,
+                        assembler_recv,
+                        content_type_clone,
+                        files_clone,
+                    );
+                    server.run();
+                });
+            },
+            ServerType::CommunicationServer => {
+                thread::spawn(move || {
+                    let mut server = CommunicationServer::new(
+                        server.id,
+                        server.connected_drone_ids,
+                        node_event_send_server,
+                        controller_server_recv,
+                        packet_send,
+                        packet_recv.clone(),
+                        vec![],
+                        HashSet::new(),
+                        assembler_send,
+                        assembler_recv
+                    );
+                    server.run();
+                });
+            }
+        }
     }
     
     // INITIALIZE SIMULATION CONTROLLER AND GUI

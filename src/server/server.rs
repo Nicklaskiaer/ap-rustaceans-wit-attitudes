@@ -18,8 +18,14 @@ use crate::client::client_server_command::{compute_path_to_node, ClientServerCom
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerType {
-    ContentServer,
+    ContentServer(ContentType),
     CommunicationServer,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ContentType {
+    Text,
+    Media,
 }
 
 pub enum ServerEvent {
@@ -30,19 +36,6 @@ pub enum ServerEvent {
 pub trait Server {
     type RequestType: Request;
     type ResponseType: Response;
-
-    fn new(
-        id: NodeId,
-        connected_drone_ids: Vec<NodeId>,
-        controller_send: Sender<ServerEvent>,
-        controller_recv: Receiver<ClientServerCommand>,
-        packet_send: HashMap<NodeId, Sender<Packet>>,
-        packet_recv: Receiver<Packet>,
-        assemblers: Vec<Assembler>,
-        topology_map: HashSet<(NodeId, Vec<NodeId>)>,
-        assembler_send: Sender<Vec<u8>>,
-        assembler_recv: Receiver<Vec<u8>>,
-    ) -> Self;
 
     fn run(&mut self);
     fn send_sent_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ServerEvent>> {

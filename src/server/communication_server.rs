@@ -34,33 +34,6 @@ impl Server for CommunicationServer {
     type RequestType = ChatRequest;
     type ResponseType = ChatResponse;
 
-    fn new(
-        id: NodeId,
-        connected_drone_ids: Vec<NodeId>,
-        controller_send: Sender<ServerEvent>,
-        controller_recv: Receiver<ClientServerCommand>,
-        packet_send: HashMap<NodeId, Sender<Packet>>,
-        packet_recv: Receiver<Packet>,
-        assemblers: Vec<Assembler>,
-        topology_map: HashSet<(NodeId, Vec<NodeId>)>,
-        assembler_send: Sender<Vec<u8>>,
-        assembler_recv: Receiver<Vec<u8>>,
-    ) -> Self {
-        Self {
-            id,
-            connected_drone_ids,
-            controller_send,
-            controller_recv,
-            packet_recv,
-            packet_send,
-            assemblers,
-            topology_map,
-            assembler_send,
-            assembler_recv,
-            registered_clients: HashSet::new(),
-        }
-    }
-
     fn run(&mut self) {
         debug!("Communication Server: {:?} started and waiting for packets", self.id);
         loop {
@@ -113,6 +86,32 @@ impl Server for CommunicationServer {
 }
 
 impl CommunicationServer {
+    pub fn new(
+        id: NodeId,
+        connected_drone_ids: Vec<NodeId>,
+        controller_send: Sender<ServerEvent>,
+        controller_recv: Receiver<ClientServerCommand>,
+        packet_send: HashMap<NodeId, Sender<Packet>>,
+        packet_recv: Receiver<Packet>,
+        assemblers: Vec<Assembler>,
+        topology_map: HashSet<(NodeId, Vec<NodeId>)>,
+        assembler_send: Sender<Vec<u8>>,
+        assembler_recv: Receiver<Vec<u8>>,
+    ) -> Self {
+        Self {
+            id,
+            connected_drone_ids,
+            controller_send,
+            controller_recv,
+            packet_recv,
+            packet_send,
+            assemblers,
+            topology_map,
+            assembler_send,
+            assembler_recv,
+        }
+    }
+
     fn handle_command(&mut self, command: ClientServerCommand) {
         match command {
             ClientServerCommand::DroneCmd(drone_cmd) => {
@@ -254,32 +253,6 @@ impl CommunicationServer {
                 }
             }
         }
-    }
-
-    fn send_server_type_response(&mut self, client_id: NodeId, session_id: u64) {
-        debug!("Server: {:?} sending server type response to client {:?}", self.id, client_id);
-
-        // Create response message with Communication server type
-        let message = Message {
-            source_id: self.id,
-            session_id,
-            content: ServerTypeResponse::ServerType(ServerType::CommunicationServer),
-        };
-
-        send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map);
-    }
-
-    fn send_server_client_list(&mut self, client_id: NodeId, session_id: u64) {
-        debug!("Server: {:?} sending client list to {:?}", self.id, client_id);
-
-        // Create response message with the client list
-        let message = Message {
-            source_id: self.id,
-            session_id,
-            content: ChatResponse::ClientList(self.registered_clients.clone()),
-        };
-
-        send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map, );
     }
 }
 
