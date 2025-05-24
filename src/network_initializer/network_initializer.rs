@@ -240,7 +240,8 @@ pub fn main() {
                         vec![],
                         HashSet::new(),
                         assembler_send,
-                        assembler_recv
+                        assembler_recv,
+                        HashSet::new()
                     );
                     server.run();
                 });
