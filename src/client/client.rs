@@ -14,7 +14,7 @@ use wg_2024::packet::{
 use rand::{Rng, thread_rng, random};
 use crate::assembler::assembler::Assembler;
 use crate::client::client_server_command::{compute_path_to_node, send_fragment_to_assembler, send_message_in_fragments, try_send_packet, try_send_packet_with_target_id, update_topology_with_flood_response, ClientServerCommand};
-use crate::server::message::{Message, ServerTypeRequest, ServerTypeResponse, TextRequest};
+use crate::server::message::{Message, ServerTypeRequest, ServerTypeResponse, TextRequest, TextResponse};
 use crate::server::server::{ServerEvent, ServerType};
 
 pub struct Client {
@@ -168,15 +168,24 @@ impl Client {
                 // Query all servers in the server_type_map that have None as their type
                 for server_id in self.server_type_map.keys().cloned().collect::<Vec<_>>() {
                     if let Some(None) = self.server_type_map.get(&server_id) {
-                        
+                        self.send_server_type_request(server_id);
+/*                        
                         // TODO: remove it
                         // test 11->42
                         if self.id == 11 && server_id == 42 {
                             self.send_server_type_request(server_id);
-                        }
+                        }*/
                     }
                 }
-            }
+            },
+            ClientServerCommand::RequestFileList(node_id) => {
+                debug!("Client: {:?} received RequestFileList, Server id: {:?}", self.id, node_id);
+                self.send_text_request_TextList(node_id, ); 
+            },
+            ClientServerCommand::RequestFile(node_id, file_id) => {
+                debug!("Client: {:?} received RequestFile, Server id: {:?} file id: {:?}", self.id, node_id, file_id);
+                self.send_text_request_Text(node_id, file_id); 
+            },
         }
     }
     fn handle_packet(&mut self, mut packet: Packet) {
@@ -232,6 +241,7 @@ impl Client {
 
                 // if it's a server add it to the server_type_map
                 let &(node_id, _node_type) = _flood_response.path_trace.last().unwrap();
+                // TODO: change None not after the flood but after that server is called for the first time
                 if _node_type == NodeType::Server {
                     self.server_type_map.insert(node_id, None);
                 }
@@ -251,6 +261,24 @@ impl Client {
                     }
                 }
             }
+
+            // Try to parse as TextResponse
+            if let Ok(message) = serde_json::from_str::<Message<TextResponse>>(&str_data) {
+                match message.content {
+                    TextResponse::TextList(file_list) => {
+                        debug!("Client: {:?} received TextResponse::TextList from {:?} file list: {:?}", self.id, message.source_id, file_list);
+                        //TODO: Send to SC
+                    },
+                    TextResponse::Text(file) => {
+                        debug!("Client: {:?} received TTextResponse::Text from {:?} file: {:?}", self.id, message.source_id, file);
+                        //TODO: Send to SC
+                    },
+                    TextResponse::NotFound => {
+                        debug!("Client: {:?} received TextResponse::NotFound from {:?}", self.id, message.source_id);
+                        //TODO: Send to SC
+                    },
+                }
+            }
         }
     }
     fn send_sent_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ClientEvent>> {
@@ -260,8 +288,6 @@ impl Client {
         self.controller_send.send(ClientEvent::PacketReceived(packet))
     }
     fn send_server_type_request(&mut self, server_id: NodeId) {
-        debug!("Client: {:?} requesting server type from server {:?}", self.id, server_id);
-
         // Create a server type request with random session ID
         let session_id = random::<u64>();
         let message = Message {
@@ -269,7 +295,27 @@ impl Client {
             session_id,
             content: ServerTypeRequest::GetServerType,
         };
-        
+        debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, server_id, message);
+        send_message_in_fragments(self.id, server_id, session_id, message, &self.packet_send, &self.topology_map);
+    }
+    fn send_text_request_TextList(&mut self, server_id: NodeId) {
+        let session_id = random::<u64>();
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: TextRequest::TextList,
+        };
+        debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, server_id, message);
+        send_message_in_fragments(self.id, server_id, session_id, message, &self.packet_send, &self.topology_map);
+    }
+    fn send_text_request_Text(&mut self, server_id: NodeId, file_id: u64) {
+        let session_id = random::<u64>();
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: TextRequest::Text(file_id),
+        };
+        debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, server_id, message);
         send_message_in_fragments(self.id, server_id, session_id, message, &self.packet_send, &self.topology_map);
     }
 }

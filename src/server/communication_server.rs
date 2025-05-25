@@ -13,8 +13,8 @@ use wg_2024::packet::{
     Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType,
 };
 use crate::client::client::Client;
-use crate::client::client_server_command::{send_fragment_to_assembler, try_send_packet, try_send_packet_with_target_id, update_topology_with_flood_response, ClientServerCommand};
-use crate::server::server::{Server, ServerEvent};
+use crate::client::client_server_command::{send_fragment_to_assembler, send_message_in_fragments, try_send_packet, try_send_packet_with_target_id, update_topology_with_flood_response, ClientServerCommand};
+use crate::server::server::{Server, ServerEvent, ServerType};
 
 pub struct CommunicationServer {
     id: NodeId,
@@ -155,6 +155,8 @@ impl CommunicationServer {
                 }
             },
             ClientServerCommand::RequestServerType => {/* servers do not need to use it */},
+            ClientServerCommand::RequestFileList(_) => {/* servers do not need to use it */},
+            ClientServerCommand::RequestFile(_, _) => {/* servers do not need to use it */},
         }
     }
     fn handle_packet(&mut self, mut packet: Packet) {
@@ -213,7 +215,53 @@ impl CommunicationServer {
     fn handle_assembler_data(&mut self, mut data: Vec<u8>) {
         if let Ok(str_data) = String::from_utf8(data.clone()) {
             debug!("Server {:?} received assembled message: {:?}", self.id, str_data);
+
+            // Try to parse as ServerTypeRequest
+            if let Ok(message) = serde_json::from_str::<Message<ServerTypeRequest>>(&str_data) {
+                match message.content {
+                    ServerTypeRequest::GetServerType => {
+                        debug!("Server: {:?} received ServerTypeRequest from {:?}", self.id, message.source_id);
+                        self.send_server_type_response(message.source_id, message.session_id);
+                    }
+                }
+            }
+
+            // Try to parse as TextRequest
+            if let Ok(message) = serde_json::from_str::<Message<TextRequest>>(&str_data) {
+                match message.content {
+                    TextRequest::TextList => {
+                        debug!("Server: {:?} received TextRequest::TextList from {:?}", self.id, message.source_id);
+                        self.send_text_response(message.source_id, message.session_id);
+                    },
+                    TextRequest::Text(file_id) => {
+                        debug!("Server: {:?} received TextRequest::Text from {:?} file id: {:?}", self.id, message.source_id, file_id);
+                        self.send_text_response(message.source_id, message.session_id);
+                    },
+                }
+            }
         }
+    }
+
+    fn send_server_type_response(&mut self, client_id: NodeId, session_id: u64) {
+        // Create response message with Communication server type
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: ServerTypeResponse::ServerType(ServerType::CommunicationServer),
+        };
+        debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
+        send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map);
+    }
+
+    fn send_text_response(&mut self, client_id: NodeId, session_id: u64) {
+        debug!("Server: {:?} is a chat server!", self.id);
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: TextResponse::NotFound,
+        };
+        debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
+        send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map);
     }
 }
 

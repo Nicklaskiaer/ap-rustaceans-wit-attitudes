@@ -7,8 +7,11 @@ use crate::assembler::assembler::Assembler;
 use crate::server::message::{DroneSend, Message};
 
 pub enum ClientServerCommand {
-    StartFloodRequest,
-    RequestServerType, // used only by the clients, they will auto call it to themselves after few seconds after a StartFloodRequest
+    StartFloodRequest, // used by: Client, SText, SMedia, SChat
+    RequestServerType, // used by: Client. client will auto call it to itself after few seconds after a StartFloodRequest
+    RequestFileList(NodeId), // used by: Client. client ask the server for its list of files
+    RequestFile(NodeId, u64), // used by: Client. client ask the server for a specific file
+    
     SendChatMessage(NodeId, usize, String),
     // RegistrationRequest(NodeId),
     // RequestServerType(NodeId), // client request the server type

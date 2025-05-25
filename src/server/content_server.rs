@@ -161,6 +161,8 @@ impl ContentServer {
                 }
             },
             ClientServerCommand::RequestServerType => {/* servers do not need to use it */},
+            ClientServerCommand::RequestFileList(_) => {/* servers do not need to use it */},
+            ClientServerCommand::RequestFile(_, _) => {/* servers do not need to use it */},
         }
     }
     fn handle_packet(&mut self, mut packet: Packet) {
@@ -217,7 +219,6 @@ impl ContentServer {
         }
     }
     fn handle_assembler_data(&mut self, data: Vec<u8>) {
-        debug!("please print this {:?}", data);
         if let Ok(str_data) = String::from_utf8(data.clone()) {
             debug!("Server {:?} received assembled message: {:?}", self.id, str_data);
 
@@ -230,20 +231,79 @@ impl ContentServer {
                     }
                 }
             }
+
+            // Try to parse as TextRequest
+            if let Ok(message) = serde_json::from_str::<Message<TextRequest>>(&str_data) {
+                match message.content {
+                    TextRequest::TextList => {
+                        debug!("Server: {:?} received TextRequest::TextList from {:?}", self.id, message.source_id);
+                        self.send_text_response_TextList(message.source_id, message.session_id);
+                    },
+                    TextRequest::Text(file_id) => {
+                        debug!("Server: {:?} received TextRequest::Text from {:?} file id: {:?}", self.id, message.source_id, file_id);
+                        self.send_text_response_Text(message.source_id, message.session_id, file_id);
+                    },
+                }
+            }
         }
     }
 
     fn send_server_type_response(&mut self, client_id: NodeId, session_id: u64) {
-        debug!("Server: {:?} sending server type response to client {:?}", self.id, client_id);
-
         // Create response message with Communication server type
         let message = Message {
             source_id: self.id,
             session_id,
             content: ServerTypeResponse::ServerType(ServerType::ContentServer(self.content_type.clone())),
         };
-
+        debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
         send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map);
+    }
+
+    fn send_text_response_TextList(&mut self, client_id: NodeId, session_id: u64) {
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: TextResponse::TextList(self.files.clone()),
+        };
+        debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
+        send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map);
+    }
+
+    fn send_text_response_Text(&mut self, client_id: NodeId, session_id: u64, file_id: u64) {
+        if self.files.contains(&file_id) {
+            // Try to read file content
+            let file_path = format!("server_content/text_files/{}", file_id);
+            match std::fs::read_to_string(&file_path) {
+                Ok(content) => {
+                    let message = Message {
+                        source_id: self.id,
+                        session_id,
+                        content: TextResponse::Text(content),
+                    };
+                    debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
+                    send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map);
+                },
+                Err(e) => {
+                    debug!("Server: {:?} failed to read file {:?}: {}", self.id, file_id, e);
+                    let message = Message {
+                        source_id: self.id,
+                        session_id,
+                        content: TextResponse::NotFound,
+                    };
+                    debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
+                    send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map);
+                }
+            }
+        } else {
+            debug!("Server: {:?} doesn't have {:?}", self.id, file_id);
+            let message = Message {
+                source_id: self.id,
+                session_id,
+                content: TextResponse::NotFound,
+            };
+            debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
+            send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map);
+        }
     }
 }
 
