@@ -44,6 +44,7 @@ impl Server for CommunicationServer {
                 },
                 recv(self.packet_recv) -> packet => {
                     if let Ok(packet) = packet {
+                        self.send_packet_received_to_sc(packet.clone());
                         self.handle_packet(packet);
                     }
                 },
@@ -218,6 +219,10 @@ impl CommunicationServer {
 
             // Try to parse as ServerTypeRequest
             if let Ok(message) = serde_json::from_str::<Message<ServerTypeRequest>>(&str_data) {
+                // Send to SC
+                let content = MessageContent::ServerTypeRequest(message.content.clone());
+                self.send_message_received_to_sc(content);
+                
                 match message.content {
                     ServerTypeRequest::GetServerType => {
                         debug!("Server: {:?} received ServerTypeRequest from {:?}", self.id, message.source_id);
@@ -225,9 +230,12 @@ impl CommunicationServer {
                     }
                 }
             }
-
             // Try to parse as TextRequest
-            if let Ok(message) = serde_json::from_str::<Message<TextRequest>>(&str_data) {
+            else if let Ok(message) = serde_json::from_str::<Message<TextRequest>>(&str_data) {
+                // Send to SC
+                let content = MessageContent::TextRequest(message.content.clone());
+                self.send_message_received_to_sc(content);
+                
                 match message.content {
                     TextRequest::TextList => {
                         debug!("Server: {:?} received TextRequest::TextList from {:?}", self.id, message.source_id);
@@ -241,9 +249,9 @@ impl CommunicationServer {
             }
         }
     }
-
     fn send_server_type_response(&mut self, client_id: NodeId, session_id: u64) {
         // Create response message with Communication server type
+        let session_id = random::<u64>();
         let message = Message {
             source_id: self.id,
             session_id,
@@ -252,9 +260,9 @@ impl CommunicationServer {
         debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
         send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map);
     }
-
     fn send_text_response(&mut self, client_id: NodeId, session_id: u64) {
         debug!("Server: {:?} is a chat server!", self.id);
+        let session_id = random::<u64>();
         let message = Message {
             source_id: self.id,
             session_id,

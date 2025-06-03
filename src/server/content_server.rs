@@ -46,6 +46,7 @@ impl Server for ContentServer {
                 },
                 recv(self.packet_recv) -> packet => {
                     if let Ok(packet) = packet {
+                        self.send_packet_received_to_sc(packet.clone());
                         self.handle_packet(packet);
                     }
                 },
@@ -224,6 +225,10 @@ impl ContentServer {
 
             // Try to parse as ServerTypeRequest
             if let Ok(message) = serde_json::from_str::<Message<ServerTypeRequest>>(&str_data) {
+                // Send to SC
+                let content = MessageContent::ServerTypeRequest(message.content.clone());
+                self.send_message_received_to_sc(content);
+                
                 match message.content {
                     ServerTypeRequest::GetServerType => {
                         debug!("Server: {:?} received ServerTypeRequest from {:?}", self.id, message.source_id);
@@ -231,25 +236,28 @@ impl ContentServer {
                     }
                 }
             }
-
             // Try to parse as TextRequest
-            if let Ok(message) = serde_json::from_str::<Message<TextRequest>>(&str_data) {
+            else if let Ok(message) = serde_json::from_str::<Message<TextRequest>>(&str_data) {
+                // Send to SC
+                let content = MessageContent::TextRequest(message.content.clone());
+                self.send_message_received_to_sc(content);
+                
                 match message.content {
                     TextRequest::TextList => {
                         debug!("Server: {:?} received TextRequest::TextList from {:?}", self.id, message.source_id);
-                        self.send_text_response_TextList(message.source_id, message.session_id);
+                        self.send_text_response_TextList(message.source_id);
                     },
                     TextRequest::Text(file_id) => {
                         debug!("Server: {:?} received TextRequest::Text from {:?} file id: {:?}", self.id, message.source_id, file_id);
-                        self.send_text_response_Text(message.source_id, message.session_id, file_id);
+                        self.send_text_response_Text(message.source_id, file_id);
                     },
                 }
             }
         }
     }
-
     fn send_server_type_response(&mut self, client_id: NodeId, session_id: u64) {
         // Create response message with Communication server type
+        let session_id = random::<u64>();
         let message = Message {
             source_id: self.id,
             session_id,
@@ -258,8 +266,8 @@ impl ContentServer {
         debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
         send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map);
     }
-
-    fn send_text_response_TextList(&mut self, client_id: NodeId, session_id: u64) {
+    fn send_text_response_TextList(&mut self, client_id: NodeId) {
+        let session_id = random::<u64>();
         let message = Message {
             source_id: self.id,
             session_id,
@@ -268,13 +276,13 @@ impl ContentServer {
         debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
         send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map);
     }
-
-    fn send_text_response_Text(&mut self, client_id: NodeId, session_id: u64, file_id: u64) {
+    fn send_text_response_Text(&mut self, client_id: NodeId, file_id: u64) {
         if self.files.contains(&file_id) {
             // Try to read file content
             let file_path = format!("server_content/text_files/{}", file_id);
             match std::fs::read_to_string(&file_path) {
                 Ok(content) => {
+                    let session_id = random::<u64>();
                     let message = Message {
                         source_id: self.id,
                         session_id,
@@ -285,6 +293,7 @@ impl ContentServer {
                 },
                 Err(e) => {
                     debug!("Server: {:?} failed to read file {:?}: {}", self.id, file_id, e);
+                    let session_id = random::<u64>();
                     let message = Message {
                         source_id: self.id,
                         session_id,
@@ -296,6 +305,7 @@ impl ContentServer {
             }
         } else {
             debug!("Server: {:?} doesn't have {:?}", self.id, file_id);
+            let session_id = random::<u64>();
             let message = Message {
                 source_id: self.id,
                 session_id,

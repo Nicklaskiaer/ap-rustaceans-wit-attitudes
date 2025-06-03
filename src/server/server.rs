@@ -13,7 +13,7 @@ use wg_2024::packet;
 use wg_2024::packet::{
     Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType,
 };
-use crate::client::client::Client;
+use crate::client::client::{Client, ClientEvent};
 use crate::client::client_server_command::{compute_path_to_node, ClientServerCommand};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,6 +31,13 @@ pub enum ContentType {
 pub enum ServerEvent {
     PacketSent(Packet),
     PacketReceived(Packet),
+    MessageSent {
+        target: NodeId,
+        content: MessageContent,
+    },
+    MessageReceived {
+        content: MessageContent,
+    },
 }
 
 pub trait Server {
@@ -38,11 +45,17 @@ pub trait Server {
     type ResponseType: Response;
 
     fn run(&mut self);
-    fn send_sent_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ServerEvent>> {
-        self.controller_send().send(ServerEvent::PacketSent(packet))
+    fn send_packet_sent_to_sc(&mut self, packet: Packet){
+        self.controller_send().send(ServerEvent::PacketSent(packet)).expect("this is fine 🔥☕");
     }
-    fn send_recv_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ServerEvent>> {
-        self.controller_send().send(ServerEvent::PacketReceived(packet))
+    fn send_packet_received_to_sc(&mut self, packet: Packet){
+        self.controller_send().send(ServerEvent::PacketReceived(packet)).expect("this is fine 🔥☕");
+    }
+    fn send_message_sent_to_sc(&mut self, message: MessageContent, target: NodeId){
+        self.controller_send().send(ServerEvent::MessageSent {target: target, content: message}).expect("this is fine 🔥☕");
+    }
+    fn send_message_received_to_sc(&mut self, message: MessageContent){
+        self.controller_send().send(ServerEvent::MessageReceived { content: message }).expect("this is fine 🔥☕");
     }
 
     fn controller_recv(&self) -> &Receiver<ClientServerCommand>;

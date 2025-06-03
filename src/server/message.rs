@@ -11,6 +11,7 @@ pub struct Message<M: DroneSend> {
     pub content: M,
 }
 
+// Used in handle_assembler_data for both client and server
 pub trait DroneSend: Serialize + DeserializeOwned + std::fmt::Debug {
     fn stringify(&self) -> String;
     fn from_string(raw: String) -> Result<Self, String>;
@@ -21,6 +22,17 @@ pub trait Request: DroneSend {
 }
 pub trait Response: DroneSend {
     fn response_type(&self) -> String;
+}
+
+// Wrapper for the ClientEvent and ServerEvent
+#[derive(Debug, Clone)]
+pub enum MessageContent {
+    ServerTypeRequest(ServerTypeRequest),
+    ServerTypeResponse(ServerTypeResponse),
+    TextRequest(TextRequest),
+    TextResponse(TextResponse),
+    //TODO: Add others
+    //TODO: IMPORTANT, EDIT TEXT AND IMAGE RESPONSE TO NO HAVE THE BASE64 TEXT (SEND ONLY THE IMAGE ID)
 }
 
 // ReqServerType,

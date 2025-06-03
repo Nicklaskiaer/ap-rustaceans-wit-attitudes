@@ -1,9 +1,10 @@
 use std::collections::{HashMap, HashSet};
-use wg_2024::controller::DroneCommand;
+use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodResponse, Fragment, NodeType, Packet};
 use crossbeam_channel::{unbounded, SendError, Sender};
 use crate::assembler::assembler::Assembler;
+use crate::client::client::ClientEvent;
 use crate::server::message::{DroneSend, Message};
 
 pub enum ClientServerCommand {
@@ -58,7 +59,10 @@ pub fn update_topology_with_flood_response(node_id: NodeId, flood_response: &Flo
 pub fn try_send_packet_with_target_id(id: NodeId, target_node_id: &NodeId, packet: &Packet, packet_send: &HashMap<NodeId, Sender<Packet>>) {
     if let Some(sender) = packet_send.get(&target_node_id) {
         match sender.send(packet.clone()) {
-            Ok(_) => {debug!("{:?} -> {:?}\nPacket: {:?}", id, target_node_id, packet);}
+            Ok(_) => {
+                debug!("{:?} -> {:?}\nPacket: {:?}", id, target_node_id, packet);
+                send_packet_sent_to_sc(packet);
+            }
             Err(e) => {debug!("ERROR, {:?} -> {:?}\nError: {:?}\nPacket: {:?}", id, target_node_id, e, packet);}
         }
     } else {
@@ -154,7 +158,3 @@ pub fn send_fragment_to_assembler(packet: Packet, assemblers: &mut Vec<Assembler
 
     return Ok("Sent fragment to assembler".to_string());
 }
-
-
-
-

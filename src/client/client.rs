@@ -5,7 +5,7 @@ use crossbeam_channel::{after, select_biased, unbounded, Receiver, SendError, Se
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::thread;
 use std::thread::ThreadId;
-use wg_2024::controller::DroneCommand;
+use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet;
 use wg_2024::packet::{
@@ -14,7 +14,7 @@ use wg_2024::packet::{
 use rand::{Rng, thread_rng, random};
 use crate::assembler::assembler::Assembler;
 use crate::client::client_server_command::{compute_path_to_node, send_fragment_to_assembler, send_message_in_fragments, try_send_packet, try_send_packet_with_target_id, update_topology_with_flood_response, ClientServerCommand};
-use crate::server::message::{Message, ServerTypeRequest, ServerTypeResponse, TextRequest, TextResponse};
+use crate::server::message::{DroneSend, Message, MessageContent, ServerTypeRequest, ServerTypeResponse, TextRequest, TextResponse};
 use crate::server::server::{ServerEvent, ServerType};
 
 pub struct Client {
@@ -35,6 +35,13 @@ pub struct Client {
 pub enum ClientEvent {
     PacketSent(Packet),
     PacketReceived(Packet),
+    MessageSent {
+        target: NodeId,
+        content: MessageContent,
+    },
+    MessageReceived {
+        content: MessageContent,
+    },
 }
 
 pub trait ClientTrait {
@@ -189,6 +196,7 @@ impl Client {
         }
     }
     fn handle_packet(&mut self, mut packet: Packet) {
+        self.send_packet_received_to_sc(packet.clone());
         match &packet.pack_type {
             PacketType::Nack(_nack) => {
                 debug!("Client: {:?} received a Nack {:?}", self.id, _nack);
@@ -254,6 +262,10 @@ impl Client {
 
             // Try to parse as ServerTypeResponse
             if let Ok(message) = serde_json::from_str::<Message<ServerTypeResponse>>(&str_data) {
+                // Send to SC
+                let content = MessageContent::ServerTypeResponse(message.content.clone());
+                self.send_message_received_to_sc(content);
+                
                 match &message.content {
                     ServerTypeResponse::ServerType(server_type) => {
                         debug!("Client: {:?} received server type {:?} from {:?}", self.id, server_type, message.source_id);
@@ -261,31 +273,37 @@ impl Client {
                     }
                 }
             }
-
             // Try to parse as TextResponse
-            if let Ok(message) = serde_json::from_str::<Message<TextResponse>>(&str_data) {
+            else if let Ok(message) = serde_json::from_str::<Message<TextResponse>>(&str_data) {
+                // Send to SC
+                let content = MessageContent::TextResponse(message.content.clone());
+                self.send_message_received_to_sc(content);
+
                 match message.content {
                     TextResponse::TextList(file_list) => {
                         debug!("Client: {:?} received TextResponse::TextList from {:?} file list: {:?}", self.id, message.source_id, file_list);
-                        //TODO: Send to SC
                     },
                     TextResponse::Text(file) => {
                         debug!("Client: {:?} received TTextResponse::Text from {:?} file: {:?}", self.id, message.source_id, file);
-                        //TODO: Send to SC
                     },
                     TextResponse::NotFound => {
                         debug!("Client: {:?} received TextResponse::NotFound from {:?}", self.id, message.source_id);
-                        //TODO: Send to SC
                     },
                 }
             }
+            }
         }
+    fn send_packet_sent_to_sc(&mut self, packet: Packet){
+        self.controller_send.send(ClientEvent::PacketSent(packet)).expect("this is fine 🔥☕");
     }
-    fn send_sent_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ClientEvent>> {
-        self.controller_send.send(ClientEvent::PacketSent(packet))
+    fn send_packet_received_to_sc(&mut self, packet: Packet){
+        self.controller_send.send(ClientEvent::PacketReceived(packet)).expect("this is fine 🔥☕");
     }
-    fn send_recv_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ClientEvent>> {
-        self.controller_send.send(ClientEvent::PacketReceived(packet))
+    fn send_message_sent_to_sc(&mut self, message: MessageContent, target: NodeId){
+        self.controller_send.send(ClientEvent::MessageSent {target: target, content: message}).expect("this is fine 🔥☕");
+    }
+    fn send_message_received_to_sc(&mut self, message: MessageContent){
+        self.controller_send.send(ClientEvent::MessageReceived { content: message }).expect("this is fine 🔥☕");
     }
     fn send_server_type_request(&mut self, server_id: NodeId) {
         // Create a server type request with random session ID
