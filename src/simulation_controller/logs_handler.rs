@@ -66,8 +66,13 @@ pub fn logs(app: &mut MyApp, event: Event) {
                     .map(|&hop| hop.to_string()) // Convert u8 to String if it exists.
                     .unwrap_or_else(|| "None".to_string()) // Handle the None case.
                 )
-            },
-            ClientEvent::MessageSent { .. } | ClientEvent::MessageReceived { .. } => todo!()
+            }
+            ClientEvent::MessageSent { .. } => {
+                format!("[EVENT] Packet Received by TODO.")
+            }
+            ClientEvent::MessageReceived { .. } => {
+                format!("[EVENT] Packet Received by TODO.")
+            }
         },
 
         Event::Server(server_event) => match server_event {

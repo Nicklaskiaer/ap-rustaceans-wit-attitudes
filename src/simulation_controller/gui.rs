@@ -96,7 +96,8 @@ impl eframe::App for MyApp{
             match event {
                 ClientEvent::PacketSent(_) => {println!("client PacketSent")}
                 ClientEvent::PacketReceived(_) => {println!("client PacketReceived")},
-                ClientEvent::MessageSent { .. } | ClientEvent::MessageReceived { .. } => todo!()
+                ClientEvent::MessageSent { .. } => {println!("client MessageSent")},
+                ClientEvent::MessageReceived { .. } => {println!("client MessageReceived")}
             }
             self.logs(Event::Client(event));
         }
@@ -105,7 +106,8 @@ impl eframe::App for MyApp{
             match event {
                 ServerEvent::PacketSent(_) => {println!("server PacketSent")}
                 ServerEvent::PacketReceived(_) => {println!("server PacketReceived")},
-                ServerEvent::MessageSent { .. } | ServerEvent::MessageReceived { .. } => todo!()
+                ServerEvent::MessageSent { .. } => {println!("server MessageSent")},
+                ServerEvent::MessageReceived { .. } => {println!("server MessageReceived")}
             }
             self.logs(Event::Server(event));
         }
