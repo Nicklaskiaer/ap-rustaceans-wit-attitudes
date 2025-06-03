@@ -1,21 +1,18 @@
 #[cfg(feature = "debug")]
 use crate::debug;
 
-use crossbeam_channel::{after, select_biased, unbounded, Receiver, SendError, Sender};
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::thread;
-use std::thread::ThreadId;
-use wg_2024::controller::{DroneCommand, DroneEvent};
-use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet;
-use wg_2024::packet::{
-    Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType,
-};
-use rand::{Rng, thread_rng, random};
 use crate::assembler::assembler::Assembler;
-use crate::client::client_server_command::{compute_path_to_node, send_fragment_to_assembler, send_message_in_fragments, try_send_packet, try_send_packet_with_target_id, update_topology_with_flood_response, ClientServerCommand};
-use crate::server::message::{DroneSend, Message, MessageContent, ServerTypeRequest, ServerTypeResponse, TextRequest, TextResponse};
-use crate::server::server::{ServerEvent, ServerType};
+use crate::client_server::client_server_command::{ClientEvent, ClientServerCommand, NetworkNode, ServerType};
+use crate::message::message::{Message, MessageContent, ServerTypeRequest, ServerTypeResponse, TextRequest, TextResponse};
+use crossbeam_channel::{select_biased, Receiver, Sender};
+use rand::random;
+use std::collections::{HashMap, HashSet};
+use std::thread;
+use wg_2024::controller::DroneCommand;
+use wg_2024::network::{NodeId, SourceRoutingHeader};
+use wg_2024::packet::{
+    FloodRequest, NodeType, Packet, PacketType,
+};
 
 pub struct Client {
     id: NodeId,
@@ -32,39 +29,61 @@ pub struct Client {
     assembler_recv: Receiver<Vec<u8>>,
 }
 
-pub enum ClientEvent {
-    PacketSent(Packet),
-    PacketReceived(Packet),
-    MessageSent {
-        target: NodeId,
-        content: MessageContent,
-    },
-    MessageReceived {
-        content: MessageContent,
-    },
+impl NetworkNode for Client {
+    fn id(&self) -> NodeId { 
+        self.id
+    }
+    fn packet_send(&self) -> &HashMap<NodeId, Sender<Packet>> {
+        &self.packet_send
+    }
+    fn topology_map(&self) -> &HashSet<(NodeId, Vec<NodeId>)> {
+        &self.topology_map
+    }
+    fn topology_map_mut(&mut self) -> &mut HashSet<(NodeId, Vec<NodeId>)> {
+        &mut self.topology_map
+    }
+    fn assemblers_mut(&mut self) -> &mut Vec<Assembler> {
+        &mut self.assemblers
+    }
+
+    fn run(&mut self) {
+        debug!("Client: {:?} started and waiting for packets", self.id);
+        loop {
+            select_biased! {
+                recv(self.controller_recv) -> command => {
+                    if let Ok(command) = command {
+                        self.handle_command(command);
+                    }
+                },
+                recv(self.packet_recv) -> packet => {
+                    if let Ok(packet) = packet {
+                        self.handle_packet(packet);
+                    }
+                },
+                recv(self.assembler_recv) -> data => {
+                    if let Ok(data) = data {
+                        self.handle_assembler_data(data);
+                    }
+                },
+            }
+        }
+    }
+    fn send_packet_sent_to_sc(&mut self, packet: Packet){
+        self.controller_send.send(ClientEvent::PacketSent(packet)).expect("this is fine 🔥☕");
+    }
+    fn send_packet_received_to_sc(&mut self, packet: Packet){
+        self.controller_send.send(ClientEvent::PacketReceived(packet)).expect("this is fine 🔥☕");
+    }
+    fn send_message_sent_to_sc(&mut self, message: MessageContent, target: NodeId){
+        self.controller_send.send(ClientEvent::MessageSent {target: target, content: message}).expect("this is fine 🔥☕");
+    }
+    fn send_message_received_to_sc(&mut self, message: MessageContent){
+        self.controller_send.send(ClientEvent::MessageReceived { content: message }).expect("this is fine 🔥☕");
+    }
 }
 
-pub trait ClientTrait {
-    fn new(
-        id: NodeId,
-        connected_drone_ids: Vec<NodeId>,
-        controller_send: Sender<ClientEvent>,
-        controller_send_itself: Sender<ClientServerCommand>,
-        controller_recv: Receiver<ClientServerCommand>,
-        packet_send: HashMap<NodeId, Sender<Packet>>,
-        packet_recv: Receiver<Packet>,
-        assemblers: Vec<Assembler>,
-        topology_map: HashSet<(NodeId, Vec<NodeId>)>,
-        server_type_map: HashMap<NodeId, Option<ServerType>>,
-        assembler_send: Sender<Vec<u8>>,
-        assembler_recv: Receiver<Vec<u8>>,
-    ) -> Self;
-
-    fn run(&mut self);
-}
-
-impl ClientTrait for Client {
-    fn new(
+impl Client {
+    pub fn new(
         id: NodeId,
         connected_drone_ids: Vec<NodeId>,
         controller_send: Sender<ClientEvent>,
@@ -94,31 +113,6 @@ impl ClientTrait for Client {
         }
     }
 
-    fn run(&mut self) {
-        debug!("Client: {:?} started and waiting for packets", self.id);
-        loop {
-            select_biased! {
-                recv(self.controller_recv) -> command => {
-                    if let Ok(command) = command {
-                        self.handle_command(command);
-                    }
-                },
-                recv(self.packet_recv) -> packet => {
-                    if let Ok(packet) = packet {
-                        self.handle_packet(packet);
-                    }
-                },
-                recv(self.assembler_recv) -> data => {
-                    if let Ok(data) = data {
-                        self.handle_assembler_data(data);
-                    }
-                },
-            }
-        }
-    }
-}
-
-impl Client {
     fn handle_command(&mut self, command: ClientServerCommand) {
         match command {
             ClientServerCommand::DroneCmd(drone_cmd) => {
@@ -139,12 +133,13 @@ impl Client {
                 // Generate a unique flood ID using current time
                 let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
                 let flood_id = timestamp ^ random::<u64>();
-                
+
                 // Create path trace with just this client
                 let path_trace = vec![(self.id, NodeType::Client)];
 
                 // Send flood request to all connected drones
-                for drone_id in &self.connected_drone_ids {
+                let drone_ids = self.connected_drone_ids.clone();
+                for drone_id in &drone_ids {
                     let flood_request = Packet::new_flood_request(
                         SourceRoutingHeader {
                             hop_index: 1,
@@ -159,7 +154,7 @@ impl Client {
                     );
 
                     // Try to send packet
-                    try_send_packet_with_target_id(self.id, drone_id, &flood_request, &self.packet_send);
+                    self.try_send_packet_with_target_id(drone_id, &flood_request);
                 }
 
                 // Spawn thread to wait and then send RequestServerType
@@ -176,22 +171,22 @@ impl Client {
                 for server_id in self.server_type_map.keys().cloned().collect::<Vec<_>>() {
                     if let Some(None) = self.server_type_map.get(&server_id) {
                         self.send_server_type_request(server_id);
-/*                        
-                        // TODO: remove it
-                        // test 11->42
-                        if self.id == 11 && server_id == 42 {
-                            self.send_server_type_request(server_id);
-                        }*/
+                        /*                        
+                                                // TODO: remove it
+                                                // test 11->42
+                                                if self.id == 11 && server_id == 42 {
+                                                    self.send_server_type_request(server_id);
+                                                }*/
                     }
                 }
             },
             ClientServerCommand::RequestFileList(node_id) => {
                 debug!("Client: {:?} received RequestFileList, Server id: {:?}", self.id, node_id);
-                self.send_text_request_TextList(node_id, ); 
+                self.send_text_request_TextList(node_id, );
             },
             ClientServerCommand::RequestFile(node_id, file_id) => {
                 debug!("Client: {:?} received RequestFile, Server id: {:?} file id: {:?}", self.id, node_id, file_id);
-                self.send_text_request_Text(node_id, file_id); 
+                self.send_text_request_Text(node_id, file_id);
             },
         }
     }
@@ -208,7 +203,7 @@ impl Client {
                 debug!("Client: {:?} received a MsgFragment {:?}", self.id, _fragment);
 
                 // Send fragment to assembler to be reassembled
-                match send_fragment_to_assembler(packet.clone(), &mut self.assemblers) {
+                match self.send_fragment_to_assembler(packet.clone()) {
                     Ok(_) => {
                         debug!("Server: {:?} sent fragment to assembler", self.id);
 
@@ -221,7 +216,7 @@ impl Client {
 
                         // Try to send packet
                         ack_packet.routing_header.increase_hop_index();
-                        try_send_packet(self.id, &ack_packet, &self.packet_send);
+                        self.try_send_packet(&ack_packet);
                     },
                     Err(e) => {
                         debug!("ERROR: Server {:?} failed to send fragment to assembler: {}", self.id, e);
@@ -241,11 +236,11 @@ impl Client {
                 flood_response_packet.routing_header.increase_hop_index();
 
                 // Try to send packet
-                try_send_packet(self.id, &flood_response_packet, &self.packet_send);
+                self.try_send_packet(&flood_response_packet);
             },
             PacketType::FloodResponse(_flood_response) => {
                 debug!("Client: {:?} received a FloodResponse {:?}", self.id, _flood_response);
-                update_topology_with_flood_response(self.id, _flood_response, &mut self.topology_map);
+                self.update_topology_with_flood_response(_flood_response);
 
                 // if it's a server add it to the server_type_map
                 let &(node_id, _node_type) = _flood_response.path_trace.last().unwrap();
@@ -256,15 +251,16 @@ impl Client {
             },
         }
     }
-    fn handle_assembler_data(&mut self, mut data: Vec<u8>) {
-        if let Ok(str_data) = String::from_utf8(data.clone()) {
+    fn handle_assembler_data(&mut self, data: Vec<u8>) {
+        if let Ok(str_data) = String::from_utf8(data) {
             debug!("Client {:?} received assembled message: {:?}", self.id, str_data);
 
             // Try to parse as ServerTypeResponse
             if let Ok(message) = serde_json::from_str::<Message<ServerTypeResponse>>(&str_data) {
                 // Send to SC
-                let content = MessageContent::ServerTypeResponse(message.content.clone());
-                self.send_message_received_to_sc(content);
+                if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                    self.send_message_received_to_sc(content);
+                }
                 
                 match &message.content {
                     ServerTypeResponse::ServerType(server_type) => {
@@ -276,35 +272,25 @@ impl Client {
             // Try to parse as TextResponse
             else if let Ok(message) = serde_json::from_str::<Message<TextResponse>>(&str_data) {
                 // Send to SC
-                let content = MessageContent::TextResponse(message.content.clone());
-                self.send_message_received_to_sc(content);
+                if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                    self.send_message_received_to_sc(content);
+                }
 
                 match message.content {
                     TextResponse::TextList(file_list) => {
                         debug!("Client: {:?} received TextResponse::TextList from {:?} file list: {:?}", self.id, message.source_id, file_list);
                     },
                     TextResponse::Text(file) => {
-                        debug!("Client: {:?} received TTextResponse::Text from {:?} file: {:?}", self.id, message.source_id, file);
+                        debug!("Client: {:?} received TextResponse::Text from {:?} file: {:?}", self.id, message.source_id, file);
                     },
                     TextResponse::NotFound => {
                         debug!("Client: {:?} received TextResponse::NotFound from {:?}", self.id, message.source_id);
                     },
                 }
             }
-            }
         }
-    fn send_packet_sent_to_sc(&mut self, packet: Packet){
-        self.controller_send.send(ClientEvent::PacketSent(packet)).expect("this is fine 🔥☕");
     }
-    fn send_packet_received_to_sc(&mut self, packet: Packet){
-        self.controller_send.send(ClientEvent::PacketReceived(packet)).expect("this is fine 🔥☕");
-    }
-    fn send_message_sent_to_sc(&mut self, message: MessageContent, target: NodeId){
-        self.controller_send.send(ClientEvent::MessageSent {target: target, content: message}).expect("this is fine 🔥☕");
-    }
-    fn send_message_received_to_sc(&mut self, message: MessageContent){
-        self.controller_send.send(ClientEvent::MessageReceived { content: message }).expect("this is fine 🔥☕");
-    }
+    
     fn send_server_type_request(&mut self, server_id: NodeId) {
         // Create a server type request with random session ID
         let session_id = random::<u64>();
@@ -314,7 +300,7 @@ impl Client {
             content: ServerTypeRequest::GetServerType,
         };
         debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, server_id, message);
-        send_message_in_fragments(self.id, server_id, session_id, message, &self.packet_send, &self.topology_map);
+        self.send_message_in_fragments(server_id, session_id, message);
     }
     fn send_text_request_TextList(&mut self, server_id: NodeId) {
         let session_id = random::<u64>();
@@ -324,7 +310,7 @@ impl Client {
             content: TextRequest::TextList,
         };
         debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, server_id, message);
-        send_message_in_fragments(self.id, server_id, session_id, message, &self.packet_send, &self.topology_map);
+        self.send_message_in_fragments(server_id, session_id, message);
     }
     fn send_text_request_Text(&mut self, server_id: NodeId, file_id: u64) {
         let session_id = random::<u64>();
@@ -334,7 +320,6 @@ impl Client {
             content: TextRequest::Text(file_id),
         };
         debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, server_id, message);
-        send_message_in_fragments(self.id, server_id, session_id, message, &self.packet_send, &self.topology_map);
+        self.send_message_in_fragments(server_id, session_id, message);
     }
 }
-

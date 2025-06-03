@@ -197,6 +197,7 @@ dependencies = [
  "egui",
  "image 0.24.9",
  "rand",
+ "rustaceans_wit_attitudes",
  "serde",
  "serde_json",
  "toml",
@@ -2620,6 +2621,16 @@ name = "renderdoc-sys"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
+
+[[package]]
+name = "rustaceans_wit_attitudes"
+version = "0.0.0"
+source = "git+https://github.com/Nicklaskiaer/ap-rustaceans-wit-attitudes-drone.git#8c7e91328982291f3172453de89637b59c1824e8"
+dependencies = [
+ "crossbeam-channel",
+ "rand",
+ "wg_2024",
+]
 
 [[package]]
 name = "rustc-hash"

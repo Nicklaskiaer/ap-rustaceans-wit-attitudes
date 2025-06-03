@@ -1,9 +1,9 @@
-use wg_2024::network::{NodeId, SourceRoutingHeader};
-use crate::simulation_controller::gui_structs::*;
 use crate::simulation_controller::gui::MyApp;
-use eframe::egui;
-use chrono::{DateTime, Local, Utc};
+use crate::simulation_controller::gui_structs::*;
+use chrono::{DateTime, Utc};
 use chrono_tz::Europe::Rome;
+use eframe::egui;
+use wg_2024::network::NodeId;
 
 pub fn show_popup(app: &mut MyApp, ctx: &egui::Context, name: &str) {
     let current_time: DateTime<Utc> = Utc::now();

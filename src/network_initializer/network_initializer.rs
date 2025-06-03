@@ -1,28 +1,23 @@
 #[cfg(feature = "debug")]
 use crate::debug;
 
+use crate::client_server::client::Client;
+use crate::client_server::client_server_command::{ClientEvent, ClientServerCommand, ContentType, NetworkNode, ServerEvent, ServerType};
+use crate::client_server::communication_server::CommunicationServer;
+use crate::client_server::content_server::ContentServer;
+use crate::simulation_controller::simulation_controller::{simulation_controller_main, SimulationController};
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use std::collections::HashSet;
-use std::{fs, thread};
-use std::collections::HashMap;
-use std::time::Duration;
-use crossbeam_channel::internal::SelectHandle;
-use egui::Order::Debug;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use rustaceans_wit_attitudes::RustaceansWitAttitudesDrone;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::{fs, thread};
 use wg_2024::config::Config;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
-use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{Packet};
-
-use crate::client::client_server_command::ClientServerCommand;
-use crate::simulation_controller::simulation_controller::{simulation_controller_main, SimulationController};
-use crate::types::my_drone::MyDrone;
-use crate::client::client::{Client, ClientEvent, ClientTrait};
-use crate::server::server::{ContentType, Server, ServerEvent, ServerType};
-use crate::server::communication_server::{CommunicationServer};
-use crate::server::content_server::{ContentServer};
+use wg_2024::network::NodeId;
+use wg_2024::packet::Packet;
 
 const NUM_CONTENT_SERVERS: usize = 4;
 
@@ -74,7 +69,7 @@ pub fn main() {
 
         // spawn
         thread::spawn(move || {
-            let mut drone = MyDrone::new(
+            let mut drone = RustaceansWitAttitudesDrone::new(
                 drone.id,
                 node_event_send_drone,
                 controller_drone_recv,
