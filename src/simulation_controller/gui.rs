@@ -271,6 +271,7 @@ impl eframe::App for MyApp{
 
                         egui::CentralPanel::default().show(ctx, |ui| {
                             egui::ScrollArea::vertical().show(ui, |ui| {
+                                ui.set_width(ui.available_width());
                                 for log in logs_handler::filtered_logs(self) {
                                     let mut text_parts: Vec<egui::RichText> = Vec::new();
 

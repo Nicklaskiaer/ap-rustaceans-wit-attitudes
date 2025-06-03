@@ -186,8 +186,14 @@ fn show_client_controls(
                     });
 
                 if ui.button("Register").clicked() {
-                    //todo!(Manage connection)
+                    if let Some(num_str) = selected_server.split_whitespace().last() {
+                        if let Ok(server_id) = num_str.parse::<u8>() {
+                            app.simulation_controller.handle_registration_request(node_id, server_id);
+                        }
+                    }
                 }
+
+
             });
 
             ui.separator();
@@ -198,6 +204,7 @@ fn show_client_controls(
                 .max_height(100.0)
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
+
                     //todo!(Insert messages)
                 });
 
@@ -213,8 +220,11 @@ fn show_client_controls(
                 );
                 ui.add_space(2.0);
                 if ui.button("Send").clicked() {
-                    //todo!(Send message)
-                    *text_input = String::new();
+                    if let Some(num_str) = selected_server.split_whitespace().last() {
+                        if let Ok(server_id) = num_str.parse::<u8>() {
+                            app.simulation_controller.handle_send_chat_message(node_id, server_id, text_input.parse().unwrap())
+                        }
+                    }
                 }
             });
         }

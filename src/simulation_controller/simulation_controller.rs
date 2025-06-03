@@ -92,8 +92,6 @@ impl SimulationController {
             .collect()
     }
 
-    //todo(packet drop rate)
-
     pub fn get_client_ids(&self) -> Vec<String> {
         self.clients.keys()
             .map(|node_id| format!("Client {}", node_id.to_string()))
@@ -135,6 +133,18 @@ impl SimulationController {
     pub fn start_flood_request_for_all(&self){
         for (_, (sender,_)) in &self.clients{
             sender.send(ClientServerCommand::StartFloodRequest).unwrap();
+        }
+    }
+
+    pub fn handle_registration_request(&self, client_id: NodeId, server_id: NodeId){
+        if let Some((client_sender, _)) = self.clients.get(&client_id) {
+            client_sender.send(ClientServerCommand::RegistrationRequest(server_id)).unwrap();
+        }
+    }
+
+    pub fn handle_send_chat_message(&self, client_id: NodeId, server_id: NodeId, message: String){
+        if let Some((client_sender, _)) = self.clients.get(&client_id) {
+            client_sender.send(ClientServerCommand::SendChatMessage(server_id, message)).unwrap();
         }
     }
 }

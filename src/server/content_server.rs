@@ -161,6 +161,7 @@ impl ContentServer {
                 }
             },
             ClientServerCommand::RequestServerType => {/* servers do not need to use it */},
+            ClientServerCommand::RegistrationRequest(_) => {/* servers do not need to use it */},
         }
     }
     fn handle_packet(&mut self, mut packet: Packet) {

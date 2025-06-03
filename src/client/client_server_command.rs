@@ -10,7 +10,7 @@ pub enum ClientServerCommand {
     StartFloodRequest,
     RequestServerType, // used only by the clients, they will auto call it to themselves after few seconds after a StartFloodRequest
     SendChatMessage(NodeId, String),
-    //RegistrationRequest(NodeId),
+    RegistrationRequest(NodeId),
     //RequestServerType(NodeId), // client request the server type
     //ResponseServerType(NodeId), // server send its server type
     //RequestServerList(NodeId), // client request the server a list of all connected clients
