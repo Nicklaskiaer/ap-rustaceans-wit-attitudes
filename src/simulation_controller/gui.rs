@@ -6,7 +6,7 @@ use crate::simulation_controller::logs_handler;
 use crate::simulation_controller::popup_handler;
 use crate::simulation_controller::simulation_controller::SimulationController;
 
-use crate::client_server::client_server_command::{ClientEvent, ClientServerCommand, ServerEvent, ServerType};
+use crate::client_server::network_core::{ClientEvent, ClientServerCommand, ServerEvent, ServerType};
 use crossbeam_channel::Sender;
 use eframe::egui;
 use std::collections::HashMap;

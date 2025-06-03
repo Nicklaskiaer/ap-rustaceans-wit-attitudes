@@ -2,7 +2,7 @@
 use crate::debug;
 
 use crate::client_server::client::Client;
-use crate::client_server::client_server_command::{ClientEvent, ClientServerCommand, ContentType, NetworkNode, ServerEvent, ServerType};
+use crate::client_server::network_core::{ClientEvent, ClientServerCommand, ContentType, NetworkNode, ServerEvent, ServerType};
 use crate::client_server::communication_server::CommunicationServer;
 use crate::client_server::content_server::ContentServer;
 use crate::simulation_controller::simulation_controller::{simulation_controller_main, SimulationController};

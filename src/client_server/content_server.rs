@@ -2,7 +2,7 @@
 use crate::debug;
 
 use crate::assembler::assembler::*;
-use crate::client_server::client_server_command::{ClientServerCommand, ContentType, NetworkNode, ServerEvent, ServerType};
+use crate::client_server::network_core::{ClientServerCommand, ContentType, NetworkNode, ServerEvent, ServerType};
 use crate::message::message::*;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::random;

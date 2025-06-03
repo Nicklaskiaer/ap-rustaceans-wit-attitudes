@@ -1,7 +1,7 @@
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use wg_2024::network::NodeId;
-use crate::client_server::client_server_command::ServerType;
+use crate::client_server::network_core::ServerType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound(deserialize = "M: DeserializeOwned"))]

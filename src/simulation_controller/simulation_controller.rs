@@ -4,7 +4,7 @@ use eframe::egui;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
-use crate::client_server::client_server_command::{ClientEvent, ClientServerCommand, ServerEvent, ServerType};
+use crate::client_server::network_core::{ClientEvent, ClientServerCommand, ServerEvent, ServerType};
 use crate::simulation_controller::gui::MyApp;
 
 pub struct SimulationController {

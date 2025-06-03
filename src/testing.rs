@@ -1,7 +1,7 @@
 use std::time::Duration;
 use wg_2024::network::SourceRoutingHeader;
 use wg_2024::packet::{Fragment, Packet};
-use crate::client_server::client_server_command::ClientServerCommand;
+use crate::client_server::network_core::ClientServerCommand;
 use crate::simulation_controller::simulation_controller::SimulationController;
 
 pub fn run_tests(simulation_controller: &SimulationController) {

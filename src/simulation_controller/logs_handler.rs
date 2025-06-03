@@ -2,7 +2,7 @@ use wg_2024::controller::DroneEvent;
 
 use crate::simulation_controller::gui_structs::*;
 
-use crate::client_server::client_server_command::{ClientEvent, ServerEvent};
+use crate::client_server::network_core::{ClientEvent, ServerEvent};
 use crate::simulation_controller::gui::MyApp;
 use chrono::{DateTime, Utc};
 use chrono_tz::Europe::Rome;
