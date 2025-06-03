@@ -16,6 +16,12 @@ use crate::client::client::Client;
 use crate::client::client_server_command::{send_fragment_to_assembler, send_message_in_fragments, try_send_packet, try_send_packet_with_target_id, update_topology_with_flood_response, ClientServerCommand};
 use crate::server::server::{Server, ServerEvent, ServerType};
 
+#[derive(Debug, Clone)]
+pub struct ChatMessage{
+    pub sender_id: NodeId,
+    pub content: String,
+}
+
 pub struct CommunicationServer {
     id: NodeId,
     topology_map: HashSet<(NodeId, Vec<NodeId>)>,
@@ -28,6 +34,7 @@ pub struct CommunicationServer {
     assembler_send: Sender<Vec<u8>>,
     assembler_recv: Receiver<Vec<u8>>,
     registered_clients: HashSet<NodeId>,
+    message_store: HashMap<NodeId, VecDeque<ChatMessage>>
 }
 
 impl Server for CommunicationServer {
@@ -98,6 +105,7 @@ impl CommunicationServer {
         assembler_send: Sender<Vec<u8>>,
         assembler_recv: Receiver<Vec<u8>>,
         registered_clients: HashSet<NodeId>,
+        message_store: HashMap<NodeId, VecDeque<ChatMessage>>
     ) -> Self {
         Self {
             id,
@@ -111,6 +119,7 @@ impl CommunicationServer {
             assembler_send,
             assembler_recv,
             registered_clients,
+            message_store,
         }
     }
 
@@ -160,7 +169,7 @@ impl CommunicationServer {
                 }
             },
 
-            ClientServerCommand::RequestServerType => {/* servers do not need to use it */},
+            ClientServerCommand::RequestServerType => { /* servers do not need to use it */ },
         }
     }
 
@@ -251,7 +260,11 @@ impl CommunicationServer {
 
                         self.send_server_client_list(message.source_id, message.session_id);
                     },
-                    _ => {}
+                    ChatRequest::SendMessage { from, message } => {
+                        debug!("Server: {:?} received SendMessage request from {:?}", self.id, from);
+
+                        self.handle_incoming_message(from, message);
+                    },
                 }
             }
         }
@@ -282,5 +295,17 @@ impl CommunicationServer {
 
         send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map, );
     }
+
+    fn handle_incoming_message(&mut self, sender_id: NodeId, content: String) {
+        let chat_message = ChatMessage {
+            sender_id,
+            content,
+        };
+
+        self.message_store.entry(sender_id)
+            .or_insert_with(VecDeque::new)
+            .push_back(chat_message.clone());
+    }
+    //todo!(Need a function for GUI to retrive message_store)
 }
 

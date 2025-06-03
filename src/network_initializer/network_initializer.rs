@@ -241,7 +241,8 @@ pub fn main() {
                         HashSet::new(),
                         assembler_send,
                         assembler_recv,
-                        HashSet::new()
+                        HashSet::new(),
+                        HashMap::new()
                     );
                     server.run();
                 });
