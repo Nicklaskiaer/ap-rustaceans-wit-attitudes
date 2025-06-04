@@ -75,7 +75,7 @@ fn client_send_message_test(simulation_controller: &SimulationController) {
 
     //sends packet to C11
     if let Some((c11_sender, _)) = simulation_controller.get_clients().get(&11) {
-        match c11_sender.send(ClientServerCommand::SendChatMessage(server_id, message_id, message)) {
+        match c11_sender.send(ClientServerCommand::SendChatMessage(server_id, message)) {
             Ok(_) => {},
             Err(e) => println!("Failed to send chat message command: {:?}", e)
         }

@@ -1,18 +1,21 @@
 #[cfg(feature = "debug")]
 use crate::debug;
 
-use crate::assembler::assembler::Assembler;
-use crate::client_server::network_core::{ClientEvent, ClientServerCommand, NetworkNode, ServerType};
-use crate::message::message::{Message, MessageContent, ServerTypeRequest, ServerTypeResponse, TextRequest, TextResponse};
-use crossbeam_channel::{select_biased, Receiver, Sender};
-use rand::random;
-use std::collections::{HashMap, HashSet};
+use crossbeam_channel::{after, select_biased, unbounded, Receiver, SendError, Sender};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::thread;
+use std::thread::ThreadId;
 use wg_2024::controller::DroneCommand;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
+use wg_2024::packet;
 use wg_2024::packet::{
-    FloodRequest, NodeType, Packet, PacketType,
+    Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType,
 };
+use rand::{Rng, thread_rng, random};
+use crate::assembler::assembler::Assembler;
+use crate::client::client_server_command::{compute_path_to_node, send_fragment_to_assembler, send_message_in_fragments, try_send_packet, try_send_packet_with_target_id, update_topology_with_flood_response, ClientServerCommand};
+use crate::server::message::{Message, ServerTypeRequest, ServerTypeResponse, TextRequest};
+use crate::server::server::{ServerEvent, ServerType};
 
 pub struct Client {
     id: NodeId,
@@ -30,7 +33,7 @@ pub struct Client {
 }
 
 impl NetworkNode for Client {
-    fn id(&self) -> NodeId { 
+    fn id(&self) -> NodeId {
         self.id
     }
     fn packet_send(&self) -> &HashMap<NodeId, Sender<Packet>> {
@@ -113,6 +116,31 @@ impl Client {
         }
     }
 
+    fn run(&mut self) {
+        debug!("Client: {:?} started and waiting for packets", self.id);
+        loop {
+            select_biased! {
+                recv(self.controller_recv) -> command => {
+                    if let Ok(command) = command {
+                        self.handle_command(command);
+                    }
+                },
+                recv(self.packet_recv) -> packet => {
+                    if let Ok(packet) = packet {
+                        self.handle_packet(packet);
+                    }
+                },
+                recv(self.assembler_recv) -> data => {
+                    if let Ok(data) = data {
+                        self.handle_assembler_data(data);
+                    }
+                },
+            }
+        }
+    }
+}
+
+impl Client {
     fn handle_command(&mut self, command: ClientServerCommand) {
         match command {
             ClientServerCommand::DroneCmd(drone_cmd) => {
@@ -124,8 +152,10 @@ impl Client {
                     DroneCommand::RemoveSender(id) => {},
                 }
             },
-            ClientServerCommand::SendChatMessage(node_id, id, msg) => {
-                debug!("Client: {:?} sending chat message to {:?}: {}", self.id, node_id, msg);
+            ClientServerCommand::SendChatMessage(node_id, msg) => {
+                debug!("Client: {:?} received SendChatMessage command", self.id);
+
+                self.send_chat_message(node_id, msg);
             },
             ClientServerCommand::StartFloodRequest => {
                 debug!("Client: {:?} received StartFloodRequest command", self.id);
@@ -171,7 +201,7 @@ impl Client {
                 for server_id in self.server_type_map.keys().cloned().collect::<Vec<_>>() {
                     if let Some(None) = self.server_type_map.get(&server_id) {
                         self.send_server_type_request(server_id);
-                        /*                        
+                        /*
                                                 // TODO: remove it
                                                 // test 11->42
                                                 if self.id == 11 && server_id == 42 {
@@ -179,6 +209,12 @@ impl Client {
                                                 }*/
                     }
                 }
+            },
+            ClientServerCommand::RegistrationRequest(node_id) => {
+                debug!("Client: {:?} received RegistrationRequest command", node_id);
+
+                self.send_registration_request(node_id);
+            }
             },
             ClientServerCommand::RequestFileList(node_id) => {
                 debug!("Client: {:?} received RequestFileList, Server id: {:?}", self.id, node_id);
@@ -261,7 +297,7 @@ impl Client {
                 if let Some(content) = MessageContent::from_content(message.content.clone()) {
                     self.send_message_received_to_sc(content);
                 }
-                
+
                 match &message.content {
                     ServerTypeResponse::ServerType(server_type) => {
                         debug!("Client: {:?} received server type {:?} from {:?}", self.id, server_type, message.source_id);
@@ -288,9 +324,34 @@ impl Client {
                     },
                 }
             }
+            // Try to parse as ChatRequest
+            else if let Ok(message) = serde_json::from_str::<Message<ChatResponse>>(&str_data) {
+                // Send to SC
+                if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                    self.send_message_received_to_sc(content);
+                }
+
+                match &message.content {
+                    ChatResponse::ClientNotRegistered => {
+                        //todo!(I added this, need to send it to GUI)
+                        debug!("Client: {:?} received a ClientNotRegistered", self.id);
+                    }
+                    _ => {}
+                }
+            }
+
         }
     }
-    
+
+    fn send_sent_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ClientEvent>> {
+        self.controller_send.send(ClientEvent::PacketSent(packet))
+    }
+
+    fn send_recv_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ClientEvent>> {
+        self.controller_send.send(ClientEvent::PacketReceived(packet))
+    }
+
+
     fn send_server_type_request(&mut self, server_id: NodeId) {
         // Create a server type request with random session ID
         let session_id = random::<u64>();
@@ -322,4 +383,36 @@ impl Client {
         debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, server_id, message);
         self.send_message_in_fragments(server_id, session_id, message);
     }
+
+    fn send_registration_request(&mut self, server_id: NodeId) {
+        debug!("Client: {:?} requesting registration to server {:?}", self.id, server_id);
+
+        // Create a registration request with random session ID
+        let session_id = random::<u64>();
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: ChatRequest::Register(self.id),
+        };
+
+        send_message_in_fragments(self.id, server_id, session_id, message, &self.packet_send, &self.topology_map)
+    }
+
+    fn send_chat_message(&mut self, server_id: NodeId, content: String) {
+        debug!("Client: {:?} sending message to server {:?}: {:?}", self.id, server_id, content);
+
+        // Create a chat message request
+        let session_id = random::<u64>();
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: ChatRequest::SendMessage {
+                from: self.id,
+                message: content,
+            },
+        };
+
+        send_message_in_fragments(self.id, server_id, session_id, message, &self.packet_send, &self.topology_map)
+    }
 }
+

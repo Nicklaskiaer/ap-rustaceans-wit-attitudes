@@ -49,7 +49,7 @@ pub fn logs(app: &mut MyApp, event: Event) {
 
         Event::Client(client_event) => match client_event {
             ClientEvent::PacketSent(packet) => {
-                format!("[EVENT] Packet Sent to Client {}",
+                format!("[EVENT] Packet Sent by Client {}",
                         packet
                             .routing_header
                             .hops
