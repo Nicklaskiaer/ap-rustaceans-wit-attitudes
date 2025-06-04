@@ -13,9 +13,8 @@ use wg_2024::packet::{
 };
 use rand::{Rng, thread_rng, random};
 use crate::assembler::assembler::Assembler;
-use crate::client::client_server_command::{compute_path_to_node, send_fragment_to_assembler, send_message_in_fragments, try_send_packet, try_send_packet_with_target_id, update_topology_with_flood_response, ClientServerCommand};
-use crate::server::message::{Message, ServerTypeRequest, ServerTypeResponse, TextRequest};
-use crate::server::server::{ServerEvent, ServerType};
+use crate::client_server::network_core::{ClientEvent, ClientServerCommand, NetworkNode, ServerType};
+use crate::message::message::{ChatRequest, ChatResponse, Message, MessageContent, ServerTypeRequest, ServerTypeResponse, TextRequest, TextResponse};
 
 pub struct Client {
     id: NodeId,
@@ -214,7 +213,6 @@ impl Client {
                 debug!("Client: {:?} received RegistrationRequest command", node_id);
 
                 self.send_registration_request(node_id);
-            }
             },
             ClientServerCommand::RequestFileList(node_id) => {
                 debug!("Client: {:?} received RequestFileList, Server id: {:?}", self.id, node_id);
@@ -343,15 +341,6 @@ impl Client {
         }
     }
 
-    fn send_sent_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ClientEvent>> {
-        self.controller_send.send(ClientEvent::PacketSent(packet))
-    }
-
-    fn send_recv_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ClientEvent>> {
-        self.controller_send.send(ClientEvent::PacketReceived(packet))
-    }
-
-
     fn send_server_type_request(&mut self, server_id: NodeId) {
         // Create a server type request with random session ID
         let session_id = random::<u64>();
@@ -395,7 +384,7 @@ impl Client {
             content: ChatRequest::Register(self.id),
         };
 
-        send_message_in_fragments(self.id, server_id, session_id, message, &self.packet_send, &self.topology_map)
+        self.send_message_in_fragments(server_id, session_id, message);
     }
 
     fn send_chat_message(&mut self, server_id: NodeId, content: String) {
@@ -408,11 +397,12 @@ impl Client {
             session_id,
             content: ChatRequest::SendMessage {
                 from: self.id,
+                to: server_id,
                 message: content,
             },
         };
 
-        send_message_in_fragments(self.id, server_id, session_id, message, &self.packet_send, &self.topology_map)
+        self.send_message_in_fragments(server_id, session_id, message);
     }
 }
 

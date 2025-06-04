@@ -189,6 +189,7 @@ pub enum ChatResponse {
     ClientList(Vec<NodeId>),
     MessageFrom { from: NodeId, message: Vec<u8> },
     MessageSent,
+    ClientNotRegistered,
 }
 
 impl DroneSend for ChatResponse {
@@ -206,6 +207,7 @@ impl Response for ChatResponse {
             ChatResponse::ClientList(_) => "ClientList".to_string(),
             ChatResponse::MessageFrom { .. } => "MessageFrom".to_string(),
             ChatResponse::MessageSent => "MessageSent".to_string(),
+            ChatResponse::ClientNotRegistered => "ClientNotRegistered".to_string(),
         }
     }
 }
