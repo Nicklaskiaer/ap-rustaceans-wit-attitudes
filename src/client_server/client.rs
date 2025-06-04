@@ -397,7 +397,6 @@ impl Client {
             session_id,
             content: ChatRequest::SendMessage {
                 from: self.id,
-                to: server_id,
                 message: content,
             },
         };

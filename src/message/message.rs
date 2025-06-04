@@ -112,7 +112,6 @@ pub enum ChatRequest {
     Register(NodeId),
     SendMessage {
         from: NodeId,
-        to: NodeId,
         message: String,
     },
 }
