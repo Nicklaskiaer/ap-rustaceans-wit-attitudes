@@ -12,13 +12,11 @@ macro_rules! debug {
 
 mod network_initializer;
 mod simulation_controller;
-mod server;
 mod message;
-mod types;
 mod test_fragments;
 mod assembler;
-mod client;
 mod testing;
+mod client_server;
 
 fn main() {
     debug!("Running in Debug mode");

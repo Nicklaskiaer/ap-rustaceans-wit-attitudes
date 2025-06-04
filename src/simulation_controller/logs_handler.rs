@@ -1,12 +1,11 @@
-use wg_2024::controller::{DroneCommand, DroneEvent};
+use wg_2024::controller::DroneEvent;
 
 use crate::simulation_controller::gui_structs::*;
-use crate::client::client::ClientEvent;
-use crate::server::server::ServerEvent;
 
-use chrono::{DateTime, Local, Utc};
-use chrono_tz::Europe::Rome;
+use crate::client_server::network_core::{ClientEvent, ServerEvent};
 use crate::simulation_controller::gui::MyApp;
+use chrono::{DateTime, Utc};
+use chrono_tz::Europe::Rome;
 
 //Function to log events/commands from drones, clients and server.
 pub fn logs(app: &mut MyApp, event: Event) {
@@ -68,6 +67,12 @@ pub fn logs(app: &mut MyApp, event: Event) {
                     .unwrap_or_else(|| "None".to_string()) // Handle the None case.
                 )
             }
+            ClientEvent::MessageSent { .. } => {
+                format!("[EVENT] Packet Received by TODO.")
+            }
+            ClientEvent::MessageReceived { .. } => {
+                format!("[EVENT] Packet Received by TODO.")
+            }
         },
 
         Event::Server(server_event) => match server_event {
@@ -88,7 +93,8 @@ pub fn logs(app: &mut MyApp, event: Event) {
                     .map(|&hop| hop.to_string()) // Convert u8 to String if it exists.
                     .unwrap_or_else(|| "None".to_string()) // Handle the None case.
                 )
-            }
+            },
+            ServerEvent::MessageSent { .. } | ServerEvent::MessageReceived { .. } => todo!()
         },
     };
 

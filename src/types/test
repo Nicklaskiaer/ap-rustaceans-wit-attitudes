@@ -1,6 +1,0 @@
-droni(drone_id, sender, vec[drone_id_vicini])
-clients(id, sender, vec[drone_id_vicini])
-servers(id, sender, vec[drone_id_vicini])
-
-
-controllo parallelo dei vicini dei droni

@@ -1,22 +1,15 @@
-use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet::{Fragment, Packet};
 use wg_2024::controller::{DroneCommand, DroneEvent};
+use wg_2024::network::NodeId;
 
-use crate::simulation_controller::simulation_controller::SimulationController;
 use crate::simulation_controller::gui_structs::*;
-use crate::client::client::ClientEvent;
-use crate::server::server::{ServerEvent, ServerType};
-use crate::simulation_controller::popup_handler;
 use crate::simulation_controller::logs_handler;
+use crate::simulation_controller::popup_handler;
+use crate::simulation_controller::simulation_controller::SimulationController;
 
+use crate::client_server::network_core::{ClientEvent, ClientServerCommand, ServerEvent, ServerType};
+use crossbeam_channel::Sender;
 use eframe::egui;
-use crossbeam_channel::{Receiver, Sender};
-use chrono::{DateTime, Local, Utc};
-use chrono_tz::Europe::Rome;
 use std::collections::HashMap;
-use std::time::Duration;
-use crate::client::client_server_command::ClientServerCommand;
-use crate::testing;
 
 pub struct MyApp {
     pub(crate) simulation_controller: SimulationController,
@@ -102,7 +95,9 @@ impl eframe::App for MyApp{
         while let Ok(event) = self.simulation_controller.get_client_event_recv().try_recv(){
             match event {
                 ClientEvent::PacketSent(_) => {println!("client PacketSent")}
-                ClientEvent::PacketReceived(_) => {println!("client PacketReceived")}
+                ClientEvent::PacketReceived(_) => {println!("client PacketReceived")},
+                ClientEvent::MessageSent { .. } => {println!("client MessageSent")},
+                ClientEvent::MessageReceived { .. } => {println!("client MessageReceived")}
             }
             self.logs(Event::Client(event));
         }
@@ -110,7 +105,9 @@ impl eframe::App for MyApp{
         while let Ok(event) = self.simulation_controller.get_server_event_recv().try_recv(){
             match event {
                 ServerEvent::PacketSent(_) => {println!("server PacketSent")}
-                ServerEvent::PacketReceived(_) => {println!("server PacketReceived")}
+                ServerEvent::PacketReceived(_) => {println!("server PacketReceived")},
+                ServerEvent::MessageSent { .. } => {println!("server MessageSent")},
+                ServerEvent::MessageReceived { .. } => {println!("server MessageReceived")}
             }
             self.logs(Event::Server(event));
         }

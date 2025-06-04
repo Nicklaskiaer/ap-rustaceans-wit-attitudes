@@ -2,25 +2,16 @@
 use crate::debug;
 
 use crate::assembler::assembler::*;
-use crate::server::message::*;
-use crossbeam_channel::{select_biased, unbounded, Receiver, SendError, Sender};
-use std::collections::{HashMap, HashSet, VecDeque};
+use crate::client_server::network_core::{ChatMessage, ClientServerCommand, NetworkNode, ServerEvent, ServerType};
+use crate::message::message::*;
+use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::random;
+use std::collections::{HashMap, HashSet, VecDeque};
 use wg_2024::controller::DroneCommand;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet;
 use wg_2024::packet::{
-    Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType,
+    FloodRequest, NodeType, Packet, PacketType,
 };
-use crate::client::client::Client;
-use crate::client::client_server_command::{send_fragment_to_assembler, send_message_in_fragments, try_send_packet, try_send_packet_with_target_id, update_topology_with_flood_response, ClientServerCommand};
-use crate::server::server::{Server, ServerEvent, ServerType};
-
-#[derive(Debug, Clone)]
-pub struct ChatMessage{
-    pub sender_id: NodeId,
-    pub content: String,
-}
 
 pub struct CommunicationServer {
     id: NodeId,
@@ -34,47 +25,10 @@ pub struct CommunicationServer {
     assembler_send: Sender<Vec<u8>>,
     assembler_recv: Receiver<Vec<u8>>,
     registered_clients: HashSet<NodeId>,
-    message_store: HashMap<NodeId, VecDeque<ChatMessage>>
+    message_store: HashMap<NodeId, VecDeque<ChatMessage>>,
 }
 
-impl Server for CommunicationServer {
-    type RequestType = ChatRequest;
-    type ResponseType = ChatResponse;
-
-    fn run(&mut self) {
-        debug!("Communication Server: {:?} started and waiting for packets", self.id);
-        loop {
-            select_biased! {
-                recv(self.controller_recv) -> command => {
-                    if let Ok(command) = command {
-                        self.handle_command(command);
-                    }
-                },
-                recv(self.packet_recv) -> packet => {
-                    if let Ok(packet) = packet {
-                        self.handle_packet(packet);
-                    }
-                },
-                recv(self.assembler_recv) -> data => {
-                    if let Ok(data) = data {
-                        self.handle_assembler_data(data);
-                    }
-                },
-            }
-        }
-    }
-    fn controller_recv(&self) -> &Receiver<ClientServerCommand> {
-        &self.controller_recv
-    }
-    fn packet_recv(&self) -> &Receiver<Packet> {
-        &self.packet_recv
-    }
-    fn assembler_recv(&self) -> &Receiver<Vec<u8>> {
-        &self.assembler_recv
-    }
-    fn controller_send(&mut self) -> &mut Sender<ServerEvent> {
-        &mut self.controller_send
-    }
+impl NetworkNode for CommunicationServer {
     fn id(&self) -> NodeId {
         self.id
     }
@@ -89,6 +43,42 @@ impl Server for CommunicationServer {
     }
     fn assemblers_mut(&mut self) -> &mut Vec<Assembler> {
         &mut self.assemblers
+    }
+    
+    fn run(&mut self) {
+        debug!("Communication Server: {:?} started and waiting for packets", self.id);
+        loop {
+            select_biased! {
+                recv(self.controller_recv) -> command => {
+                    if let Ok(command) = command {
+                        self.handle_command(command);
+                    }
+                },
+                recv(self.packet_recv) -> packet => {
+                    if let Ok(packet) = packet {
+                        self.send_packet_received_to_sc(packet.clone());
+                        self.handle_packet(packet);
+                    }
+                },
+                recv(self.assembler_recv) -> data => {
+                    if let Ok(data) = data {
+                        self.handle_assembler_data(data);
+                    }
+                },
+            }
+        }
+    }
+    fn send_packet_sent_to_sc(&mut self, packet: Packet){
+        self.controller_send.send(ServerEvent::PacketSent(packet)).expect("this is fine 🔥☕");
+    }
+    fn send_packet_received_to_sc(&mut self, packet: Packet){
+        self.controller_send.send(ServerEvent::PacketReceived(packet)).expect("this is fine 🔥☕");
+    }
+    fn send_message_sent_to_sc(&mut self, message: MessageContent, target: NodeId){
+        self.controller_send.send(ServerEvent::MessageSent {target: target, content: message}).expect("this is fine 🔥☕");
+    }
+    fn send_message_received_to_sc(&mut self, message: MessageContent){
+        self.controller_send.send(ServerEvent::MessageReceived { content: message }).expect("this is fine 🔥☕");
     }
 }
 
@@ -105,7 +95,7 @@ impl CommunicationServer {
         assembler_send: Sender<Vec<u8>>,
         assembler_recv: Receiver<Vec<u8>>,
         registered_clients: HashSet<NodeId>,
-        message_store: HashMap<NodeId, VecDeque<ChatMessage>>
+        message_store: HashMap<NodeId, VecDeque<ChatMessage>>,
     ) -> Self {
         Self {
             id,
@@ -134,11 +124,9 @@ impl CommunicationServer {
                     DroneCommand::RemoveSender(id) => {},
                 }
             },
-
             ClientServerCommand::SendChatMessage(target_id, msg) => {
-                /*Not used by server*/
+                debug!("Server: {:?} sending chat message to {:?}: {:?}", self.id, target_id, msg);
             },
-
             ClientServerCommand::StartFloodRequest => {
                 debug!("Server: {:?} received StartFloodRequest command", self.id);
 
@@ -150,7 +138,8 @@ impl CommunicationServer {
                 let path_trace = vec![(self.id, NodeType::Server)];
 
                 // Send flood request to all connected drones
-                for drone_id in &self.connected_drone_ids {
+                let drone_ids = self.connected_drone_ids.clone();
+                for drone_id in &drone_ids {
                     let flood_request = Packet::new_flood_request(
                         SourceRoutingHeader {
                             hop_index: 1,
@@ -165,31 +154,28 @@ impl CommunicationServer {
                     );
 
                     // Try to send packet
-                    try_send_packet_with_target_id(self.id, drone_id, &flood_request, &self.packet_send);
+                    self.try_send_packet_with_target_id(drone_id, &flood_request);
                 }
             },
-
-            ClientServerCommand::RequestServerType => { /* servers do not need to use it */ },
-
-            ClientServerCommand::RegistrationRequest(_) => {/* server do not need to use it */}
+            ClientServerCommand::RequestServerType => {/* servers do not need to use it */},
+            ClientServerCommand::RequestFileList(_) => {/* servers do not need to use it */},
+            ClientServerCommand::RequestFile(_, _) => {/* servers do not need to use it */},
+            ClientServerCommand::RegistrationRequest(_) => {/* this server do not need to use it */}
         }
     }
-
     fn handle_packet(&mut self, mut packet: Packet) {
         match &packet.pack_type {
             PacketType::Nack(_nack) => {
                 debug!("Server: {:?} received a Ack {:?}", self.id, _nack);
             },
-
             PacketType::Ack(_ack) => {
                 debug!("Server: {:?} received a Ack {:?}", self.id, _ack);
             },
-
             PacketType::MsgFragment(_fragment) => {
                 debug!("Server: {:?} received a MsgFragment {:?}", self.id, _fragment);
 
                 // Send fragment to assembler to be reassembled
-                match send_fragment_to_assembler(packet.clone(), &mut self.assemblers) {
+                match self.send_fragment_to_assembler(packet.clone()) {
                     Ok(_) => {
                         debug!("Server: {:?} sent fragment to assembler", self.id);
 
@@ -202,14 +188,13 @@ impl CommunicationServer {
 
                         // Try to send packet
                         ack_packet.routing_header.increase_hop_index();
-                        try_send_packet(self.id, &ack_packet, &self.packet_send);
+                        self.try_send_packet(&ack_packet);
                     },
                     Err(e) => {
                         debug!("ERROR: Server {:?} failed to send fragment to assembler: {}", self.id, e);
                     }
                 }
             },
-
             PacketType::FloodRequest(_flood_request) => {
                 debug!("Server: {:?} received a FloodRequest {:?}", self.id, _flood_request);
 
@@ -223,32 +208,57 @@ impl CommunicationServer {
                 flood_response_packet.routing_header.increase_hop_index();
 
                 // Try to send packet
-                try_send_packet(self.id, &flood_response_packet, &self.packet_send);
+                self.try_send_packet(&flood_response_packet);
             },
-
             PacketType::FloodResponse(_flood_response) => {
                 debug!("Server: {:?} received a FloodResponse {:?}", self.id, _flood_response);
-                update_topology_with_flood_response(self.id, _flood_response, &mut self.topology_map);
+                self.update_topology_with_flood_response(_flood_response);
             },
         }
     }
-
-    fn handle_assembler_data(&mut self, data: Vec<u8>) {
-        debug!("please print this {:?}", data);
+    fn handle_assembler_data(&mut self, mut data: Vec<u8>) {
         if let Ok(str_data) = String::from_utf8(data.clone()) {
             debug!("Server {:?} received assembled message: {:?}", self.id, str_data);
 
-            // First try to parse as ServerTypeRequest
+            // Try to parse as ServerTypeRequest
             if let Ok(message) = serde_json::from_str::<Message<ServerTypeRequest>>(&str_data) {
+                // Send to SC
+                if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                    self.send_message_received_to_sc(content);
+                }
+
                 match message.content {
                     ServerTypeRequest::GetServerType => {
                         debug!("Server: {:?} received ServerTypeRequest from {:?}", self.id, message.source_id);
-                        self.send_server_type_response(message.source_id);
+                        self.send_server_type_response(message.source_id, message.session_id);
+                    }
+                }
+            }
+            // Try to parse as TextRequest
+            else if let Ok(message) = serde_json::from_str::<Message<TextRequest>>(&str_data) {
+                // Send to SC
+                if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                    self.send_message_received_to_sc(content);
+                }
+
+                match message.content {
+                    TextRequest::TextList => {
+                        debug!("Server: {:?} received TextRequest::TextList from {:?}", self.id, message.source_id);
+                        self.send_text_response(message.source_id, message.session_id);
+                    },
+                    TextRequest::Text(file_id) => {
+                        debug!("Server: {:?} received TextRequest::Text from {:?} file id: {:?}", self.id, message.source_id, file_id);
+                        self.send_text_response(message.source_id, message.session_id);
                     },
                 }
             }
             // Then try to parse as ChatRequest
             else if let Ok(message) = serde_json::from_str::<Message<ChatRequest>>(&str_data) {
+                // Send to SC
+                if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                    self.send_message_received_to_sc(content);
+                }
+                
                 match message.content {
                     ChatRequest::Register(client_id) => {
                         debug!("Server: {:?} received registration request from client {:?}", self.id, client_id);
@@ -281,9 +291,7 @@ impl CommunicationServer {
         }
     }
 
-    fn send_server_type_response(&mut self, client_id: NodeId) {
-        debug!("Server: {:?} sending server type response to client {:?}", self.id, client_id);
-
+    fn send_server_type_response(&mut self, client_id: NodeId, session_id: u64) {
         // Create response message with Communication server type
         let session_id = random::<u64>();
         let message = Message {
@@ -291,10 +299,20 @@ impl CommunicationServer {
             session_id,
             content: ServerTypeResponse::ServerType(ServerType::CommunicationServer),
         };
-
-        send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map);
+        debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
+        self.send_message_in_fragments(client_id, session_id, message);
     }
-
+    fn send_text_response(&mut self, client_id: NodeId, session_id: u64) {
+        debug!("Server: {:?} is a chat server!", self.id);
+        let session_id = random::<u64>();
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: TextResponse::NotFound,
+        };
+        debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
+        self.send_message_in_fragments(client_id, session_id, message);
+    }
     fn send_server_client_list(&mut self, client_id: NodeId) {
         debug!("Server: {:?} sending client list to {:?}", self.id, client_id);
 
@@ -305,8 +323,7 @@ impl CommunicationServer {
             session_id,
             content: ChatResponse::ClientList(self.registered_clients.clone()),
         };
-
-        send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map, );
+        self.send_message_in_fragments(client_id, session_id, message);
     }
 
     fn handle_incoming_message(&mut self, client_id: NodeId, content: String) {
@@ -321,9 +338,7 @@ impl CommunicationServer {
                 session_id,
                 content: ChatResponse::ClientNotRegistered,
             };
-
-            send_message_in_fragments(self.id, client_id, message.session_id, message, &self.packet_send, &self.topology_map, ); //todo!(Client take this and GUI show "You need to register before sending message")
-
+            self.send_message_in_fragments(client_id, session_id, message); //todo!(Client take this and GUI show "You need to register before sending message")
             return;
         }
 
@@ -338,6 +353,5 @@ impl CommunicationServer {
             .or_insert_with(VecDeque::new)
             .push_back(chat_message);
     }
-    //todo!(Need a function for GUI to retrive message_store)
 }
 

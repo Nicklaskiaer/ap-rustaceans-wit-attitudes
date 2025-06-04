@@ -1,6 +1,5 @@
 use wg_2024::controller::{DroneEvent};
-use crate::client::client::ClientEvent;
-use crate::server::server::ServerEvent;
+use crate::client_server::network_core::{ClientEvent, ServerEvent};
 
 #[derive(PartialEq)]
 pub enum Screen {

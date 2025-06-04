@@ -2,19 +2,16 @@
 use crate::debug;
 
 use crate::assembler::assembler::*;
-use crate::server::message::*;
-use crossbeam_channel::{select_biased, unbounded, Receiver, SendError, Sender};
-use std::collections::{HashMap, HashSet, VecDeque};
+use crate::client_server::network_core::{ClientServerCommand, ContentType, NetworkNode, ServerEvent, ServerType};
+use crate::message::message::*;
+use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::random;
+use std::collections::{HashMap, HashSet};
 use wg_2024::controller::DroneCommand;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet;
 use wg_2024::packet::{
-    Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType,
+    FloodRequest, NodeType, Packet, PacketType,
 };
-use crate::client::client::Client;
-use crate::client::client_server_command::{compute_path_to_node, send_fragment_to_assembler, send_message_in_fragments, try_send_packet, try_send_packet_with_target_id, update_topology_with_flood_response, ClientServerCommand};
-use crate::server::server::{ContentType, Server, ServerEvent, ServerType};
 
 pub struct ContentServer {
     id: NodeId,
@@ -31,44 +28,7 @@ pub struct ContentServer {
     files: Vec<u64>, 
 }
 
-impl Server for ContentServer {
-    type RequestType = TextRequest;
-    type ResponseType = TextResponse;
-
-    fn run(&mut self) {
-        debug!("Content Server: {:?} started and waiting for packets", self.id);
-        loop {
-            select_biased! {
-                recv(self.controller_recv) -> command => {
-                    if let Ok(command) = command {
-                        self.handle_command(command);
-                    }
-                },
-                recv(self.packet_recv) -> packet => {
-                    if let Ok(packet) = packet {
-                        self.handle_packet(packet);
-                    }
-                },
-                recv(self.assembler_recv) -> data => {
-                    if let Ok(data) = data {
-                        self.handle_assembler_data(data);
-                    }
-                },
-            }
-        }
-    }
-    fn controller_recv(&self) -> &Receiver<ClientServerCommand> {
-        &self.controller_recv
-    }
-    fn packet_recv(&self) -> &Receiver<Packet> {
-        &self.packet_recv
-    }
-    fn assembler_recv(&self) -> &Receiver<Vec<u8>> {
-        &self.assembler_recv
-    }
-    fn controller_send(&mut self) -> &mut Sender<ServerEvent> {
-        &mut self.controller_send
-    }
+impl NetworkNode for ContentServer {
     fn id(&self) -> NodeId {
         self.id
     }
@@ -83,6 +43,42 @@ impl Server for ContentServer {
     }
     fn assemblers_mut(&mut self) -> &mut Vec<Assembler> {
         &mut self.assemblers
+    }
+
+    fn run(&mut self) {
+        debug!("Content Server: {:?} started and waiting for packets", self.id);
+        loop {
+            select_biased! {
+                recv(self.controller_recv) -> command => {
+                    if let Ok(command) = command {
+                        self.handle_command(command);
+                    }
+                },
+                recv(self.packet_recv) -> packet => {
+                    if let Ok(packet) = packet {
+                        self.send_packet_received_to_sc(packet.clone());
+                        self.handle_packet(packet);
+                    }
+                },
+                recv(self.assembler_recv) -> data => {
+                    if let Ok(data) = data {
+                        self.handle_assembler_data(data);
+                    }
+                },
+            }
+        }
+    }
+    fn send_packet_sent_to_sc(&mut self, packet: Packet){
+        self.controller_send.send(ServerEvent::PacketSent(packet)).expect("this is fine 🔥☕");
+    }
+    fn send_packet_received_to_sc(&mut self, packet: Packet){
+        self.controller_send.send(ServerEvent::PacketReceived(packet)).expect("this is fine 🔥☕");
+    }
+    fn send_message_sent_to_sc(&mut self, message: MessageContent, target: NodeId){
+        self.controller_send.send(ServerEvent::MessageSent {target: target, content: message}).expect("this is fine 🔥☕");
+    }
+    fn send_message_received_to_sc(&mut self, message: MessageContent){
+        self.controller_send.send(ServerEvent::MessageReceived { content: message }).expect("this is fine 🔥☕");
     }
 }
 
@@ -142,7 +138,8 @@ impl ContentServer {
                 let path_trace = vec![(self.id, NodeType::Server)];
 
                 // Send flood request to all connected drones
-                for drone_id in &self.connected_drone_ids {
+                let drone_ids = self.connected_drone_ids.clone();
+                for drone_id in &drone_ids {
                     let flood_request = Packet::new_flood_request(
                         SourceRoutingHeader {
                             hop_index: 1,
@@ -157,11 +154,13 @@ impl ContentServer {
                     );
 
                     // Try to send packet
-                    try_send_packet_with_target_id(self.id, drone_id, &flood_request, &self.packet_send);
+                    self.try_send_packet_with_target_id(drone_id, &flood_request);
                 }
             },
             ClientServerCommand::RequestServerType => {/* servers do not need to use it */},
-            ClientServerCommand::RegistrationRequest(_) => {/* servers do not need to use it */},
+            ClientServerCommand::RequestFileList(_) => {/* servers do not need to use it */},
+            ClientServerCommand::RequestFile(_, _) => {/* servers do not need to use it */},
+            ClientServerCommand::RegistrationRequest(_) => {/* this server do not need to use it */}
         }
     }
     fn handle_packet(&mut self, mut packet: Packet) {
@@ -176,10 +175,10 @@ impl ContentServer {
                 debug!("Server: {:?} received a MsgFragment {:?}", self.id, _fragment);
 
                 // Send fragment to assembler to be reassembled
-                match send_fragment_to_assembler(packet.clone(), &mut self.assemblers) {
+                match self.send_fragment_to_assembler(packet.clone()) {
                     Ok(_) => {
                         debug!("Server: {:?} sent fragment to assembler", self.id);
-                        
+
                         // Send ack back to the sender
                         let mut ack_packet = Packet::new_ack(
                             packet.routing_header.get_reversed(),
@@ -189,7 +188,7 @@ impl ContentServer {
 
                         // Try to send packet
                         ack_packet.routing_header.increase_hop_index();
-                        try_send_packet(self.id, &ack_packet, &self.packet_send);
+                        self.try_send_packet(&ack_packet);
                     },
                     Err(e) => {
                         debug!("ERROR: Server {:?} failed to send fragment to assembler: {}", self.id, e);
@@ -209,21 +208,25 @@ impl ContentServer {
                 flood_response_packet.routing_header.increase_hop_index();
 
                 // Try to send packet
-                try_send_packet(self.id, &flood_response_packet, &self.packet_send);
+                self.try_send_packet(&flood_response_packet);
             },
             PacketType::FloodResponse(_flood_response) => {
                 debug!("Server: {:?} received a FloodResponse {:?}", self.id, _flood_response);
-                update_topology_with_flood_response(self.id, _flood_response, &mut self.topology_map);
+                self.update_topology_with_flood_response(_flood_response);
             },
         }
     }
     fn handle_assembler_data(&mut self, data: Vec<u8>) {
-        debug!("please print this {:?}", data);
         if let Ok(str_data) = String::from_utf8(data.clone()) {
             debug!("Server {:?} received assembled message: {:?}", self.id, str_data);
 
             // Try to parse as ServerTypeRequest
             if let Ok(message) = serde_json::from_str::<Message<ServerTypeRequest>>(&str_data) {
+                // Send to SC
+                if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                    self.send_message_received_to_sc(content);
+                }
+
                 match message.content {
                     ServerTypeRequest::GetServerType => {
                         debug!("Server: {:?} received ServerTypeRequest from {:?}", self.id, message.source_id);
@@ -231,20 +234,86 @@ impl ContentServer {
                     }
                 }
             }
+            // Try to parse as TextRequest
+            else if let Ok(message) = serde_json::from_str::<Message<TextRequest>>(&str_data) {
+                // Send to SC
+                if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                    self.send_message_received_to_sc(content);
+                }
+
+                match message.content {
+                    TextRequest::TextList => {
+                        debug!("Server: {:?} received TextRequest::TextList from {:?}", self.id, message.source_id);
+                        self.send_text_response_TextList(message.source_id);
+                    },
+                    TextRequest::Text(file_id) => {
+                        debug!("Server: {:?} received TextRequest::Text from {:?} file id: {:?}", self.id, message.source_id, file_id);
+                        self.send_text_response_Text(message.source_id, file_id);
+                    },
+                }
+            }
         }
     }
-
+    
     fn send_server_type_response(&mut self, client_id: NodeId, session_id: u64) {
-        debug!("Server: {:?} sending server type response to client {:?}", self.id, client_id);
-
         // Create response message with Communication server type
+        let session_id = random::<u64>();
         let message = Message {
             source_id: self.id,
             session_id,
             content: ServerTypeResponse::ServerType(ServerType::ContentServer(self.content_type.clone())),
         };
-
-        send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map);
+        debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
+        self.send_message_in_fragments(client_id, session_id, message);
+    }
+    fn send_text_response_TextList(&mut self, client_id: NodeId) {
+        let session_id = random::<u64>();
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: TextResponse::TextList(self.files.clone()),
+        };
+        debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
+        self.send_message_in_fragments(client_id, session_id, message);
+    }
+    fn send_text_response_Text(&mut self, client_id: NodeId, file_id: u64) {
+        if self.files.contains(&file_id) {
+            // Try to read file content
+            let file_path = format!("server_content/text_files/{}", file_id);
+            match std::fs::read_to_string(&file_path) {
+                Ok(content) => {
+                    let session_id = random::<u64>();
+                    let message = Message {
+                        source_id: self.id,
+                        session_id,
+                        content: TextResponse::Text(content),
+                    };
+                    debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
+                    self.send_message_in_fragments(client_id, session_id, message);
+                },
+                Err(e) => {
+                    debug!("Server: {:?} failed to read file {:?}: {}", self.id, file_id, e);
+                    let session_id = random::<u64>();
+                    let message = Message {
+                        source_id: self.id,
+                        session_id,
+                        content: TextResponse::NotFound,
+                    };
+                    debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
+                    self.send_message_in_fragments(client_id, session_id, message);
+                }
+            }
+        } else {
+            debug!("Server: {:?} doesn't have {:?}", self.id, file_id);
+            let session_id = random::<u64>();
+            let message = Message {
+                source_id: self.id,
+                session_id,
+                content: TextResponse::NotFound,
+            };
+            debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
+            self.send_message_in_fragments(client_id, session_id, message);
+        }
     }
 }
 
