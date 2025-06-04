@@ -66,6 +66,13 @@ pub enum ClientEvent {
     },
 }
 
+#[derive(Debug, Clone)]
+pub struct ChatMessage{
+    pub sender_id: NodeId,
+    pub content: String,
+}
+
+
 pub trait NetworkNode {
     // reference
     fn id(&self) -> NodeId;

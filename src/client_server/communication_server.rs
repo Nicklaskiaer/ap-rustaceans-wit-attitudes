@@ -2,7 +2,7 @@
 use crate::debug;
 
 use crate::assembler::assembler::*;
-use crate::client_server::network_core::{ClientServerCommand, NetworkNode, ServerEvent, ServerType};
+use crate::client_server::network_core::{ChatMessage, ClientServerCommand, NetworkNode, ServerEvent, ServerType};
 use crate::message::message::*;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::random;
@@ -25,7 +25,7 @@ pub struct CommunicationServer {
     assembler_send: Sender<Vec<u8>>,
     assembler_recv: Receiver<Vec<u8>>,
     registered_clients: HashSet<NodeId>,
-    message_store: HashMap<NodeId, VecDeque<ChatMessage>>
+    message_store: HashMap<NodeId, VecDeque<ChatMessage>>,
 }
 
 impl NetworkNode for CommunicationServer {
@@ -94,6 +94,8 @@ impl CommunicationServer {
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
         assembler_send: Sender<Vec<u8>>,
         assembler_recv: Receiver<Vec<u8>>,
+        registered_clients: HashSet<NodeId>,
+        message_store: HashMap<NodeId, VecDeque<ChatMessage>>,
     ) -> Self {
         Self {
             id,
@@ -106,6 +108,8 @@ impl CommunicationServer {
             topology_map,
             assembler_send,
             assembler_recv,
+            registered_clients,
+            message_store,
         }
     }
 
@@ -156,6 +160,7 @@ impl CommunicationServer {
             ClientServerCommand::RequestServerType => {/* servers do not need to use it */},
             ClientServerCommand::RequestFileList(_) => {/* servers do not need to use it */},
             ClientServerCommand::RequestFile(_, _) => {/* servers do not need to use it */},
+            ClientServerCommand::RegistrationRequest(_) => {/* this server do not need to use it */}
         }
     }
     fn handle_packet(&mut self, mut packet: Packet) {
