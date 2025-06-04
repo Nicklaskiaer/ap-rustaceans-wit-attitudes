@@ -6,7 +6,7 @@ use crate::client_server::network_core::{ClientServerCommand, NetworkNode, Serve
 use crate::message::message::*;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::random;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use wg_2024::controller::DroneCommand;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{
@@ -24,6 +24,8 @@ pub struct CommunicationServer {
     assemblers: Vec<Assembler>,
     assembler_send: Sender<Vec<u8>>,
     assembler_recv: Receiver<Vec<u8>>,
+    registered_clients: HashSet<NodeId>,
+    message_store: HashMap<NodeId, VecDeque<ChatMessage>>
 }
 
 impl NetworkNode for CommunicationServer {
@@ -118,7 +120,7 @@ impl CommunicationServer {
                     DroneCommand::RemoveSender(id) => {},
                 }
             },
-            ClientServerCommand::SendChatMessage(target_id, id, msg) => {
+            ClientServerCommand::SendChatMessage(target_id, msg) => {
                 debug!("Server: {:?} sending chat message to {:?}: {:?}", self.id, target_id, msg);
             },
             ClientServerCommand::StartFloodRequest => {
@@ -245,6 +247,42 @@ impl CommunicationServer {
                     },
                 }
             }
+            // Then try to parse as ChatRequest
+            else if let Ok(message) = serde_json::from_str::<Message<ChatRequest>>(&str_data) {
+                // Send to SC
+                if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                    self.send_message_received_to_sc(content);
+                }
+                
+                match message.content {
+                    ChatRequest::Register(client_id) => {
+                        debug!("Server: {:?} received registration request from client {:?}", self.id, client_id);
+
+                        self.registered_clients.insert(client_id);
+
+                        let chat_message = ChatMessage {
+                            sender_id: client_id,
+                            content: String::from(format!("Client {} has entered the chatroom", client_id)),
+                        };
+
+                        self.message_store.entry(client_id)
+                            .or_insert_with(VecDeque::new)
+                            .push_back(chat_message);
+
+                        debug!("Server: {:?} now has registered clients: {:?}", self.id, self.registered_clients);
+                    },
+                    ChatRequest::ClientList => {
+                        debug!("Server: {:?} received ClientList request from {:?}", self.id, message.source_id);
+
+                        self.send_server_client_list(message.source_id);
+                    },
+                    ChatRequest::SendMessage { from, message } => {
+                        debug!("Server: {:?} received SendMessage request from {:?}", self.id, from);
+
+                        self.handle_incoming_message(from, message);
+                    },
+                }
+            }
         }
     }
 
@@ -269,6 +307,46 @@ impl CommunicationServer {
         };
         debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
         self.send_message_in_fragments(client_id, session_id, message);
+    }
+    fn send_server_client_list(&mut self, client_id: NodeId) {
+        debug!("Server: {:?} sending client list to {:?}", self.id, client_id);
+
+        // Create response message with the client list
+        let session_id = random::<u64>();
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: ChatResponse::ClientList(self.registered_clients.clone()),
+        };
+        self.send_message_in_fragments(client_id, session_id, message);
+    }
+
+    fn handle_incoming_message(&mut self, client_id: NodeId, content: String) {
+        // Check if the sender is registered
+        if !self.registered_clients.contains(&client_id) {
+            debug!("Server: {:?} received message from unregistered client {:?}", self.id, client_id);
+
+            //If not registered send message with ClientNotRegistered
+            let session_id = random::<u64>();
+            let message = Message {
+                source_id: self.id,
+                session_id,
+                content: ChatResponse::ClientNotRegistered,
+            };
+            self.send_message_in_fragments(client_id, session_id, message); //todo!(Client take this and GUI show "You need to register before sending message")
+            return;
+        }
+
+        let chat_message = ChatMessage {
+            sender_id: client_id,
+            content,
+        };
+
+        debug!("Server: {:?} storing message from {:?}", self.id, client_id);
+
+        self.message_store.entry(client_id)
+            .or_insert_with(VecDeque::new)
+            .push_back(chat_message);
     }
 }
 
