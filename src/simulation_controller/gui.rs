@@ -115,6 +115,8 @@ impl eframe::App for MyApp{
             self.logs(Event::Server(event));
         }
 
+        //todo(Poll for chat messages)
+
         //Load icon textures for nodes in graph.
         if self.client_texture.is_none() {
             if let Ok(image) = load_image("images/client.png") {
@@ -269,6 +271,7 @@ impl eframe::App for MyApp{
 
                         egui::CentralPanel::default().show(ctx, |ui| {
                             egui::ScrollArea::vertical().show(ui, |ui| {
+                                ui.set_width(ui.available_width());
                                 for log in logs_handler::filtered_logs(self) {
                                     let mut text_parts: Vec<egui::RichText> = Vec::new();
 

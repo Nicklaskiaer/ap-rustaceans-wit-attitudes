@@ -128,7 +128,7 @@ impl ContentServer {
                     DroneCommand::RemoveSender(id) => {},
                 }
             },
-            ClientServerCommand::SendChatMessage(node_id, id, msg) => {
+            ClientServerCommand::SendChatMessage(node_id, msg) => {
                 debug!("Server: {:?} received SendChatMessage command for node {:?}: {:?}", self.id, node_id, msg);
             },
             ClientServerCommand::StartFloodRequest => {
@@ -161,6 +161,7 @@ impl ContentServer {
                 }
             },
             ClientServerCommand::RequestServerType => {/* servers do not need to use it */},
+            ClientServerCommand::RegistrationRequest(_) => {/* servers do not need to use it */},
         }
     }
     fn handle_packet(&mut self, mut packet: Packet) {

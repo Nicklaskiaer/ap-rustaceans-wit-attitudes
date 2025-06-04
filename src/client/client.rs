@@ -14,7 +14,7 @@ use wg_2024::packet::{
 use rand::{Rng, thread_rng, random};
 use crate::assembler::assembler::Assembler;
 use crate::client::client_server_command::{compute_path_to_node, send_fragment_to_assembler, send_message_in_fragments, try_send_packet, try_send_packet_with_target_id, update_topology_with_flood_response, ClientServerCommand};
-use crate::server::message::{Message, ServerTypeRequest, ServerTypeResponse, TextRequest};
+use crate::server::message::{ChatRequest, ChatResponse, Message, ServerTypeRequest, ServerTypeResponse, TextRequest};
 use crate::server::server::{ServerEvent, ServerType};
 
 pub struct Client {
@@ -123,8 +123,10 @@ impl Client {
                     DroneCommand::RemoveSender(id) => {},
                 }
             },
-            ClientServerCommand::SendChatMessage(node_id, id, msg) => {
-                debug!("Client: {:?} sending chat message to {:?}: {}", self.id, node_id, msg);
+            ClientServerCommand::SendChatMessage(node_id, msg) => {
+                debug!("Client: {:?} received SendChatMessage command", self.id);
+
+                self.send_chat_message(node_id, msg);
             },
             ClientServerCommand::StartFloodRequest => {
                 debug!("Client: {:?} received StartFloodRequest command", self.id);
@@ -176,6 +178,11 @@ impl Client {
                         }
                     }
                 }
+            },
+            ClientServerCommand::RegistrationRequest(node_id) => {
+                debug!("Client: {:?} received RegistrationRequest command", node_id);
+
+                self.send_registration_request(node_id);
             }
         }
     }
@@ -238,6 +245,7 @@ impl Client {
             },
         }
     }
+
     fn handle_assembler_data(&mut self, mut data: Vec<u8>) {
         if let Ok(str_data) = String::from_utf8(data.clone()) {
             debug!("Client {:?} received assembled message: {:?}", self.id, str_data);
@@ -251,14 +259,29 @@ impl Client {
                     }
                 }
             }
+
+            // Try to parse as ChatRequest
+            else if let Ok(message) = serde_json::from_str::<Message<ChatResponse>>(&str_data) {
+                match &message.content {
+                    ChatResponse::ClientNotRegistered => {
+                        //todo!(I added this, need to send it to GUI)
+                        debug!("Client: {:?} received a ClientNotRegistered", self.id);
+                    }
+                    _ => {}
+                }
+            }
+
         }
     }
+
     fn send_sent_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ClientEvent>> {
         self.controller_send.send(ClientEvent::PacketSent(packet))
     }
+
     fn send_recv_to_sc(&mut self, packet: Packet) -> Result<(), SendError<ClientEvent>> {
         self.controller_send.send(ClientEvent::PacketReceived(packet))
     }
+
     fn send_server_type_request(&mut self, server_id: NodeId) {
         debug!("Client: {:?} requesting server type from server {:?}", self.id, server_id);
 
@@ -271,6 +294,37 @@ impl Client {
         };
         
         send_message_in_fragments(self.id, server_id, session_id, message, &self.packet_send, &self.topology_map);
+    }
+
+    fn send_registration_request(&mut self, server_id: NodeId) {
+        debug!("Client: {:?} requesting registration to server {:?}", self.id, server_id);
+
+        // Create a registration request with random session ID
+        let session_id = random::<u64>();
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: ChatRequest::Register(self.id),
+        };
+
+        send_message_in_fragments(self.id, server_id, session_id, message, &self.packet_send, &self.topology_map)
+    }
+
+    fn send_chat_message(&mut self, server_id: NodeId, content: String) {
+        debug!("Client: {:?} sending message to server {:?}: {:?}", self.id, server_id, content);
+
+        // Create a chat message request
+        let session_id = random::<u64>();
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: ChatRequest::SendMessage {
+                from: self.id,
+                message: content,
+            },
+        };
+
+        send_message_in_fragments(self.id, server_id, session_id, message, &self.packet_send, &self.topology_map)
     }
 }
 

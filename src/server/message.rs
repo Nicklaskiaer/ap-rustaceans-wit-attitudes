@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use wg_2024::network::NodeId;
@@ -78,7 +79,6 @@ pub enum ChatRequest {
     Register(NodeId),
     SendMessage {
         from: NodeId,
-        to: NodeId,
         message: String,
     },
 }
@@ -152,9 +152,10 @@ impl Response for MediaResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ChatResponse {
-    ClientList(Vec<NodeId>),
+    ClientList(HashSet<NodeId>),
     MessageFrom { from: NodeId, message: Vec<u8> },
     MessageSent,
+    ClientNotRegistered,
 }
 
 impl DroneSend for ChatResponse {
@@ -172,6 +173,7 @@ impl Response for ChatResponse {
             ChatResponse::ClientList(_) => "ClientList".to_string(),
             ChatResponse::MessageFrom { .. } => "MessageFrom".to_string(),
             ChatResponse::MessageSent => "MessageSent".to_string(),
+            ChatResponse::ClientNotRegistered => "ClientNotRegistered".to_string(),
         }
     }
 }

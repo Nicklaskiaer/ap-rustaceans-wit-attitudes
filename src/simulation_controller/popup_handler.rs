@@ -4,6 +4,7 @@ use crate::simulation_controller::gui::MyApp;
 use eframe::egui;
 use chrono::{DateTime, Local, Utc};
 use chrono_tz::Europe::Rome;
+use crate::server::server::ServerType;
 
 pub fn show_popup(app: &mut MyApp, ctx: &egui::Context, name: &str) {
     let current_time: DateTime<Utc> = Utc::now();
@@ -170,15 +171,29 @@ fn show_client_controls(
                         selected_server.clone()
                     })
                     .show_ui(ui, |ui| {
-                        for server_id in app.simulation_controller.get_server_ids() {
-                            if ui.selectable_label(selected_server == &server_id, &server_id).clicked() {
-                                *selected_server = server_id.clone();
+                        // Get all server IDs and their types
+                        let servers = app.simulation_controller.get_servers();
+
+                        // Filter to only CommunicationServers
+                        for (server_id, (_, _, server_type)) in servers {
+                            if let ServerType::CommunicationServer = server_type {
+                                let server_id_str = format!("Server {}", server_id);
+                                if ui.selectable_label(selected_server == &server_id_str, &server_id_str).clicked() {
+                                    *selected_server = server_id_str;
+                                }
                             }
                         }
                     });
+
                 if ui.button("Register").clicked() {
-                    //todo!(Manage connection)
+                    if let Some(num_str) = selected_server.split_whitespace().last() {
+                        if let Ok(server_id) = num_str.parse::<u8>() {
+                            app.simulation_controller.handle_registration_request(node_id, server_id);
+                        }
+                    }
                 }
+
+
             });
 
             ui.separator();
@@ -189,20 +204,8 @@ fn show_client_controls(
                 .max_height(100.0)
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
+
                     //todo!(Insert messages)
-                    ui.label("Client 1: Test");
-                    ui.label("Client 2: Test");
-                    ui.label("Client 1: Test");
-                    ui.label("Client 2: Test");
-                    ui.label("Client 1: Test");
-                    ui.label("Client 2: Test");
-                    ui.label("Client 1: Test");
-                    ui.label("Client 2: Test");
-                    ui.label("Client 1: Test");
-                    ui.label("Client 2: Test");
-                    ui.label("Client 1: Test");
-                    ui.label("Client 2: Test");
-                    ui.label("Client 1: Test");
                 });
 
             ui.separator();
@@ -217,8 +220,11 @@ fn show_client_controls(
                 );
                 ui.add_space(2.0);
                 if ui.button("Send").clicked() {
-                    //todo!(Send message)
-                    *text_input = String::new();
+                    if let Some(num_str) = selected_server.split_whitespace().last() {
+                        if let Ok(server_id) = num_str.parse::<u8>() {
+                            app.simulation_controller.handle_send_chat_message(node_id, server_id, text_input.parse().unwrap())
+                        }
+                    }
                 }
             });
         }

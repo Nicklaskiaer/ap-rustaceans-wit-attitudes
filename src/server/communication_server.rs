@@ -13,8 +13,14 @@ use wg_2024::packet::{
     Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType,
 };
 use crate::client::client::Client;
-use crate::client::client_server_command::{send_fragment_to_assembler, try_send_packet, try_send_packet_with_target_id, update_topology_with_flood_response, ClientServerCommand};
-use crate::server::server::{Server, ServerEvent};
+use crate::client::client_server_command::{send_fragment_to_assembler, send_message_in_fragments, try_send_packet, try_send_packet_with_target_id, update_topology_with_flood_response, ClientServerCommand};
+use crate::server::server::{Server, ServerEvent, ServerType};
+
+#[derive(Debug, Clone)]
+pub struct ChatMessage{
+    pub sender_id: NodeId,
+    pub content: String,
+}
 
 pub struct CommunicationServer {
     id: NodeId,
@@ -27,6 +33,8 @@ pub struct CommunicationServer {
     assemblers: Vec<Assembler>,
     assembler_send: Sender<Vec<u8>>,
     assembler_recv: Receiver<Vec<u8>>,
+    registered_clients: HashSet<NodeId>,
+    message_store: HashMap<NodeId, VecDeque<ChatMessage>>
 }
 
 impl Server for CommunicationServer {
@@ -96,6 +104,8 @@ impl CommunicationServer {
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
         assembler_send: Sender<Vec<u8>>,
         assembler_recv: Receiver<Vec<u8>>,
+        registered_clients: HashSet<NodeId>,
+        message_store: HashMap<NodeId, VecDeque<ChatMessage>>
     ) -> Self {
         Self {
             id,
@@ -108,9 +118,11 @@ impl CommunicationServer {
             topology_map,
             assembler_send,
             assembler_recv,
+            registered_clients,
+            message_store,
         }
     }
-    
+
     fn handle_command(&mut self, command: ClientServerCommand) {
         match command {
             ClientServerCommand::DroneCmd(drone_cmd) => {
@@ -122,9 +134,11 @@ impl CommunicationServer {
                     DroneCommand::RemoveSender(id) => {},
                 }
             },
-            ClientServerCommand::SendChatMessage(target_id, id, msg) => {
-                debug!("Server: {:?} sending chat message to {:?}: {:?}", self.id, target_id, msg);
+
+            ClientServerCommand::SendChatMessage(target_id, msg) => {
+                /*Not used by server*/
             },
+
             ClientServerCommand::StartFloodRequest => {
                 debug!("Server: {:?} received StartFloodRequest command", self.id);
 
@@ -154,17 +168,23 @@ impl CommunicationServer {
                     try_send_packet_with_target_id(self.id, drone_id, &flood_request, &self.packet_send);
                 }
             },
-            ClientServerCommand::RequestServerType => {/* servers do not need to use it */},
+
+            ClientServerCommand::RequestServerType => { /* servers do not need to use it */ },
+
+            ClientServerCommand::RegistrationRequest(_) => {/* server do not need to use it */}
         }
     }
+
     fn handle_packet(&mut self, mut packet: Packet) {
         match &packet.pack_type {
             PacketType::Nack(_nack) => {
                 debug!("Server: {:?} received a Ack {:?}", self.id, _nack);
             },
+
             PacketType::Ack(_ack) => {
                 debug!("Server: {:?} received a Ack {:?}", self.id, _ack);
             },
+
             PacketType::MsgFragment(_fragment) => {
                 debug!("Server: {:?} received a MsgFragment {:?}", self.id, _fragment);
 
@@ -189,6 +209,7 @@ impl CommunicationServer {
                     }
                 }
             },
+
             PacketType::FloodRequest(_flood_request) => {
                 debug!("Server: {:?} received a FloodRequest {:?}", self.id, _flood_request);
 
@@ -204,16 +225,119 @@ impl CommunicationServer {
                 // Try to send packet
                 try_send_packet(self.id, &flood_response_packet, &self.packet_send);
             },
+
             PacketType::FloodResponse(_flood_response) => {
                 debug!("Server: {:?} received a FloodResponse {:?}", self.id, _flood_response);
                 update_topology_with_flood_response(self.id, _flood_response, &mut self.topology_map);
             },
         }
     }
-    fn handle_assembler_data(&mut self, mut data: Vec<u8>) {
+
+    fn handle_assembler_data(&mut self, data: Vec<u8>) {
+        debug!("please print this {:?}", data);
         if let Ok(str_data) = String::from_utf8(data.clone()) {
             debug!("Server {:?} received assembled message: {:?}", self.id, str_data);
+
+            // First try to parse as ServerTypeRequest
+            if let Ok(message) = serde_json::from_str::<Message<ServerTypeRequest>>(&str_data) {
+                match message.content {
+                    ServerTypeRequest::GetServerType => {
+                        debug!("Server: {:?} received ServerTypeRequest from {:?}", self.id, message.source_id);
+                        self.send_server_type_response(message.source_id);
+                    },
+                }
+            }
+            // Then try to parse as ChatRequest
+            else if let Ok(message) = serde_json::from_str::<Message<ChatRequest>>(&str_data) {
+                match message.content {
+                    ChatRequest::Register(client_id) => {
+                        debug!("Server: {:?} received registration request from client {:?}", self.id, client_id);
+
+                        self.registered_clients.insert(client_id);
+
+                        let chat_message = ChatMessage {
+                            sender_id: client_id,
+                            content: String::from(format!("Client {} has entered the chatroom", client_id)),
+                        };
+
+                        self.message_store.entry(client_id)
+                            .or_insert_with(VecDeque::new)
+                            .push_back(chat_message);
+
+                        debug!("Server: {:?} now has registered clients: {:?}", self.id, self.registered_clients);
+                    },
+                    ChatRequest::ClientList => {
+                        debug!("Server: {:?} received ClientList request from {:?}", self.id, message.source_id);
+
+                        self.send_server_client_list(message.source_id);
+                    },
+                    ChatRequest::SendMessage { from, message } => {
+                        debug!("Server: {:?} received SendMessage request from {:?}", self.id, from);
+
+                        self.handle_incoming_message(from, message);
+                    },
+                }
+            }
         }
     }
+
+    fn send_server_type_response(&mut self, client_id: NodeId) {
+        debug!("Server: {:?} sending server type response to client {:?}", self.id, client_id);
+
+        // Create response message with Communication server type
+        let session_id = random::<u64>();
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: ServerTypeResponse::ServerType(ServerType::CommunicationServer),
+        };
+
+        send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map);
+    }
+
+    fn send_server_client_list(&mut self, client_id: NodeId) {
+        debug!("Server: {:?} sending client list to {:?}", self.id, client_id);
+
+        // Create response message with the client list
+        let session_id = random::<u64>();
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: ChatResponse::ClientList(self.registered_clients.clone()),
+        };
+
+        send_message_in_fragments(self.id, client_id, session_id, message, &self.packet_send, &self.topology_map, );
+    }
+
+    fn handle_incoming_message(&mut self, client_id: NodeId, content: String) {
+        // Check if the sender is registered
+        if !self.registered_clients.contains(&client_id) {
+            debug!("Server: {:?} received message from unregistered client {:?}", self.id, client_id);
+
+            //If not registered send message with ClientNotRegistered
+            let session_id = random::<u64>();
+            let message = Message {
+                source_id: self.id,
+                session_id,
+                content: ChatResponse::ClientNotRegistered,
+            };
+
+            send_message_in_fragments(self.id, client_id, message.session_id, message, &self.packet_send, &self.topology_map, ); //todo!(Client take this and GUI show "You need to register before sending message")
+
+            return;
+        }
+
+        let chat_message = ChatMessage {
+            sender_id: client_id,
+            content,
+        };
+
+        debug!("Server: {:?} storing message from {:?}", self.id, client_id);
+
+        self.message_store.entry(client_id)
+            .or_insert_with(VecDeque::new)
+            .push_back(chat_message);
+    }
+    //todo!(Need a function for GUI to retrive message_store)
 }
 
