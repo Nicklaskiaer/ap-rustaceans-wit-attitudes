@@ -32,6 +32,8 @@ pub enum MessageContent {
     ServerTypeResponse(ServerTypeResponse),
     TextRequest(TextRequest),
     TextResponse(TextResponse),
+    ChatRequest(ChatRequest),
+    ChatResponse(ChatResponse),
     //TODO: Add others
     //TODO: IMPORTANT, EDIT TEXT AND IMAGE RESPONSE TO NO HAVE THE BASE64 TEXT (SEND ONLY THE IMAGE ID)
 }
