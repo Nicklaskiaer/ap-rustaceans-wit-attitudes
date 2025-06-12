@@ -58,7 +58,7 @@ impl Assembler {
                                 }
                             }
                             _ => {
-                                break;
+                                debug!("Assembler received non-fragment packet: {:?}", packet);
                             }
                         }
                     }
