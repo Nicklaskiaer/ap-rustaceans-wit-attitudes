@@ -7,8 +7,8 @@ pub struct Assembler {
     pub session_id: u64,
     pub packet_send: Sender<Packet>,
     pub packet_recv: Receiver<Packet>,
-    pub server_send: Sender<Vec<u8>>,
-    pub server_recv: Receiver<Vec<u8>>,
+    pub result_send: Sender<Vec<u8>>,
+    pub result_recv: Receiver<Vec<u8>>,
     pub data: Vec<u8>,
 }
 
@@ -17,15 +17,15 @@ impl Assembler {
         session_id: u64,
         packet_send: Sender<Packet>,
         packet_recv: Receiver<Packet>,
-        server_send: Sender<Vec<u8>>,
-        server_recv: Receiver<Vec<u8>>,
+        result_send: Sender<Vec<u8>>,
+        result_recv: Receiver<Vec<u8>>,
     ) -> Self {
         Self {
             session_id,
             packet_send,
             packet_recv,
-            server_send,
-            server_recv,
+            result_send,
+            result_recv,
             data: Vec::new(),
         }
     }
@@ -39,12 +39,12 @@ impl Assembler {
                             PacketType::MsgFragment(fragment) => {
                                 self.data.extend(fragment.data);
                                 if fragment.fragment_index == fragment.total_n_fragments - 1 {
-                                    match self.server_send.send(self.data.clone()){
+                                    match self.result_send.send(self.data.clone()){
                                         Ok(_) => {
                                             break;
                                         }
                                         Err(SendError(data)) => {
-                                            panic!("Failed to send data to server: {:?}", data);
+                                            debug!("Failed to send result: {:?}", data);
                                         }
                                     }
                                 }
@@ -52,13 +52,13 @@ impl Assembler {
                                     match self.packet_send.send(Packet::new_ack(packet.routing_header, self.session_id, fragment.fragment_index)){
                                         Ok(_) => {}
                                         Err(SendError(packet)) => {
-                                            panic!("Failed to send ack packet: {:?}", packet);
+                                            debug!("Failed to send ack packet: {:?}", packet);
                                         }
                                     }
                                 }
                             }
                             _ => {
-                                break;
+                                debug!("Assembler received non-fragment packet: {:?}", packet);
                             }
                         }
                     }
