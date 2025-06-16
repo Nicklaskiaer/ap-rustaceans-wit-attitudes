@@ -22,8 +22,10 @@ pub struct ContentServer {
     packet_send: HashMap<NodeId, Sender<Packet>>,
     packet_recv: Receiver<Packet>,
     assemblers: Vec<Assembler>,
-    assembler_send: Sender<Vec<u8>>,
-    assembler_recv: Receiver<Vec<u8>>,
+    assembler_send: Sender<Packet>,
+    assembler_recv: Receiver<Packet>,
+    assembler_res_send: Sender<Vec<u8>>,
+    assembler_res_recv: Receiver<Vec<u8>>,
     content_type: ContentType,
     files: Vec<u64>,
 }
@@ -63,7 +65,7 @@ impl NetworkNode for ContentServer {
                         self.handle_packet(packet);
                     }
                 },
-                recv(self.assembler_recv) -> data => {
+                recv(self.assembler_res_recv) -> data => {
                     if let Ok(data) = data {
                         self.handle_assembler_data(data);
                     }
@@ -106,8 +108,10 @@ impl ContentServer {
         packet_recv: Receiver<Packet>,
         assemblers: Vec<Assembler>,
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
-        assembler_send: Sender<Vec<u8>>,
-        assembler_recv: Receiver<Vec<u8>>,
+        assembler_send: Sender<Packet>,
+        assembler_recv: Receiver<Packet>,
+        assembler_res_send: Sender<Vec<u8>>,
+        assembler_res_recv: Receiver<Vec<u8>>,
         content_type: ContentType,
         files: Vec<u64>,
     ) -> Self {
@@ -122,6 +126,8 @@ impl ContentServer {
             topology_map,
             assembler_send,
             assembler_recv,
+            assembler_res_send,
+            assembler_res_recv,
             content_type,
             files,
         }
@@ -398,9 +404,10 @@ impl ContentServer {
         // If no assembler found, create a new one
         let assembler = Assembler::new(
             packet.session_id,
-            self.assembler_send,
             self.assembler_send.clone(),
             self.assembler_recv.clone(),
+            self.assembler_res_send.clone(),
+            self.assembler_res_recv.clone(),
         );
         self.assemblers.push(assembler);
         Ok(())
