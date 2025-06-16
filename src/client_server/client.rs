@@ -476,18 +476,25 @@ impl Client {
         self.send_message_in_fragments(server_id, session_id, message);
     }
 
-    fn send_fragment_to_assembler(&mut self, packet: Packet) -> Result<(), SendError<Vec<u8>>> {
-        // Find the assembler for this session ID
-        let assembler_index = self
-            .assemblers
-            .iter()
-            .position(|a| a.session_id == packet.session_id);
-        if let Some(index) = assembler_index {
-            // Send the fragment data to the assembler
-            self.assemblers[index].send_fragment(packet)?;
-            Ok(())
-        } else {
-            Err(SendError::Disconnected) // No assembler found for this session ID
+    fn send_fragment_to_assembler(&mut self, packet: Packet) -> Result<(), String> {
+        for assembler in &mut self.assemblers {
+            if assembler.session_id == packet.session_id {
+                assembler
+                    .packet_send
+                    .send(packet)
+                    .map_err(|e| format!("Failed to send packet to assembler: {}", e))?;
+                return Ok(());
+            }
         }
+
+        // If no assembler found, create a new one
+        let assembler = Assembler::new(
+            packet.session_id,
+            self.assembler_send,
+            self.assembler_send.clone(),
+            self.assembler_recv.clone(),
+        );
+        self.assemblers.push(assembler);
+        Ok(())
     }
 }

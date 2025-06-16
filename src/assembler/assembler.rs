@@ -8,7 +8,6 @@ pub struct Assembler {
     pub packet_send: Sender<Packet>,
     pub packet_recv: Receiver<Packet>,
     pub server_send: Sender<Vec<u8>>,
-    pub server_recv: Receiver<Vec<u8>>,
     pub data: Vec<u8>,
 }
 
@@ -18,14 +17,12 @@ impl Assembler {
         packet_send: Sender<Packet>,
         packet_recv: Receiver<Packet>,
         server_send: Sender<Vec<u8>>,
-        server_recv: Receiver<Vec<u8>>,
     ) -> Self {
         Self {
             session_id,
             packet_send,
             packet_recv,
             server_send,
-            server_recv,
             data: Vec::new(),
         }
     }
@@ -44,7 +41,7 @@ impl Assembler {
                                             break;
                                         }
                                         Err(SendError(data)) => {
-                                            panic!("Failed to send data to server: {:?}", data);
+                                            debug!("Failed to send data to server: {:?}", data);
                                         }
                                     }
                                 }
@@ -52,7 +49,7 @@ impl Assembler {
                                     match self.packet_send.send(Packet::new_ack(packet.routing_header, self.session_id, fragment.fragment_index)){
                                         Ok(_) => {}
                                         Err(SendError(packet)) => {
-                                            panic!("Failed to send ack packet: {:?}", packet);
+                                            debug!("Failed to send ack packet: {:?}", packet);
                                         }
                                     }
                                 }

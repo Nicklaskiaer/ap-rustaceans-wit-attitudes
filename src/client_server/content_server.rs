@@ -385,23 +385,24 @@ impl ContentServer {
     }
 
     fn send_fragment_to_assembler(&mut self, packet: Packet) -> Result<(), String> {
-        // Find assembler for the session_id
-        if let Some(assembler) = self
-            .assemblers
-            .iter_mut()
-            .find(|a| a.session_id == packet.session_id)
-        {
-            // Send packet to assembler
-            assembler
-                .packet_send
-                .send(packet)
-                .map_err(|e| format!("Failed to send packet to assembler: {}", e))?;
-            Ok(())
-        } else {
-            Err(format!(
-                "No assembler found for session_id: {}",
-                packet.session_id
-            ))
+        for assembler in &mut self.assemblers {
+            if assembler.session_id == packet.session_id {
+                assembler
+                    .packet_send
+                    .send(packet)
+                    .map_err(|e| format!("Failed to send packet to assembler: {}", e))?;
+                return Ok(());
+            }
         }
+
+        // If no assembler found, create a new one
+        let assembler = Assembler::new(
+            packet.session_id,
+            self.assembler_send,
+            self.assembler_send.clone(),
+            self.assembler_recv.clone(),
+        );
+        self.assemblers.push(assembler);
+        Ok(())
     }
 }

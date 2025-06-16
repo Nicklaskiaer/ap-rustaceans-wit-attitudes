@@ -445,11 +445,7 @@ impl CommunicationServer {
         // If no assembler found, create a new one
         let assembler = Assembler::new(
             packet.session_id,
-            self.packet_send
-                .get(&packet.routing_header.get_reversed().last().unwrap())
-                .unwrap()
-                .clone(),
-            self.packet_recv.clone(),
+            self.assembler_send,
             self.assembler_send.clone(),
             self.assembler_recv.clone(),
         );
