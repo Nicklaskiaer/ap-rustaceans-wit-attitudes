@@ -35,8 +35,8 @@ pub struct Client {
     server_type_map: HashMap<NodeId, Option<ServerType>>,
     assembler_send: Sender<Packet>,
     assembler_recv: Receiver<Packet>,
-    assembler_res_recv: Receiver<Vec<u8>>,
     assembler_res_send: Sender<Vec<u8>>,
+    assembler_res_recv: Receiver<Vec<u8>>,
 }
 
 impl NetworkNode for Client {
@@ -117,8 +117,8 @@ impl Client {
         server_type_map: HashMap<NodeId, Option<ServerType>>,
         assembler_send: Sender<Packet>,
         assembler_recv: Receiver<Packet>,
-        assembler_res_recv: Receiver<Vec<u8>>,
         assembler_res_send: Sender<Vec<u8>>,
+        assembler_res_recv: Receiver<Vec<u8>>,
     ) -> Self {
         Self {
             id,
@@ -133,8 +133,8 @@ impl Client {
             server_type_map,
             assembler_send,
             assembler_recv,
-            assembler_res_recv,
             assembler_res_send,
+            assembler_res_recv,
         }
     }
 

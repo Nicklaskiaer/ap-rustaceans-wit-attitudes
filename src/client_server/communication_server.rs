@@ -110,8 +110,8 @@ impl CommunicationServer {
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
         assembler_send: Sender<Packet>,
         assembler_recv: Receiver<Packet>,
-        assembler_res_recv: Receiver<Vec<u8>>,
         assembler_res_send: Sender<Vec<u8>>,
+        assembler_res_recv: Receiver<Vec<u8>>,
         registered_clients: HashSet<NodeId>,
         message_store: HashMap<NodeId, VecDeque<ChatMessage>>,
     ) -> Self {
@@ -126,8 +126,8 @@ impl CommunicationServer {
             topology_map,
             assembler_send,
             assembler_recv,
-            assembler_res_recv,
             assembler_res_send,
+            assembler_res_recv,
             registered_clients,
             message_store,
         }
