@@ -93,21 +93,21 @@ impl eframe::App for MyApp{
         }
 
         while let Ok(event) = self.simulation_controller.get_client_event_recv().try_recv(){
-            match event {
-                ClientEvent::PacketSent(_) => {println!("client PacketSent")}
+            match &event {
+                ClientEvent::PacketSent(_) => {println!("client PacketSent")},
                 ClientEvent::PacketReceived(_) => {println!("client PacketReceived")},
-                ClientEvent::MessageSent { .. } => {println!("client MessageSent")},
-                ClientEvent::MessageReceived { .. } => {println!("client MessageReceived")}
+                ClientEvent::MessageSent{..} => {println!("client MessageSent")},
+                ClientEvent::MessageReceived{..} => {println!("client MessageReceived")},
             }
             self.logs(Event::Client(event));
         }
 
         while let Ok(event) = self.simulation_controller.get_server_event_recv().try_recv(){
-            match event {
-                ServerEvent::PacketSent(_) => {println!("server PacketSent")}
+            match &event {
+                ServerEvent::PacketSent(_) => {println!("server PacketSent")},
                 ServerEvent::PacketReceived(_) => {println!("server PacketReceived")},
-                ServerEvent::MessageSent { .. } => {println!("server MessageSent")},
-                ServerEvent::MessageReceived { .. } => {println!("server MessageReceived")}
+                ServerEvent::MessageSent{..} => {println!("server MessageSent")},
+                ServerEvent::MessageReceived{..} => {println!("server MessageReceived")},
             }
             self.logs(Event::Server(event));
         }
