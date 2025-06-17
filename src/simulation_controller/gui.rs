@@ -92,11 +92,12 @@ impl eframe::App for MyApp{
             self.logs(Event::Drone(event));
         }
 
+        
         while let Ok(event) = self.simulation_controller.get_client_event_recv().try_recv(){
             match &event {
                 ClientEvent::PacketSent(_) => {println!("client PacketSent")},
                 ClientEvent::PacketReceived(_) => {println!("client PacketReceived")},
-                ClientEvent::MessageSent{..} => {println!("client MessageSent")},
+                ClientEvent::MessageSent { target: a, content: b } => {println!("client MessageSent")},
                 ClientEvent::MessageReceived{..} => {println!("client MessageReceived")},
             }
             self.logs(Event::Client(event));
