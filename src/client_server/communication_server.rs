@@ -27,7 +27,7 @@ pub struct CommunicationServer {
     assembler_res_recv: Receiver<Vec<u8>>,
     assembler_res_send: Sender<Vec<u8>>,
     registered_clients: HashSet<NodeId>,
-    message_store: HashMap<NodeId, VecDeque<ChatMessage>>,
+    messages_stored: Vec<ChatMessage>,
 }
 
 impl NetworkNode for CommunicationServer {
@@ -113,7 +113,7 @@ impl CommunicationServer {
         assembler_res_send: Sender<Vec<u8>>,
         assembler_res_recv: Receiver<Vec<u8>>,
         registered_clients: HashSet<NodeId>,
-        message_store: HashMap<NodeId, VecDeque<ChatMessage>>,
+        messages_stored: Vec<ChatMessage>,
     ) -> Self {
         Self {
             id,
@@ -129,7 +129,7 @@ impl CommunicationServer {
             assembler_res_send,
             assembler_res_recv,
             registered_clients,
-            message_store,
+            messages_stored,
         }
     }
 
@@ -330,10 +330,7 @@ impl CommunicationServer {
                             )),
                         };
 
-                        self.message_store
-                            .entry(client_id)
-                            .or_insert_with(VecDeque::new)
-                            .push_back(chat_message);
+                        self.messages_stored.push(chat_message);
 
                         debug!(
                             "Server: {:?} now has registered clients: {:?}",
@@ -431,10 +428,7 @@ impl CommunicationServer {
 
         debug!("Server: {:?} storing message from {:?}", self.id, client_id);
 
-        self.message_store
-            .entry(client_id)
-            .or_insert_with(VecDeque::new)
-            .push_back(chat_message);
+        self.messages_stored.push(chat_message);
     }
 
     fn send_fragment_to_assembler(&mut self, packet: Packet) -> Result<(), String> {
