@@ -1,8 +1,7 @@
-use crate::assembler;
+use crate::assembler::assembler::Assembler;
 #[cfg(feature = "debug")]
 use crate::debug;
 
-use crate::assembler::assembler::Assembler;
 use crate::client_server::network_core::{
     ClientEvent, ClientServerCommand, NetworkNode, ServerType,
 };
@@ -10,7 +9,7 @@ use crate::message::message::{
     ChatRequest, ChatResponse, Message, MessageContent, ServerTypeRequest, ServerTypeResponse,
     TextRequest, TextResponse,
 };
-use crossbeam_channel::{after, select_biased, unbounded, Receiver, SendError, Sender};
+use crossbeam_channel::{after, select_biased, Receiver, Sender};
 use rand::{random, thread_rng, Rng};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::thread;
@@ -30,7 +29,6 @@ pub struct Client {
     controller_recv: Receiver<ClientServerCommand>,
     packet_send: HashMap<NodeId, Sender<Packet>>,
     packet_recv: Receiver<Packet>,
-    assemblers: Vec<Assembler>,
     topology_map: HashSet<(NodeId, Vec<NodeId>)>,
     server_type_map: HashMap<NodeId, Option<ServerType>>,
     assembler_send: Sender<Packet>,
@@ -52,8 +50,8 @@ impl NetworkNode for Client {
     fn topology_map_mut(&mut self) -> &mut HashSet<(NodeId, Vec<NodeId>)> {
         &mut self.topology_map
     }
-    fn assemblers_mut(&mut self) -> &mut Vec<Assembler> {
-        &mut self.assemblers
+    fn assembler_send(&self) -> &Sender<Packet> {
+        &self.assembler_send
     }
 
     fn run(&mut self) {
@@ -112,7 +110,6 @@ impl Client {
         controller_recv: Receiver<ClientServerCommand>,
         packet_send: HashMap<NodeId, Sender<Packet>>,
         packet_recv: Receiver<Packet>,
-        assemblers: Vec<Assembler>,
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
         server_type_map: HashMap<NodeId, Option<ServerType>>,
         assembler_send: Sender<Packet>,
@@ -128,7 +125,6 @@ impl Client {
             controller_recv,
             packet_recv,
             packet_send,
-            assemblers,
             topology_map,
             server_type_map,
             assembler_send,
@@ -484,25 +480,19 @@ impl Client {
     }
 
     fn send_fragment_to_assembler(&mut self, packet: Packet) -> Result<(), String> {
-        for assembler in &mut self.assemblers {
-            if assembler.session_id == packet.session_id {
-                assembler
-                    .packet_send
-                    .send(packet)
-                    .map_err(|e| format!("Failed to send packet to assembler: {}", e))?;
-                return Ok(());
+        // send the packet to the assembler
+        match self.assembler_send.send(packet) {
+            Ok(_) => {
+                debug!("Client: {:?} sent packet to assembler", self.id);
+                Ok(())
+            }
+            Err(e) => {
+                debug!(
+                    "Client: {:?} failed to send packet to assembler: {}",
+                    self.id, e
+                );
+                Err(format!("Failed to send packet to assembler: {}", e))
             }
         }
-
-        // If no assembler found, create a new one
-        let assembler = Assembler::new(
-            packet.session_id,
-            self.assembler_send.clone(),
-            self.assembler_recv.clone(),
-            self.assembler_res_send.clone(),
-            self.assembler_res_recv.clone(),
-        );
-        self.assemblers.push(assembler);
-        Ok(())
     }
 }
