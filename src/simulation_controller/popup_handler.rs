@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use chrono_tz::Europe::Rome;
 use eframe::egui;
 use wg_2024::network::NodeId;
-use crate::client_server::network_core::ServerType;
+use crate::client_server::network_core::{ChatMessage, ServerType};
 
 pub fn show_popup(app: &mut MyApp, ctx: &egui::Context, name: &str) {
     let current_time: DateTime<Utc> = Utc::now();
@@ -144,6 +144,8 @@ fn show_client_controls(
 ) {
     // Track selected screen for this client
     let screen = app.client_popup_screens.entry(node_id).or_insert(ClientPopupScreen::Chatroom);
+    
+    let mut registered_servers: Vec<NodeId> = Vec::new();
 
     // Navigation bar
     ui.horizontal(|ui| {
@@ -188,6 +190,7 @@ fn show_client_controls(
                 if ui.button("Register").clicked() {
                     if let Some(num_str) = selected_server.split_whitespace().last() {
                         if let Ok(server_id) = num_str.parse::<u8>() {
+                            registered_servers.push(server_id);
                             app.simulation_controller.handle_registration_request(node_id, server_id);
                         }
                     }
@@ -205,7 +208,20 @@ fn show_client_controls(
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
 
-                    //todo!(Insert messages)
+                    if let Some(num_str) = selected_server.split_whitespace().last() {
+                        if let Ok(server_id) = num_str.parse::<NodeId>() {
+                            if registered_servers.contains(&server_id) {
+                                if let Some(message_list) = app.chatrooms_messages.get_mut(&server_id) {
+                                    for (chat_message) in message_list {
+                                        let display_message: String = format!("{}: {}", chat_message.sender_id, chat_message.content);
+                                        ui.label(display_message);
+                                    }
+                                }
+                            }else{
+                                ui.label("You are not registered to the server!");
+                            }    
+                        }
+                    }
                 });
 
             ui.separator();
@@ -220,6 +236,7 @@ fn show_client_controls(
                 );
                 ui.add_space(2.0);
                 if ui.button("Send").clicked() {
+                    
                     if let Some(num_str) = selected_server.split_whitespace().last() {
                         if let Ok(server_id) = num_str.parse::<u8>() {
                             app.simulation_controller.handle_send_chat_message(node_id, server_id, text_input.parse().unwrap())

@@ -27,7 +27,7 @@ pub struct CommunicationServer {
     assembler_res_recv: Receiver<Vec<u8>>,
     assembler_res_send: Sender<Vec<u8>>,
     registered_clients: HashSet<NodeId>,
-    messages_stored: Vec<ChatMessage>,
+    messages_stored: Vec<ChatMessage>, //todo!(Need to retrieve this vector)
 }
 
 impl NetworkNode for CommunicationServer {
@@ -429,6 +429,11 @@ impl CommunicationServer {
         debug!("Server: {:?} storing message from {:?}", self.id, client_id);
 
         self.messages_stored.push(chat_message);
+        
+        self.send_message_received_to_sc(MessageContent::WholeChatVecResponse(Chatroom{
+            server_id: self.id,
+            chatroom_messages: self.messages_stored.clone(),
+        }));
     }
 
     fn send_fragment_to_assembler(&mut self, packet: Packet) -> Result<(), String> {

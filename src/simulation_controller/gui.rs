@@ -6,10 +6,11 @@ use crate::simulation_controller::logs_handler;
 use crate::simulation_controller::popup_handler;
 use crate::simulation_controller::simulation_controller::SimulationController;
 
-use crate::client_server::network_core::{ClientEvent, ClientServerCommand, ServerEvent, ServerType};
+use crate::client_server::network_core::{ChatMessage, ClientEvent, ClientServerCommand, ServerEvent, ServerType};
 use crossbeam_channel::Sender;
 use eframe::egui;
 use std::collections::HashMap;
+use crate::message::message::{ChatResponse, MessageContent};
 
 pub struct MyApp {
     pub(crate) simulation_controller: SimulationController,
@@ -29,6 +30,7 @@ pub struct MyApp {
     server_texture: Option<egui::TextureHandle>, //Icon for servers in diagram.
     drone_texture: Option<egui::TextureHandle>,  //Icon for drones in diagram.
     topology_needs_update: bool,
+    pub(crate) chatrooms_messages: HashMap<NodeId, Vec<ChatMessage>>,
 }
 
 pub struct NetworkTopology {
@@ -68,6 +70,7 @@ impl MyApp {
             server_texture: None,
             drone_texture: None,
             topology_needs_update: true,
+            chatrooms_messages: HashMap::new(),
         }
     }
 
@@ -85,34 +88,55 @@ impl eframe::App for MyApp{
         //Poll for new events and log them.
         while let Ok(event) = self.simulation_controller.get_drone_event_recv().try_recv(){
             match event {
-                DroneEvent::PacketSent(_) => {println!("drone PacketSent")}
-                DroneEvent::PacketDropped(_) => {println!("drone PacketDropped")}
-                DroneEvent::ControllerShortcut(_) => {println!("drone ControllerShortcut")}
+                DroneEvent::PacketSent(_) => {}
+                DroneEvent::PacketDropped(_) => {}
+                DroneEvent::ControllerShortcut(_) => {}
             }
             self.logs(Event::Drone(event));
         }
 
         while let Ok(event) = self.simulation_controller.get_client_event_recv().try_recv(){
-            match event {
-                ClientEvent::PacketSent(_) => {println!("client PacketSent")}
-                ClientEvent::PacketReceived(_) => {println!("client PacketReceived")},
-                ClientEvent::MessageSent { .. } => {println!("client MessageSent")},
-                ClientEvent::MessageReceived { .. } => {println!("client MessageReceived")}
+            match &event {
+                ClientEvent::PacketSent(_) => {}
+                ClientEvent::PacketReceived(_) => {},
+                ClientEvent::MessageSent { .. } => {},
+                ClientEvent::MessageReceived {content: client_message } => {
+                    match client_message {
+                        MessageContent::ServerTypeRequest(_) => {}
+                        MessageContent::ServerTypeResponse(_) => {}
+                        MessageContent::TextRequest(_) => {}
+                        MessageContent::TextResponse(_) => {}
+                        MessageContent::WholeChatVecResponse(_) => {/*not used by client*/}
+                        MessageContent::ChatRequest(_) => {}
+                        MessageContent::ChatResponse(_) => {}
+                    }
+                }
             }
             self.logs(Event::Client(event));
         }
 
         while let Ok(event) = self.simulation_controller.get_server_event_recv().try_recv(){
-            match event {
-                ServerEvent::PacketSent(_) => {println!("server PacketSent")}
-                ServerEvent::PacketReceived(_) => {println!("server PacketReceived")},
-                ServerEvent::MessageSent { .. } => {println!("server MessageSent")},
-                ServerEvent::MessageReceived { .. } => {println!("server MessageReceived")}
+            match &event {
+                ServerEvent::PacketSent(_) => {}
+                ServerEvent::PacketReceived(_) => {},
+                ServerEvent::MessageSent { .. } => {},
+                ServerEvent::MessageReceived {content: server_message} => {
+                    match server_message {
+                        MessageContent::ServerTypeRequest(_) => {}
+                        MessageContent::ServerTypeResponse(_) => {}
+                        MessageContent::TextRequest(_) => {}
+                        MessageContent::TextResponse(_) => {}
+                        MessageContent::WholeChatVecResponse(chatroom) => {
+                            self.chatrooms_messages.insert(chatroom.server_id.clone(), chatroom.chatroom_messages.clone());
+                        }
+                        MessageContent::ChatRequest(_) => {/*not used by server*/}
+                        MessageContent::ChatResponse(_) => {/*not used by server*/}
+                    }
+                }
             }
             self.logs(Event::Server(event));
         }
-
-        //todo(Poll for chat messages)
+        
 
         //Load icon textures for nodes in graph.
         if self.client_texture.is_none() {

@@ -56,7 +56,7 @@ impl SimulationController {
             drone_sender.send(DroneCommand::SetPacketDropRate(drop_rate)).unwrap();
         }
     }
-
+    
     pub fn handle_crash(&mut self, drone_sender_id: NodeId, neighbors: Vec<NodeId>) {
         let crashed_drone_sender = self.drones.get(&drone_sender_id).map(|(sender, _, _)| sender.clone());
 

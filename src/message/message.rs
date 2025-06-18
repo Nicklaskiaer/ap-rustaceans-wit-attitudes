@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use wg_2024::network::NodeId;
-use crate::client_server::network_core::ServerType;
+use crate::client_server::network_core::{ChatMessage, ServerType};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound(deserialize = "M: DeserializeOwned"))]
@@ -32,6 +32,9 @@ pub enum MessageContent {
     ServerTypeResponse(ServerTypeResponse),
     TextRequest(TextRequest),
     TextResponse(TextResponse),
+    WholeChatVecResponse(Chatroom),
+    ChatRequest(ChatRequest),
+    ChatResponse(ChatResponse),
     //TODO: Add others
     //TODO: IMPORTANT, EDIT TEXT AND IMAGE RESPONSE TO NO HAVE THE BASE64 TEXT (SEND ONLY THE IMAGE ID)
 }
@@ -190,6 +193,12 @@ pub enum ChatResponse {
     MessageFrom { from: NodeId, message: Vec<u8> },
     MessageSent,
     ClientNotRegistered,
+}
+
+#[derive(Clone, Debug)]
+pub struct Chatroom {
+    pub server_id: NodeId,
+    pub chatroom_messages: Vec<ChatMessage>,
 }
 
 impl DroneSend for ChatResponse {
