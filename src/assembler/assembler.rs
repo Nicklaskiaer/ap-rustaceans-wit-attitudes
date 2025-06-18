@@ -29,7 +29,7 @@ impl Assembler {
             data: Vec::new(),
         }
     }
-    fn run(&mut self) {
+    pub fn run(&mut self) {
         loop {
             select_biased! {
                 recv(self.packet_recv) -> packet => {

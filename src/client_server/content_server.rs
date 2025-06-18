@@ -6,9 +6,10 @@ use crate::client_server::network_core::{
     ClientServerCommand, ContentType, NetworkNode, ServerEvent, ServerType,
 };
 use crate::message::message::*;
-use crossbeam_channel::{select_biased, Receiver, Sender};
+use crossbeam_channel::{select_biased, Receiver, SendError, Sender};
 use rand::random;
 use std::collections::{HashMap, HashSet};
+use std::thread;
 use wg_2024::controller::DroneCommand;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, NodeType, Packet, PacketType};
@@ -207,7 +208,7 @@ impl ContentServer {
                 // Send fragment to assembler to be reassembled
                 match self.send_fragment_to_assembler(packet.clone()) {
                     Ok(_) => {
-                        debug!("Server: {:?} sent fragment to assembler", self.id);
+                        debug!("Media Server: {:?} sent fragment to assembler", self.id);
 
                         // Send ack back to the sender
                         let mut ack_packet = Packet::new_ack(
@@ -400,16 +401,27 @@ impl ContentServer {
                 return Ok(());
             }
         }
-
+        
         // If no assembler found, create a new one
-        let assembler = Assembler::new(
-            packet.session_id,
-            self.assembler_send.clone(),
-            self.assembler_recv.clone(),
-            self.assembler_res_send.clone(),
-            self.assembler_res_recv.clone(),
-        );
+        thread::spawn(move || {
+            let mut assembler = Assembler::new(
+                packet.session_id,
+                self.assembler_send.clone(),
+                self.assembler_recv.clone(),
+                self.assembler_res_send.clone(),
+                self.assembler_res_recv.clone(),
+            );
+            
+            assembler.run();
+        });
+        
+        // match assembler.packet_send.send(packet) {
+        //     Ok(_) => {debug!("ccccc but good");}
+        //     Err(err) => {debug!("ccccc {:?}", err);}
+        // }
+
         self.assemblers.push(assembler);
+        
         Ok(())
     }
 }

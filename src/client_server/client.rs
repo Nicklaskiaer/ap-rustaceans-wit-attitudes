@@ -279,7 +279,7 @@ impl Client {
                 // Send fragment to assembler to be reassembled
                 match self.send_fragment_to_assembler(packet.clone()) {
                     Ok(_) => {
-                        debug!("Server: {:?} sent fragment to assembler", self.id);
+                        debug!("Client: {:?} sent fragment to assembler", self.id);
 
                         // Send ack back to the sender
                         let mut ack_packet = Packet::new_ack(
