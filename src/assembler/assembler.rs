@@ -1,32 +1,35 @@
-use core::panic;
+use crossbeam_channel::{select_biased, Receiver, SendError, Sender};
+use wg_2024::packet::{Packet, PacketType};
 
-use crossbeam_channel::{select_biased, unbounded, Receiver, SendError, Sender};
-use wg_2024::packet::{Fragment, Packet, PacketType};
+struct DataAssembly {
+    session_id: u64,
+    data: Vec<u8>,
+    total_fragments: u64,
+    current_fragment_index: u64,
+}
 
 pub struct Assembler {
-    pub session_id: u64,
+    pub assemblies: Vec<DataAssembly>,
     pub packet_send: Sender<Packet>,
     pub packet_recv: Receiver<Packet>,
     pub result_send: Sender<Vec<u8>>,
     pub result_recv: Receiver<Vec<u8>>,
-    pub data: Vec<u8>,
 }
 
 impl Assembler {
     pub fn new(
-        session_id: u64,
+        assemblies: Vec<DataAssembly>,
         packet_send: Sender<Packet>,
         packet_recv: Receiver<Packet>,
         result_send: Sender<Vec<u8>>,
         result_recv: Receiver<Vec<u8>>,
     ) -> Self {
         Self {
-            session_id,
+            assemblies,
             packet_send,
             packet_recv,
             result_send,
             result_recv,
-            data: Vec::new(),
         }
     }
     pub fn run(&mut self) {
@@ -35,34 +38,54 @@ impl Assembler {
                 recv(self.packet_recv) -> packet => {
                     debug!("Assembler received packet: {:?}", packet);
                     if let Ok(packet) = packet {
-                        match packet.pack_type {
-                            PacketType::MsgFragment(fragment) => {
-                                self.data.extend(fragment.data);
-                                if fragment.fragment_index == fragment.total_n_fragments - 1 {
-                                    match self.result_send.send(self.data.clone()){
-                                        Ok(_) => {
-                                            break;
-                                        }
-                                        Err(SendError(data)) => {
-                                            debug!("Failed to send result: {:?}", data);
-                                        }
-                                    }
-                                }
-                                else {
-                                    match self.packet_send.send(Packet::new_ack(packet.routing_header, self.session_id, fragment.fragment_index)){
-                                        Ok(_) => {}
-                                        Err(SendError(packet)) => {
-                                            debug!("Failed to send ack packet: {:?}", packet);
-                                        }
-                                    }
-                                }
-                            }
-                            _ => {
-                                debug!("Assembler received non-fragment packet: {:?}", packet);
-                            }
-                        }
+                        self.handle_fragment(packet);
                     }
                 }
+            }
+        }
+    }
+
+    fn handle_fragment(&mut self, packet: Packet) {
+        debug!("Assembler handling fragment: {:?}", fragment);
+        let session_id = packet.session_id;
+
+        match packet.pack_type {
+            PacketType::MsgFragment(fragment) => {
+                // Check if the fragment has an assembly in progress
+                let assembly = self
+                    .assemblies
+                    .iter_mut()
+                    .find(|a| a.session_id == session_id);
+
+                if let Some(assembly) = assembly {
+                    assembly.data.extend(fragment.data.clone());
+                    assembly.current_fragment_index += 1;
+
+                    if assembly.current_fragment_index == assembly.total_fragments {
+                        // All fragments received, process the data
+                        self.result_send.send(assembly.data.clone());
+
+                        debug!(
+                            "All fragments received for session_id: {} assembled data sent, data",
+                            session_id
+                        );
+                    }
+                } else {
+                    // No assembly in progress, create a new one
+                    let mut new_assembly = DataAssembly {
+                        session_id,
+                        data: Vec::new(),
+                        total_fragments: fragment.total_n_fragments,
+                        current_fragment_index: 1,
+                    };
+                    new_assembly.data.extend(fragment.data.clone());
+                    self.assemblies.push(new_assembly);
+                    debug!("New assembly created for session_id: {}", session_id);
+                }
+            }
+            _ => {
+                debug!("Received non-fragment packet: {:?}", packet);
+                // Handle other packet types if necessary
             }
         }
     }
