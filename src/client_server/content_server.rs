@@ -403,7 +403,7 @@ impl ContentServer {
         }
         
         // If no assembler found, create a new one
-        thread::spawn(move || {
+        /* thread::spawn(move || {
             let mut assembler = Assembler::new(
                 packet.session_id,
                 self.assembler_send.clone(),
@@ -413,14 +413,14 @@ impl ContentServer {
             );
             
             assembler.run();
-        });
+        }); */
         
         // match assembler.packet_send.send(packet) {
         //     Ok(_) => {debug!("ccccc but good");}
         //     Err(err) => {debug!("ccccc {:?}", err);}
         // }
 
-        self.assemblers.push(assembler);
+        //self.assemblers.push(assembler);
         
         Ok(())
     }

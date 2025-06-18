@@ -30,7 +30,8 @@ pub struct MyApp {
     server_texture: Option<egui::TextureHandle>, //Icon for servers in diagram.
     drone_texture: Option<egui::TextureHandle>,  //Icon for drones in diagram.
     topology_needs_update: bool,
-    pub(crate) chatrooms_messages: HashMap<NodeId, Vec<ChatMessage>>,
+    pub(crate) chatrooms_messages: HashMap<NodeId, Vec<ChatMessage>>, // Store chatroom messages of every server to be displayed.
+    pub(crate) registered_servers: HashMap<NodeId, Vec<NodeId>>, // Maps client ID to list of servers they're registered with
 }
 
 pub struct NetworkTopology {
@@ -71,6 +72,7 @@ impl MyApp {
             drone_texture: None,
             topology_needs_update: true,
             chatrooms_messages: HashMap::new(),
+            registered_servers: Default::default(),
         }
     }
 

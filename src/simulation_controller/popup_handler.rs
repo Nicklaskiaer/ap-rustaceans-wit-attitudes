@@ -145,14 +145,15 @@ fn show_client_controls(
     // Track selected screen for this client
     let screen = app.client_popup_screens.entry(node_id).or_insert(ClientPopupScreen::Chatroom);
     
-    let mut registered_servers: Vec<NodeId> = Vec::new();
+    // Track selected server for this client
+    let mut server_id_sel: u8 = 0;
 
     // Navigation bar
     ui.horizontal(|ui| {
-        if ui.selectable_label(*screen == ClientPopupScreen::Chatroom, "Main").clicked() {
+        if ui.selectable_label(*screen == ClientPopupScreen::Chatroom, "Chatroom").clicked() {
             *screen = ClientPopupScreen::Chatroom;
         }
-        if ui.selectable_label(*screen == ClientPopupScreen::Other, "Advanced").clicked() {
+        if ui.selectable_label(*screen == ClientPopupScreen::Other, "Images").clicked() {
             *screen = ClientPopupScreen::Other;
         }
     });
@@ -162,7 +163,8 @@ fn show_client_controls(
     match screen {
         ClientPopupScreen::Chatroom => {
             let selected_server = app.selected_server.entry(node_id).or_default();
-
+            let registered_servers = app.registered_servers.entry(node_id).or_default();
+            
             ui.horizontal(|ui| {
                 // Dropdown menu for servers
                 egui::ComboBox::from_label("")
@@ -187,16 +189,28 @@ fn show_client_controls(
                         }
                     });
 
-                if ui.button("Register").clicked() {
-                    if let Some(num_str) = selected_server.split_whitespace().last() {
-                        if let Ok(server_id) = num_str.parse::<u8>() {
-                            registered_servers.push(server_id);
-                            app.simulation_controller.handle_registration_request(node_id, server_id);
-                        }
+                // Converted selected_server to u8
+                if let Some(num_str) = selected_server.split_whitespace().last() {
+                    if let Ok(server_id) = num_str.parse::<u8>() {
+                        server_id_sel = server_id;
                     }
                 }
-
-
+                
+                // If register is pressed, server id is pushed in vec and request is sent to server.
+                if ui.button("Register").clicked() {
+                    if !registered_servers.contains(&server_id_sel) {
+                        app.simulation_controller.handle_registration_request(node_id, server_id_sel.clone());  //todo!(PROBLEM: IF PACKET IS DROPPED AND CLIENT NOT REGISTERED, IT STILL INSERT IT IN VEC AND GUI SHOWS AS REGISTERED)
+                        registered_servers.push(server_id_sel.clone());
+                    }
+                }
+                
+                // After client has registered to server then "Client List" button is displayed.
+                if registered_servers.contains(&server_id_sel) {
+                    if ui.button("Client List").clicked(){ 
+                        //todo!(FIND A WAY TO SHOW THE USER THE CLIENTS THAT ARE REGISTERED TO THE CHATROOM)
+                    }
+                }
+                
             });
 
             ui.separator();
@@ -207,20 +221,16 @@ fn show_client_controls(
                 .max_height(100.0)
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
-
-                    if let Some(num_str) = selected_server.split_whitespace().last() {
-                        if let Ok(server_id) = num_str.parse::<NodeId>() {
-                            if registered_servers.contains(&server_id) {
-                                if let Some(message_list) = app.chatrooms_messages.get_mut(&server_id) {
-                                    for (chat_message) in message_list {
-                                        let display_message: String = format!("{}: {}", chat_message.sender_id, chat_message.content);
-                                        ui.label(display_message);
-                                    }
-                                }
-                            }else{
-                                ui.label("You are not registered to the server!");
-                            }    
+                    
+                    if registered_servers.contains(&server_id_sel) {
+                        if let Some(message_list) = app.chatrooms_messages.get_mut(&server_id_sel) {
+                            for chat_message in message_list {
+                                let display_message: String = format!("{}: {}", chat_message.sender_id, chat_message.content);
+                                ui.label(display_message);
+                            }
                         }
+                    } else {
+                        ui.label("You are not registered to the server!");
                     }
                 });
 
@@ -234,14 +244,11 @@ fn show_client_controls(
                         .desired_width(ui.available_width() - 70.0)
                         .hint_text("Message")
                 );
+                
                 ui.add_space(2.0);
+                
                 if ui.button("Send").clicked() {
-                    
-                    if let Some(num_str) = selected_server.split_whitespace().last() {
-                        if let Ok(server_id) = num_str.parse::<u8>() {
-                            app.simulation_controller.handle_send_chat_message(node_id, server_id, text_input.parse().unwrap())
-                        }
-                    }
+                    app.simulation_controller.handle_send_chat_message(node_id, server_id_sel, text_input.parse().unwrap())
                 }
             });
         }
