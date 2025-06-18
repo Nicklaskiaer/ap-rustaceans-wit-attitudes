@@ -131,13 +131,20 @@ pub fn main() {
         // spawn assembler for client
         let (assembler_send, assembler_recv) = unbounded();
         let (assembler_send_res, assembler_recv_res) = unbounded();
+
+        // Clone channels for assembler thread
+        let assembler_send_for_thread = assembler_send.clone();
+        let assembler_recv_for_thread = assembler_recv.clone();
+        let assembler_send_res_for_thread = assembler_send_res.clone();
+        let assembler_recv_res_for_thread = assembler_recv_res.clone();
+
         thread::spawn(move || {
             let mut assembler = Assembler::new(
                 vec![],
-                assembler_send.clone(),
-                assembler_recv.clone(),
-                assembler_send_res.clone(),
-                assembler_recv_res.clone(),
+                assembler_send_for_thread,
+                assembler_recv_for_thread,
+                assembler_send_res_for_thread,
+                assembler_recv_res_for_thread,
             );
 
             assembler.run();
@@ -155,10 +162,10 @@ pub fn main() {
                 packet_recv,
                 HashSet::new(),
                 HashMap::new(),
-                assembler_send.clone(),
-                assembler_recv.clone(),
-                assembler_send_res.clone(),
-                assembler_recv_res.clone(),
+                assembler_send,
+                assembler_recv,
+                assembler_send_res,
+                assembler_recv_res,
             );
 
             client.run();
@@ -270,20 +277,28 @@ pub fn main() {
             .map(|id| (id, packet_channels[&id].0.clone()))
             .collect();
 
-        // spawn assembler for client
+        // spawn assembler for server
         let (assembler_send, assembler_recv) = unbounded();
         let (assembler_send_res, assembler_recv_res) = unbounded();
+
+        // Clone channels for assembler thread
+        let assembler_send_for_thread = assembler_send.clone();
+        let assembler_recv_for_thread = assembler_recv.clone();
+        let assembler_send_res_for_thread = assembler_send_res.clone();
+        let assembler_recv_res_for_thread = assembler_recv_res.clone();
+
         thread::spawn(move || {
             let mut assembler = Assembler::new(
                 vec![],
-                assembler_send.clone(),
-                assembler_recv.clone(),
-                assembler_send_res.clone(),
-                assembler_recv_res.clone(),
+                assembler_send_for_thread,
+                assembler_recv_for_thread,
+                assembler_send_res_for_thread,
+                assembler_recv_res_for_thread,
             );
 
             assembler.run();
         });
+
         // spawn server
         match server_type {
             ServerType::ContentServer(content_type) => {
@@ -306,10 +321,10 @@ pub fn main() {
                         packet_send,
                         packet_recv.clone(),
                         HashSet::new(),
-                        assembler_send.clone(),
-                        assembler_recv.clone(),
-                        assembler_send_res.clone(),
-                        assembler_recv_res.clone(),
+                        assembler_send,
+                        assembler_recv,
+                        assembler_send_res,
+                        assembler_recv_res,
                         content_type_clone,
                         files_clone,
                     );
@@ -326,10 +341,10 @@ pub fn main() {
                         packet_send,
                         packet_recv.clone(),
                         HashSet::new(),
-                        assembler_send.clone(),
-                        assembler_recv.clone(),
-                        assembler_send_res.clone(),
-                        assembler_recv_res.clone(),
+                        assembler_send,
+                        assembler_recv,
+                        assembler_send_res,
+                        assembler_recv_res,
                         HashSet::new(),
                         HashMap::new(),
                     );

@@ -1,7 +1,7 @@
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use wg_2024::packet::{Packet, PacketType};
 
-struct DataAssembly {
+pub struct DataAssembly {
     session_id: u64,
     data: Vec<u8>,
     total_fragments: u64,
@@ -63,8 +63,20 @@ impl Assembler {
 
                     if assembly.current_fragment_index == assembly.total_fragments {
                         // All fragments received, process the data
-                        self.result_send.send(assembly.data.clone());
-
+                        match self.result_send.send(assembly.data.clone()) {
+                            Ok(_) => {
+                                debug!(
+                                    "Data assembly for session_id: {} sent successfully",
+                                    session_id
+                                );
+                            }
+                            Err(e) => {
+                                debug!(
+                                    "Failed to send assembled data for session_id: {}: {}",
+                                    session_id, e
+                                );
+                            }
+                        }
                         debug!(
                             "All fragments received for session_id: {} assembled data sent, data",
                             session_id
