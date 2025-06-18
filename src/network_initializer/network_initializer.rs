@@ -13,6 +13,7 @@ use rustaceans_wit_attitudes::RustaceansWitAttitudesDrone;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::{fs, thread};
+use skylink::SkyLinkDrone;
 use wg_2024::config::Config;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
@@ -69,6 +70,15 @@ pub fn main() {
 
         // spawn
         thread::spawn(move || {
+            // let mut drone = SkyLinkDrone::new(
+            //     drone.id,
+            //     node_event_send_drone,
+            //     controller_drone_recv,
+            //     packet_recv,
+            //     packet_send,
+            //     drone.pdr,
+            // );
+            
             let mut drone = RustaceansWitAttitudesDrone::new(
                 drone.id,
                 node_event_send_drone,
