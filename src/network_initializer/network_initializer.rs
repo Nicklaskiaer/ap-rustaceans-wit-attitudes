@@ -1,3 +1,4 @@
+use crate::assembler::assembler::Assembler;
 #[cfg(feature = "debug")]
 use crate::debug;
 
@@ -127,9 +128,22 @@ pub fn main() {
             .map(|id| (id, packet_channels[&id].0.clone()))
             .collect();
 
-        // spawn
+        // spawn assembler for client
         let (assembler_send, assembler_recv) = unbounded();
         let (assembler_send_res, assembler_recv_res) = unbounded();
+        thread::spawn(move || {
+            let mut assembler = Assembler::new(
+                vec![],
+                assembler_send.clone(),
+                assembler_recv.clone(),
+                assembler_send_res.clone(),
+                assembler_recv_res.clone(),
+            );
+
+            assembler.run();
+        });
+
+        // spawn client
         thread::spawn(move || {
             let mut client = Client::new(
                 client.id,
@@ -139,13 +153,12 @@ pub fn main() {
                 controller_client_recv,
                 packet_send,
                 packet_recv,
-                vec![],
                 HashSet::new(),
                 HashMap::new(),
-                assembler_send,
-                assembler_recv,
-                assembler_send_res,
-                assembler_recv_res,
+                assembler_send.clone(),
+                assembler_recv.clone(),
+                assembler_send_res.clone(),
+                assembler_recv_res.clone(),
             );
 
             client.run();
@@ -257,9 +270,21 @@ pub fn main() {
             .map(|id| (id, packet_channels[&id].0.clone()))
             .collect();
 
-        // spawn
+        // spawn assembler for client
         let (assembler_send, assembler_recv) = unbounded();
         let (assembler_send_res, assembler_recv_res) = unbounded();
+        thread::spawn(move || {
+            let mut assembler = Assembler::new(
+                vec![],
+                assembler_send.clone(),
+                assembler_recv.clone(),
+                assembler_send_res.clone(),
+                assembler_recv_res.clone(),
+            );
+
+            assembler.run();
+        });
+        // spawn server
         match server_type {
             ServerType::ContentServer(content_type) => {
                 debug!(
@@ -280,12 +305,11 @@ pub fn main() {
                         controller_server_recv,
                         packet_send,
                         packet_recv.clone(),
-                        vec![],
                         HashSet::new(),
-                        assembler_send,
-                        assembler_recv,
-                        assembler_send_res,
-                        assembler_recv_res,
+                        assembler_send.clone(),
+                        assembler_recv.clone(),
+                        assembler_send_res.clone(),
+                        assembler_recv_res.clone(),
                         content_type_clone,
                         files_clone,
                     );
@@ -301,12 +325,11 @@ pub fn main() {
                         controller_server_recv,
                         packet_send,
                         packet_recv.clone(),
-                        vec![],
                         HashSet::new(),
-                        assembler_send,
-                        assembler_recv,
-                        assembler_send_res,
-                        assembler_recv_res,
+                        assembler_send.clone(),
+                        assembler_recv.clone(),
+                        assembler_send_res.clone(),
+                        assembler_recv_res.clone(),
                         HashSet::new(),
                         HashMap::new(),
                     );

@@ -1,4 +1,4 @@
-use crossbeam_channel::{select_biased, Receiver, SendError, Sender};
+use crossbeam_channel::{select_biased, Receiver, Sender};
 use wg_2024::packet::{Packet, PacketType};
 
 struct DataAssembly {
@@ -72,6 +72,7 @@ impl Assembler {
                     }
                 } else {
                     // No assembly in progress, create a new one
+
                     let mut new_assembly = DataAssembly {
                         session_id,
                         data: Vec::new(),
