@@ -152,6 +152,7 @@ pub fn main() {
                 vec![],
                 HashSet::new(),
                 HashMap::new(),
+                HashSet::new(),
                 assembler_send,
                 assembler_recv,
                 assembler_send_res,
