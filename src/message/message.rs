@@ -193,6 +193,7 @@ pub enum ChatResponse {
     MessageFrom { from: NodeId, message: Vec<u8> },
     MessageSent,
     ClientNotRegistered,
+    ClientRegistered(NodeId)
 }
 
 #[derive(Clone, Debug)]
@@ -217,6 +218,7 @@ impl Response for ChatResponse {
             ChatResponse::MessageFrom { .. } => "MessageFrom".to_string(),
             ChatResponse::MessageSent => "MessageSent".to_string(),
             ChatResponse::ClientNotRegistered => "ClientNotRegistered".to_string(),
+            ChatResponse::ClientRegistered(_) => "ClientRegistered".to_string()
         }
     }
 }

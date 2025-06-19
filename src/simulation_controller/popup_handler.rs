@@ -199,8 +199,7 @@ fn show_client_controls(
                 // If register is pressed, server id is pushed in vec and request is sent to server.
                 if ui.button("Register").clicked() {
                     if !registered_servers.contains(&server_id_sel) {
-                        app.simulation_controller.handle_registration_request(node_id, server_id_sel.clone());  //todo!(PROBLEM: IF PACKET IS DROPPED AND CLIENT NOT REGISTERED, IT STILL INSERT IT IN VEC AND GUI SHOWS AS REGISTERED)
-                        registered_servers.push(server_id_sel.clone());
+                        app.simulation_controller.handle_registration_request(node_id, server_id_sel.clone());
                     }
                 }
                 

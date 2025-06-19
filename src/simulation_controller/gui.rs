@@ -102,15 +102,26 @@ impl eframe::App for MyApp{
                 ClientEvent::PacketSent(_) => {}
                 ClientEvent::PacketReceived(_) => {},
                 ClientEvent::MessageSent { .. } => {},
-                ClientEvent::MessageReceived {content: client_message } => {
-                    match client_message {
+                ClientEvent::MessageReceived { receiver, content: message_context } => {
+                    match message_context {
                         MessageContent::ServerTypeRequest(_) => {}
                         MessageContent::ServerTypeResponse(_) => {}
                         MessageContent::TextRequest(_) => {}
                         MessageContent::TextResponse(_) => {}
                         MessageContent::WholeChatVecResponse(_) => {/*not used by client*/}
                         MessageContent::ChatRequest(_) => {}
-                        MessageContent::ChatResponse(_) => {}
+                        MessageContent::ChatResponse(response_context) => {
+                            match response_context {
+                                ChatResponse::ClientList(_) => {}
+                                ChatResponse::MessageFrom { .. } => {}
+                                ChatResponse::MessageSent => {}
+                                ChatResponse::ClientNotRegistered => {}
+                                ChatResponse::ClientRegistered(server_id) => {
+                                    // Insert the client in the registered_servers.
+                                    self.registered_servers.insert(*receiver, vec![*server_id]); 
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -122,8 +133,8 @@ impl eframe::App for MyApp{
                 ServerEvent::PacketSent(_) => {}
                 ServerEvent::PacketReceived(_) => {},
                 ServerEvent::MessageSent { .. } => {},
-                ServerEvent::MessageReceived {content: server_message} => {
-                    match server_message {
+                ServerEvent::MessageReceived {receiver, content: message_context} => {
+                    match message_context {
                         MessageContent::ServerTypeRequest(_) => {}
                         MessageContent::ServerTypeResponse(_) => {}
                         MessageContent::TextRequest(_) => {}
