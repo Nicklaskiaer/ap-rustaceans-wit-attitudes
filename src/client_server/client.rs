@@ -235,13 +235,11 @@ impl Client {
                 // Query all servers in the server_type_map that have None as their type
                 for server_id in self.server_type_map.keys().cloned().collect::<Vec<_>>() {
                     if let Some(None) = self.server_type_map.get(&server_id) {
-                        self.send_server_type_request(server_id);
-                        /*
                         // TODO: remove it
                         // test 11->42
-                        if self.id == 11 && server_id == 42 {
+                        if self.id == 11 && server_id == 62 {
                             self.send_server_type_request(server_id);
-                        }*/
+                        }
                     }
                 }
             },
@@ -264,6 +262,17 @@ impl Client {
                 );
                 self.send_text_request_Text(node_id, file_id);
             },
+            ClientServerCommand::TestCommand => {
+                debug!(
+                    "\n\
+                    \nClient: {:?}\
+                    \ntopology_map: {:?}\
+                    \nserver_type_map: {:?}\
+                    \nsession_ids_for_request_server_type: {:?}\
+                    \n",
+                    self.id, self.topology_map, self.server_type_map, self.session_ids_for_request_server_type
+                );
+            }
         }
     }
     fn handle_packet(&mut self, mut packet: Packet) {

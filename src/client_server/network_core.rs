@@ -20,6 +20,8 @@ pub enum ClientServerCommand {
     // RequestServerList(NodeId), // client request the server a list of all connected clients
     // RequestFileList(NodeId),
 
+    TestCommand, //TODO: remove it
+
     // Drone commands
     DroneCmd(DroneCommand),
 }

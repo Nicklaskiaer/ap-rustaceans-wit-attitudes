@@ -189,6 +189,17 @@ impl ContentServer {
             ClientServerCommand::RequestFile(_, _) => { /* servers do not need to use it */ }
             ClientServerCommand::RegistrationRequest(_) => { /* this server do not need to use it */
             }
+            ClientServerCommand::TestCommand => {
+                debug!(
+                    "\n\
+                    \nContent Server: {:?}\
+                    \ntopology_map: {:?}\
+                    \ncontent_type: {:?}\
+                    \nfiles: {:?}\
+                    \n",
+                    self.id, self.topology_map, self.content_type, self.files
+                );
+            }
         }
     }
     fn handle_packet(&mut self, mut packet: Packet) {
@@ -208,7 +219,7 @@ impl ContentServer {
                 // Send fragment to assembler to be reassembled
                 match self.send_fragment_to_assembler(packet.clone()) {
                     Ok(_) => {
-                        debug!("Media Server: {:?} sent fragment to assembler", self.id);
+                        debug!("Content Server: {:?} sent fragment to assembler", self.id);
 
                         // Send ack back to the sender
                         let mut ack_packet = Packet::new_ack(
@@ -411,7 +422,7 @@ impl ContentServer {
         //         self.assembler_res_send.clone(),
         //         self.assembler_res_recv.clone(),
         //     );
-        //     
+        //
         //     assembler.run();
         // });
         

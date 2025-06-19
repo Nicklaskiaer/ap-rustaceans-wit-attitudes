@@ -244,6 +244,26 @@ impl eframe::App for MyApp{
                                 for client in &self.simulation_controller.get_client_ids() {
                                     if ui.button(client).clicked() {
                                         self.open_popups.insert(client.clone(), true);
+
+                                        // trigger test command
+                                        if let Some(node_id_str) = client.split_whitespace().nth(1) {
+                                            if let Ok(node_id) = node_id_str.parse::<NodeId>() {
+                                                self.simulation_controller.handle_test_command(node_id);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                ui.separator();
+                                ui.label("Servers:");
+                                for server in &self.simulation_controller.get_server_ids() {
+                                    if ui.button(server).clicked() {
+                                        // trigger test command
+                                        if let Some(node_id_str) = server.split_whitespace().nth(1) {
+                                            if let Ok(node_id) = node_id_str.parse::<NodeId>() {
+                                                self.simulation_controller.handle_test_command(node_id);
+                                            }
+                                        }
                                     }
                                 }
 
@@ -570,3 +590,4 @@ impl NetworkTopology {
 
     }
 }
+
