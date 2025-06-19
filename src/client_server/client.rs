@@ -6,8 +6,8 @@ use crate::client_server::network_core::{
     ClientEvent, ClientServerCommand, NetworkNode, ServerType,
 };
 use crate::message::message::{
-    ChatRequest, ChatResponse, Message, MessageContent, ServerTypeRequest, ServerTypeResponse,
-    TextRequest, TextResponse,
+    ChatRequest, ChatResponse, MediaResponse, Message, MessageContent, ServerTypeRequest,
+    ServerTypeResponse, TextRequest, TextResponse,
 };
 use crossbeam_channel::{after, select_biased, Receiver, Sender};
 use rand::{random, thread_rng, Rng};
@@ -259,6 +259,12 @@ impl Client {
     }
     fn handle_packet(&mut self, mut packet: Packet) {
         self.send_packet_received_to_sc(packet.clone());
+
+        debug!(
+            "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh",
+            self.id, packet.routing_header
+        );
+
         match &packet.pack_type {
             PacketType::Nack(_nack) => {
                 debug!("Client: {:?} received a Nack {:?}", self.id, _nack);
@@ -333,6 +339,7 @@ impl Client {
             }
         }
     }
+
     fn handle_assembler_data(&mut self, data: Vec<u8>) {
         if let Ok(str_data) = String::from_utf8(data) {
             debug!(
@@ -397,6 +404,39 @@ impl Client {
                     }
                     _ => {}
                 }
+            }
+            // try to parse as media response
+            else if let Ok(message) = serde_json::from_str::<Message<MediaResponse>>(&str_data) {
+                // Send to SC
+                if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                    self.send_message_received_to_sc(content);
+                }
+
+                match message.content {
+                    MediaResponse::MediaList(media_list) => {
+                        debug!(
+                            "Client: {:?} received MediaList from {:?}: {:?}",
+                            self.id, message.source_id, media_list
+                        );
+                    }
+                    MediaResponse::Media(media) => {
+                        debug!(
+                            "Client: {:?} received Media from {:?}: {:?}",
+                            self.id, message.source_id, media
+                        );
+                    }
+                    MediaResponse::NotFound => {
+                        debug!(
+                            "Client: {:?} received NotFound from {:?}",
+                            self.id, message.source_id
+                        );
+                    }
+                }
+            } else {
+                debug!(
+                    "Client: {:?} received unknown data: {:?}",
+                    self.id, str_data
+                );
             }
         }
     }
