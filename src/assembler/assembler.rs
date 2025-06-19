@@ -51,6 +51,29 @@ impl Assembler {
 
         match packet.pack_type {
             PacketType::MsgFragment(fragment) => {
+                if fragment.total_n_fragments == 0 {
+                    debug!("Received fragment with total_n_fragments == 0, ignoring");
+                    return;
+                }
+                // If total_n_fragments is 1, we can directly send the data
+                if fragment.total_n_fragments == 1 {
+                    match self.result_send.send(fragment.data.to_vec().clone()) {
+                        Ok(_) => {
+                            debug!(
+                                "Single fragment data sent successfully for session_id: {}",
+                                session_id
+                            );
+                        }
+                        Err(e) => {
+                            debug!(
+                                "Failed to send single fragment data for session_id: {}: {}",
+                                session_id, e
+                            );
+                        }
+                    }
+                    return;
+                }
+
                 // Check if the fragment has an assembly in progress
                 let assembly = self
                     .assemblies
@@ -61,7 +84,7 @@ impl Assembler {
                     assembly.data.extend(fragment.data.clone());
                     assembly.current_fragment_index += 1;
 
-                    if assembly.current_fragment_index == assembly.total_fragments {
+                    if assembly.current_fragment_index == assembly.total_fragments - 1 {
                         // All fragments received, process the data
                         match self.result_send.send(assembly.data.clone()) {
                             Ok(_) => {
@@ -84,7 +107,6 @@ impl Assembler {
                     }
                 } else {
                     // No assembly in progress, create a new one
-
                     let mut new_assembly = DataAssembly {
                         session_id,
                         data: Vec::new(),
@@ -92,6 +114,30 @@ impl Assembler {
                         current_fragment_index: 1,
                     };
                     new_assembly.data.extend(fragment.data.clone());
+
+                    // Check if this is the last fragment
+                    if new_assembly.current_fragment_index == new_assembly.total_fragments - 1 {
+                        // All fragments received, process the data
+                        match self.result_send.send(new_assembly.data.clone()) {
+                            Ok(_) => {
+                                debug!(
+                                    "Data assembly for session_id: {} sent successfully",
+                                    session_id
+                                );
+                            }
+                            Err(e) => {
+                                debug!(
+                                    "Failed to send assembled data for session_id: {}: {}",
+                                    session_id, e
+                                );
+                            }
+                        }
+                        debug!(
+                            "All fragments received for session_id: {} assembled data sent, data",
+                            session_id
+                        );
+                    }
+
                     self.assemblies.push(new_assembly);
                     debug!("New assembly created for session_id: {}", session_id);
                 }

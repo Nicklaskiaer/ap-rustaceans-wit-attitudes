@@ -34,8 +34,6 @@ pub enum MessageContent {
     TextResponse(TextResponse),
     MediaRequest(MediaRequest),
     MediaResponse(MediaResponse),
-    //TODO: Add others
-    //TODO: IMPORTANT, EDIT TEXT AND IMAGE RESPONSE TO NO HAVE THE BASE64 TEXT (SEND ONLY THE IMAGE ID)
 }
 
 impl MessageContent {
