@@ -35,7 +35,6 @@ pub enum MessageContent {
     WholeChatVecResponse(Chatroom),
     ChatRequest(ChatRequest),
     ChatResponse(ChatResponse),
-    //TODO: Add others
     //TODO: IMPORTANT, EDIT TEXT AND IMAGE RESPONSE TO NO HAVE THE BASE64 TEXT (SEND ONLY THE IMAGE ID)
 }
 

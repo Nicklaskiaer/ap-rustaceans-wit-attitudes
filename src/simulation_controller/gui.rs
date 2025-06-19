@@ -11,6 +11,7 @@ use crossbeam_channel::Sender;
 use eframe::egui;
 use std::collections::HashMap;
 use crate::message::message::{ChatResponse, MessageContent};
+use wg_2024::packet::{Packet, PacketType};
 
 pub struct MyApp {
     pub(crate) simulation_controller: SimulationController,
@@ -100,7 +101,18 @@ impl eframe::App for MyApp{
         while let Ok(event) = self.simulation_controller.get_client_event_recv().try_recv(){
             match &event {
                 ClientEvent::PacketSent(_) => {}
-                ClientEvent::PacketReceived(_) => {},
+                ClientEvent::PacketReceived(p) => {
+                    match &p.pack_type {
+                        PacketType::MsgFragment(_) => {}
+                        PacketType::Ack(_) => {}
+                        PacketType::Nack(_) => {}
+                        PacketType::FloodRequest(_) => {}
+                        PacketType::FloodResponse(floodResponse) => {
+                            // self.simulation_controller.update_topology(floodResponse);
+                            self.topology_needs_update = true;
+                        }
+                    }
+                },
                 ClientEvent::MessageSent { .. } => {},
                 ClientEvent::MessageReceived { receiver, content: message_context } => {
                     match message_context {
@@ -118,7 +130,7 @@ impl eframe::App for MyApp{
                                 ChatResponse::ClientNotRegistered => {}
                                 ChatResponse::ClientRegistered(server_id) => {
                                     // Insert the client in the registered_servers.
-                                    self.registered_servers.insert(*receiver, vec![*server_id]); 
+                                    self.registered_servers.insert(*receiver, vec![*server_id]);
                                 }
                             }
                         }
@@ -131,7 +143,17 @@ impl eframe::App for MyApp{
         while let Ok(event) = self.simulation_controller.get_server_event_recv().try_recv(){
             match &event {
                 ServerEvent::PacketSent(_) => {}
-                ServerEvent::PacketReceived(_) => {},
+                ServerEvent::PacketReceived(p) => {
+                    match &p.pack_type {
+                        PacketType::MsgFragment(_) => {}
+                        PacketType::Ack(_) => {}
+                        PacketType::Nack(_) => {}
+                        PacketType::FloodRequest(_) => {}
+                        PacketType::FloodResponse(floodResponse) => {
+                            // self.simulation_controller.update_topology(floodResponse);
+                            self.topology_needs_update = true;
+                        }
+                    }},
                 ServerEvent::MessageSent { .. } => {},
                 ServerEvent::MessageReceived {receiver, content: message_context} => {
                     match message_context {
@@ -149,7 +171,6 @@ impl eframe::App for MyApp{
             }
             self.logs(Event::Server(event));
         }
-        
 
         //Load icon textures for nodes in graph.
         if self.client_texture.is_none() {

@@ -3,7 +3,7 @@ use crossbeam_channel::{Receiver, Sender};
 use eframe::egui;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::network::NodeId;
-use wg_2024::packet::Packet;
+use wg_2024::packet::{FloodResponse, NodeType, Packet};
 use crate::client_server::network_core::{ClientEvent, ClientServerCommand, ServerEvent, ServerType};
 use crate::simulation_controller::gui::MyApp;
 
@@ -61,7 +61,7 @@ impl SimulationController {
         let crashed_drone_sender = self.drones.get(&drone_sender_id).map(|(sender, _, _)| sender.clone());
 
         if let Some((_sender, _, _)) = self.drones.remove(&drone_sender_id) {
-            // println!("Removing {} from network...", drone_sender_id);
+            debug!("Removing {} from network...", drone_sender_id);
         }
 
         for neighbor in neighbors {
@@ -83,6 +83,119 @@ impl SimulationController {
         self.start_flood_request_for_all();
     }
 
+/*    pub fn update_topology(&mut self, flood_response: &FloodResponse) {
+        // Extract information from flood response
+        for &(node_id, node_type) in &flood_response.path_trace {
+            match node_type {
+                NodeType::Drone => {
+                    // Check if this drone is already known
+                    if !self.drones.contains_key(&node_id) {
+                        // In a real implementation, we would need to obtain these from somewhere
+                        // For now, we'll create placeholders
+                        let (sender, _) = crossbeam_channel::unbounded();
+                        self.drones.insert(node_id, (sender, Vec::new(), 0.0));
+                        println!("Added new drone: {}", node_id);
+                    }
+
+                    // Update connections for existing drones
+                    // This is a simplistic approach - in reality you'd need more sophisticated logic
+                    // to determine the full network topology from multiple flood responses
+                    for (i, &(curr_id, curr_type)) in flood_response.path_trace.iter().enumerate() {
+                        if curr_type == NodeType::Drone {
+                            // Look ahead for neighbors
+                            if i > 0 {
+                                let &(prev_id, prev_type) = &flood_response.path_trace[i-1];
+                                if prev_type == NodeType::Drone {
+                                    // Add previous node as neighbor if not already present
+                                    if let Some((_, neighbors, _)) = self.drones.get_mut(&curr_id) {
+                                        if !neighbors.contains(&prev_id) {
+                                            neighbors.push(prev_id);
+                                        }
+                                    }
+                                }
+                            }
+
+                            if i < flood_response.path_trace.len() - 1 {
+                                let &(next_id, next_type) = &flood_response.path_trace[i+1];
+                                if next_type == NodeType::Drone {
+                                    // Add next node as neighbor if not already present
+                                    if let Some((_, neighbors, _)) = self.drones.get_mut(&curr_id) {
+                                        if !neighbors.contains(&next_id) {
+                                            neighbors.push(next_id);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                NodeType::Client => {
+                    // Check if this client is already known
+                    if !self.clients.contains_key(&node_id) {
+                        // Create placeholder for new client
+                        let (sender, _) = crossbeam_channel::unbounded();
+
+                        // Find neighbors from the path trace
+                        let mut neighbors = Vec::new();
+                        let client_pos = flood_response.path_trace.iter()
+                            .position(|&(id, _)| id == node_id)
+                            .unwrap_or(0);
+
+                        if client_pos > 0 {
+                            neighbors.push(flood_response.path_trace[client_pos-1].0);
+                        }
+                        if client_pos < flood_response.path_trace.len() - 1 {
+                            neighbors.push(flood_response.path_trace[client_pos+1].0);
+                        }
+
+                        self.clients.insert(node_id, (sender, neighbors));
+                        println!("Added new client: {}", node_id);
+                    }
+                },
+                // NodeType::Server(server_type) => {
+                //     // Check if this server is already known
+                //     if !self.servers.contains_key(&node_id) {
+                //         // Create placeholder for new server
+                //         let (sender, _) = crossbeam_channel::unbounded();
+                // 
+                //         // Find neighbors from the path trace
+                //         let mut neighbors = Vec::new();
+                //         let server_pos = flood_response.path_trace.iter()
+                //             .position(|&(id, _)| id == node_id)
+                //             .unwrap_or(0);
+                // 
+                //         if server_pos > 0 {
+                //             neighbors.push(flood_response.path_trace[server_pos-1].0);
+                //         }
+                //         if server_pos < flood_response.path_trace.len() - 1 {
+                //             neighbors.push(flood_response.path_trace[server_pos+1].0);
+                //         }
+                // 
+                //         // Convert from the flood response server type to our internal type
+                //         let server_type_internal = match server_type {
+                //             wg_2024::packet::ServerType::Content(content_type) => {
+                //                 match content_type {
+                //                     wg_2024::packet::ContentType::Text =>
+                //                         ServerType::ContentServer(crate::client_server::network_core::ContentType::Text),
+                //                     wg_2024::packet::ContentType::Media =>
+                //                         ServerType::ContentServer(crate::client_server::network_core::ContentType::Media),
+                //                 }
+                //             },
+                //             wg_2024::packet::ServerType::Communication =>
+                //                 ServerType::CommunicationServer,
+                //         };
+                // 
+                //         self.servers.insert(node_id, (sender, neighbors, server_type_internal));
+                //         println!("Added new server: {}", node_id);
+                //     }
+                // }
+                _ => {}
+            }
+        }
+
+        // Signal that the topology needs to be redrawn in the GUI
+        // This would be handled by the MyApp struct that uses this controller
+    }*/
 
     pub fn get_drone_ids(&self) -> Vec<String> {
         self.drones.keys()
