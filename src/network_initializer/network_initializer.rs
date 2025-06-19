@@ -1,3 +1,4 @@
+use crate::assembler::assembler::Assembler;
 #[cfg(feature = "debug")]
 use crate::debug;
 
@@ -17,7 +18,6 @@ use rustaceans_wit_attitudes::RustaceansWitAttitudesDrone;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::{fs, thread};
-use skylink::SkyLinkDrone;
 use wg_2024::config::Config;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::drone::Drone;
@@ -85,15 +85,6 @@ pub fn main() {
 
         // spawn
         thread::spawn(move || {
-            // let mut drone = SkyLinkDrone::new(
-            //     drone.id,
-            //     node_event_send_drone,
-            //     controller_drone_recv,
-            //     packet_recv,
-            //     packet_send,
-            //     drone.pdr,
-            // );
-            
             let mut drone = RustaceansWitAttitudesDrone::new(
                 drone.id,
                 node_event_send_drone,
@@ -137,9 +128,29 @@ pub fn main() {
             .map(|id| (id, packet_channels[&id].0.clone()))
             .collect();
 
-        // spawn
+        // spawn assembler for client
         let (assembler_send, assembler_recv) = unbounded();
         let (assembler_send_res, assembler_recv_res) = unbounded();
+
+        // Clone channels for assembler thread
+        let assembler_send_for_thread = assembler_send.clone();
+        let assembler_recv_for_thread = assembler_recv.clone();
+        let assembler_send_res_for_thread = assembler_send_res.clone();
+        let assembler_recv_res_for_thread = assembler_recv_res.clone();
+
+        thread::spawn(move || {
+            let mut assembler = Assembler::new(
+                vec![],
+                assembler_send_for_thread,
+                assembler_recv_for_thread,
+                assembler_send_res_for_thread,
+                assembler_recv_res_for_thread,
+            );
+
+            assembler.run();
+        });
+
+        // spawn client
         thread::spawn(move || {
             let mut client = Client::new(
                 client.id,
@@ -149,10 +160,8 @@ pub fn main() {
                 controller_client_recv,
                 packet_send,
                 packet_recv,
-                vec![],
                 HashSet::new(),
                 HashMap::new(),
-                HashSet::new(),
                 assembler_send,
                 assembler_recv,
                 assembler_send_res,
@@ -268,9 +277,29 @@ pub fn main() {
             .map(|id| (id, packet_channels[&id].0.clone()))
             .collect();
 
-        // spawn
+        // spawn assembler for server
         let (assembler_send, assembler_recv) = unbounded();
         let (assembler_send_res, assembler_recv_res) = unbounded();
+
+        // Clone channels for assembler thread
+        let assembler_send_for_thread = assembler_send.clone();
+        let assembler_recv_for_thread = assembler_recv.clone();
+        let assembler_send_res_for_thread = assembler_send_res.clone();
+        let assembler_recv_res_for_thread = assembler_recv_res.clone();
+
+        thread::spawn(move || {
+            let mut assembler = Assembler::new(
+                vec![],
+                assembler_send_for_thread,
+                assembler_recv_for_thread,
+                assembler_send_res_for_thread,
+                assembler_recv_res_for_thread,
+            );
+
+            assembler.run();
+        });
+
+        // spawn server
         match server_type {
             ServerType::ContentServer(content_type) => {
                 debug!(
@@ -291,7 +320,6 @@ pub fn main() {
                         controller_server_recv,
                         packet_send,
                         packet_recv.clone(),
-                        vec![],
                         HashSet::new(),
                         assembler_send,
                         assembler_recv,
@@ -312,7 +340,6 @@ pub fn main() {
                         controller_server_recv,
                         packet_send,
                         packet_recv.clone(),
-                        vec![],
                         HashSet::new(),
                         assembler_send,
                         assembler_recv,

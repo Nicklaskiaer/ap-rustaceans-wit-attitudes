@@ -1,12 +1,11 @@
 #[cfg(feature = "debug")]
 use crate::debug;
 
-use crate::assembler::assembler::*;
 use crate::client_server::network_core::{
     ClientServerCommand, ContentType, NetworkNode, ServerEvent, ServerType,
 };
 use crate::message::message::*;
-use crossbeam_channel::{select_biased, Receiver, SendError, Sender};
+use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::random;
 use std::collections::{HashMap, HashSet};
 use std::thread;
@@ -22,7 +21,6 @@ pub struct ContentServer {
     controller_recv: Receiver<ClientServerCommand>,
     packet_send: HashMap<NodeId, Sender<Packet>>,
     packet_recv: Receiver<Packet>,
-    assemblers: Vec<Assembler>,
     assembler_send: Sender<Packet>,
     assembler_recv: Receiver<Packet>,
     assembler_res_send: Sender<Vec<u8>>,
@@ -44,8 +42,8 @@ impl NetworkNode for ContentServer {
     fn topology_map_mut(&mut self) -> &mut HashSet<(NodeId, Vec<NodeId>)> {
         &mut self.topology_map
     }
-    fn assemblers_mut(&mut self) -> &mut Vec<Assembler> {
-        &mut self.assemblers
+    fn assembler_send(&self) -> &Sender<Packet> {
+        &self.assembler_send
     }
 
     fn run(&mut self) {
@@ -107,7 +105,6 @@ impl ContentServer {
         controller_recv: Receiver<ClientServerCommand>,
         packet_send: HashMap<NodeId, Sender<Packet>>,
         packet_recv: Receiver<Packet>,
-        assemblers: Vec<Assembler>,
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
         assembler_send: Sender<Packet>,
         assembler_recv: Receiver<Packet>,
@@ -123,7 +120,6 @@ impl ContentServer {
             controller_recv,
             packet_recv,
             packet_send,
-            assemblers,
             topology_map,
             assembler_send,
             assembler_recv,
@@ -306,6 +302,25 @@ impl ContentServer {
                         self.send_text_response_Text(message.source_id, file_id);
                     }
                 }
+            } else if let Ok(message) = serde_json::from_str::<Message<MediaRequest>>(&str_data) {
+                // Send to SC
+                if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                    self.send_message_received_to_sc(content);
+                }
+
+                match message.content {
+                    MediaRequest::MediaList => {
+                        self.handle_media_list_request(message.source_id);
+                    }
+                    MediaRequest::Media(file_nr) => {
+                        self.handle_media_request(message.source_id, file_nr);
+                    }
+                }
+            } else {
+                debug!(
+                    "Server: {:?} received unknown message format: {:?}",
+                    self.id, str_data
+                );
             }
         }
     }
@@ -392,36 +407,84 @@ impl ContentServer {
     }
 
     fn send_fragment_to_assembler(&mut self, packet: Packet) -> Result<(), String> {
-        for assembler in &mut self.assemblers {
-            if assembler.session_id == packet.session_id {
-                assembler
-                    .packet_send
-                    .send(packet)
-                    .map_err(|e| format!("Failed to send packet to assembler: {}", e))?;
-                return Ok(());
+        // send the packet to the assembler
+        match self.assembler_send.send(packet) {
+            Ok(_) => {
+                debug!("Client: {:?} sent packet to assembler", self.id);
+                Ok(())
+            }
+            Err(e) => {
+                debug!(
+                    "Client: {:?} failed to send packet to assembler: {}",
+                    self.id, e
+                );
+                Err(format!("Failed to send packet to assembler: {}", e))
             }
         }
-        
-        // If no assembler found, create a new one
-        // thread::spawn(move || {
-        //     let mut assembler = Assembler::new(
-        //         packet.session_id,
-        //         self.assembler_send.clone(),
-        //         self.assembler_recv.clone(),
-        //         self.assembler_res_send.clone(),
-        //         self.assembler_res_recv.clone(),
-        //     );
-        //     
-        //     assembler.run();
-        // });
-        
-        // match assembler.packet_send.send(packet) {
-        //     Ok(_) => {debug!("ccccc but good");}
-        //     Err(err) => {debug!("ccccc {:?}", err);}
-        // }
+    }
 
-        // self.assemblers.push(assembler);
-        
-        Ok(())
+    fn handle_media_list_request(&mut self, message_id: NodeId) {
+        debug!(
+            "Server: {:?} received MediaRequest::MediaList from {:?}",
+            self.id, message_id
+        );
+        // Handle MediaList request
+        let session_id = random::<u64>();
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: MediaResponse::MediaList(self.files.clone()),
+        };
+        debug!(
+            "Server: {:?} sending MediaList response to client {:?}, msg: {:?}",
+            self.id, message_id, message
+        );
+        self.send_message_in_fragments(message_id, session_id, message);
+    }
+
+    fn handle_media_request(&mut self, message_id: NodeId, file_nr: u64) {
+        debug!(
+            "Server: {:?} received MediaRequest::Media from {:?} file id: {:?}",
+            self.id, message_id, file_nr
+        );
+        // Handle Media request
+        if self.files.contains(&file_nr) {
+            let session_id = random::<u64>();
+            let message = Message {
+                source_id: self.id,
+                session_id,
+                content: MediaResponse::Media(
+                    std::fs::read(format!("server_content/media_files/{}.jpg", file_nr))
+                        .unwrap_or_else(|e| {
+                            debug!(
+                                "Server: {:?} failed to read media file {:?}: {}",
+                                self.id, file_nr, e
+                            );
+                            vec![]
+                        }),
+                ),
+            };
+            debug!(
+                "Server: {:?} sending Media response to client {:?}, msg: {:?}",
+                self.id, message_id, message
+            );
+            self.send_message_in_fragments(message_id, session_id, message);
+        } else {
+            debug!(
+                "Server: {:?} does not have media file {:?}",
+                self.id, file_nr
+            );
+            let session_id = random::<u64>();
+            let message = Message {
+                source_id: self.id,
+                session_id,
+                content: MediaResponse::NotFound,
+            };
+            debug!(
+                "Server: {:?} sending NotFound response to client {:?}, msg: {:?}",
+                self.id, message_id, message
+            );
+            self.send_message_in_fragments(message_id, session_id, message);
+        }
     }
 }
