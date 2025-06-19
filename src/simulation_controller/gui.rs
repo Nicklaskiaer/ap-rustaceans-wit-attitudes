@@ -10,6 +10,7 @@ use crate::client_server::network_core::{ClientEvent, ClientServerCommand, Serve
 use crossbeam_channel::Sender;
 use eframe::egui;
 use std::collections::HashMap;
+use wg_2024::packet::{Packet, PacketType};
 
 pub struct MyApp {
     pub(crate) simulation_controller: SimulationController,
@@ -92,22 +93,44 @@ impl eframe::App for MyApp{
             self.logs(Event::Drone(event));
         }
 
+        
         while let Ok(event) = self.simulation_controller.get_client_event_recv().try_recv(){
-            match event {
-                ClientEvent::PacketSent(_) => {println!("client PacketSent")}
-                ClientEvent::PacketReceived(_) => {println!("client PacketReceived")},
-                ClientEvent::MessageSent { .. } => {println!("client MessageSent")},
-                ClientEvent::MessageReceived { .. } => {println!("client MessageReceived")}
+            match &event {
+                ClientEvent::PacketSent(_) => {println!("client PacketSent")},
+                ClientEvent::PacketReceived(p) => {
+                    match &p.pack_type {
+                        PacketType::MsgFragment(_) => {}
+                        PacketType::Ack(_) => {}
+                        PacketType::Nack(_) => {}
+                        PacketType::FloodRequest(_) => {}
+                        PacketType::FloodResponse(floodResponse) => {
+                            // self.simulation_controller.update_topology(floodResponse);
+                            self.topology_needs_update = true;
+                        }
+                    }
+                },
+                ClientEvent::MessageSent { target: a, content: b } => {println!("client MessageSent")},
+                ClientEvent::MessageReceived{..} => {println!("client MessageReceived")},
             }
             self.logs(Event::Client(event));
         }
 
         while let Ok(event) = self.simulation_controller.get_server_event_recv().try_recv(){
-            match event {
-                ServerEvent::PacketSent(_) => {println!("server PacketSent")}
-                ServerEvent::PacketReceived(_) => {println!("server PacketReceived")},
-                ServerEvent::MessageSent { .. } => {println!("server MessageSent")},
-                ServerEvent::MessageReceived { .. } => {println!("server MessageReceived")}
+            match &event {
+                ServerEvent::PacketSent(_) => {println!("server PacketSent")},
+                ServerEvent::PacketReceived(p) => {                    
+                    match &p.pack_type {
+                    PacketType::MsgFragment(_) => {}
+                    PacketType::Ack(_) => {}
+                    PacketType::Nack(_) => {}
+                    PacketType::FloodRequest(_) => {}
+                    PacketType::FloodResponse(floodResponse) => {
+                        // self.simulation_controller.update_topology(floodResponse);
+                        self.topology_needs_update = true;
+                    }
+                }},
+                ServerEvent::MessageSent{..} => {println!("server MessageSent")},
+                ServerEvent::MessageReceived{..} => {println!("server MessageReceived")},
             }
             self.logs(Event::Server(event));
         }
