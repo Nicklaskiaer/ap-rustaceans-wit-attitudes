@@ -12,9 +12,17 @@ use wg_2024::packet::{
     Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType,
 };
 use rand::{Rng, thread_rng, random};
+use serde::{Deserialize, Serialize};
 use crate::assembler::assembler::Assembler;
-use crate::client_server::network_core::{ClientEvent, ClientServerCommand, NetworkNode, ServerType};
+use crate::client_server::network_core::{ClientEvent, ClientServerCommand, ContentType, NetworkNode, ServerType};
 use crate::message::message::{ChatRequest, ChatResponse, Message, MessageContent, ServerTypeRequest, ServerTypeResponse, TextRequest, TextResponse};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ServerTypeWithSessionId {
+    SessionId,
+    ContentServer(ContentType),
+    CommunicationServer,
+}
 
 pub struct Client {
     id: NodeId,
@@ -27,6 +35,7 @@ pub struct Client {
     assemblers: Vec<Assembler>,
     topology_map: HashSet<(NodeId, Vec<NodeId>)>,
     server_type_map: HashMap<NodeId, Option<ServerType>>,
+    session_ids_for_request_server_type: HashSet<u64>,
     assembler_send: Sender<Vec<u8>>,
     assembler_recv: Receiver<Vec<u8>>,
 }
@@ -96,6 +105,7 @@ impl Client {
         assemblers: Vec<Assembler>,
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
         server_type_map: HashMap<NodeId, Option<ServerType>>,
+        session_id_storage: HashSet<u64>,
         assembler_send: Sender<Vec<u8>>,
         assembler_recv: Receiver<Vec<u8>>,
     ) -> Self {
@@ -110,6 +120,7 @@ impl Client {
             assemblers,
             topology_map,
             server_type_map,
+            session_ids_for_request_server_type: session_id_storage,
             assembler_send,
             assembler_recv,
         }
@@ -229,6 +240,13 @@ impl Client {
         match &packet.pack_type {
             PacketType::Nack(_nack) => {
                 debug!("Client: {:?} received a Nack {:?}", self.id, _nack);
+
+                // If a request server type was dropped, a new one will be created
+                if self.session_ids_for_request_server_type.contains(&packet.session_id) {
+                    if let Some(server_id) = packet.routing_header.destination() {
+                        self.send_server_type_request(server_id);
+                    }
+                }
             },
             PacketType::Ack(_ack) => {
                 debug!("Client: {:?} received a Ack {:?}", self.id, _ack);
@@ -300,6 +318,9 @@ impl Client {
                     ServerTypeResponse::ServerType(server_type) => {
                         debug!("Client: {:?} received server type {:?} from {:?}", self.id, server_type, message.source_id);
                         self.server_type_map.insert(message.source_id, Some(server_type.clone()));
+                        
+                        // remove the session id from the session_ids
+                        self.session_ids_for_request_server_type.remove(&message.session_id);
                     }
                 }
             }
@@ -349,6 +370,7 @@ impl Client {
             session_id,
             content: ServerTypeRequest::GetServerType,
         };
+        self.session_ids_for_request_server_type.insert(session_id);
         debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, server_id, message);
         self.send_message_in_fragments(server_id, session_id, message);
     }
