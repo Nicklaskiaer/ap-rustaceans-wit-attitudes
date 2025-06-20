@@ -271,6 +271,11 @@ impl Client {
                     self.id, self.topology_map, self.server_type_map, self.session_ids_for_request_server_type
                 );
             }
+            ClientServerCommand::ClientListRequest(node_id) => {
+                debug!("Client: {:?} received ClientListRequest command", node_id);
+
+                self.send_client_list_request(node_id);
+            }
         }
     }
     fn handle_packet(&mut self, packet: Packet) {
@@ -420,6 +425,10 @@ impl Client {
                             debug!("Client: {:?} received a ClientRegistered", self.id);
                             self.send_message_received_to_sc(MessageContent::ChatResponse(ChatResponse::ClientRegistered(*node_id)));
                         }
+                        ChatResponse::ClientList(c) => {
+                            debug!("Client: {:?} received a ClientList", self.id);
+                            self.send_message_received_to_sc(MessageContent::ChatResponse(ChatResponse::ClientList(c.clone())));
+                        }
                         _ => {}
                     }
                 }
@@ -514,6 +523,23 @@ impl Client {
             source_id: self.id,
             session_id,
             content: ChatRequest::Register(self.id),
+        };
+
+        self.send_message_in_fragments(server_id, session_id, message);
+    }
+    
+    fn send_client_list_request(&mut self, server_id: NodeId) {
+        debug!(
+            "Client: {:?} requesting client list to server {:?}",
+            self.id, server_id
+        );
+
+        // Create a registration request with random session ID
+        let session_id = random::<u64>();
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: ChatRequest::ClientList,
         };
 
         self.send_message_in_fragments(server_id, session_id, message);

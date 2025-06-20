@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
+use crate::message::message::MessageContent::ChatRequest;
 
 pub struct SimulationController {
     drones: HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>, f32)>,
@@ -192,6 +193,14 @@ impl SimulationController {
         if let Some((client_sender, _)) = self.clients.get(&client_id) {
             client_sender
                 .send(ClientServerCommand::RegistrationRequest(server_id))
+                .unwrap();
+        }
+    }
+
+    pub fn handle_client_list_request(&self, client_id: NodeId, server_id: NodeId) {
+        if let Some((client_sender, _)) = self.clients.get(&client_id) {
+            client_sender
+                .send(ClientServerCommand::ClientListRequest(server_id))
                 .unwrap();
         }
     }

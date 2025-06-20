@@ -200,6 +200,7 @@ impl ContentServer {
                     self.id, self.topology_map, self.content_type, self.files
                 );
             }
+            ClientServerCommand::ClientListRequest(_) => {/* servers do not need to use it */ }
         }
     }
     fn handle_packet(&mut self, packet: Packet) {

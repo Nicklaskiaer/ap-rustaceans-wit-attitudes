@@ -7,7 +7,7 @@ use crate::client_server::network_core::{
 use crate::message::message::*;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::random;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use wg_2024::controller::DroneCommand;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, NodeType, Packet, PacketType};
@@ -197,9 +197,11 @@ impl CommunicationServer {
                     \n",
                     self.id, self.topology_map, self.registered_clients, self.messages_stored
                 );
-            }
+            },
+            ClientServerCommand::ClientListRequest(_) => { /* servers do not need to use it */ }
         }
     }
+    
     fn handle_packet(&mut self, packet: Packet) {
         match &packet.pack_type {
             PacketType::Nack(_nack) => {
@@ -268,6 +270,7 @@ impl CommunicationServer {
             }
         }
     }
+    
     fn handle_assembler_data(&mut self, data: Vec<u8>) {
         if let Ok(str_data_raw) = String::from_utf8(data.clone()) {
             debug!(
