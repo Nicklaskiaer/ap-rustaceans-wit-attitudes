@@ -37,8 +37,6 @@ pub struct Client {
     server_type_map: HashMap<NodeId, Option<ServerType>>,
     session_ids_for_request_server_type: HashSet<u64>,
     assembler_send: Sender<Packet>,
-    // assembler_recv: Receiver<Packet>,
-    // assembler_res_send: Sender<Vec<u8>>,
     assembler_res_recv: Receiver<Vec<u8>>,
 }
 
@@ -55,9 +53,6 @@ impl NetworkNode for Client {
     fn topology_map_mut(&mut self) -> &mut HashSet<(NodeId, Vec<NodeId>)> {
         &mut self.topology_map
     }
-    // fn assembler_send(&self) -> &Sender<Packet> {
-    //     &self.assembler_send
-    // }
 
     fn run(&mut self) {
         debug!("Client: {:?} started and waiting for packets", self.id);
@@ -123,8 +118,6 @@ impl Client {
         server_type_map: HashMap<NodeId, Option<ServerType>>,
         session_ids_for_request_server_type: HashSet<u64>,
         assembler_send: Sender<Packet>,
-        // assembler_recv: Receiver<Packet>,
-        // assembler_res_send: Sender<Vec<u8>>,
         assembler_res_recv: Receiver<Vec<u8>>,
     ) -> Self {
         Self {
@@ -139,8 +132,6 @@ impl Client {
             server_type_map,
             session_ids_for_request_server_type,
             assembler_send,
-            // assembler_recv,
-            // assembler_res_send,
             assembler_res_recv,
         }
     }
@@ -172,15 +163,6 @@ impl Client {
 impl Client {
     fn handle_command(&mut self, command: ClientServerCommand) {
         match command {
-            ClientServerCommand::DroneCmd(drone_cmd) => {
-                // Handle drone command
-                match drone_cmd {
-                    DroneCommand::SetPacketDropRate(_) => {}
-                    DroneCommand::Crash => {}
-                    DroneCommand::AddSender(_id, _sender) => {}
-                    DroneCommand::RemoveSender(_id) => {}
-                }
-            },
             ClientServerCommand::SendChatMessage(node_id, msg) => {
                 debug!("Client: {:?} received SendChatMessage command", self.id);
 
@@ -188,6 +170,11 @@ impl Client {
             },
             ClientServerCommand::StartFloodRequest => {
                 debug!("Client: {:?} received StartFloodRequest command", self.id);
+                
+                // clear the hashmap
+                self.topology_map.clear();
+                self.server_type_map.clear();
+                self.session_ids_for_request_server_type.clear();
 
                 // Generate a unique flood ID using current time
                 let timestamp = std::time::SystemTime::now()
@@ -275,6 +262,9 @@ impl Client {
                 debug!("Client: {:?} received ClientListRequest command", node_id);
 
                 self.send_client_list_request(node_id);
+            }
+            ClientServerCommand::RemoveDrone(drone_id) => {
+                self.connected_drone_ids.retain(|&id| id != drone_id);
             }
         }
     }

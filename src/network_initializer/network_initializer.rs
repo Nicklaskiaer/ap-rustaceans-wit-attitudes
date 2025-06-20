@@ -94,7 +94,7 @@ pub fn main() {
 
         // test
         thread::spawn(move || { 
-            let mut drone =SkyLinkDrone::new(
+            let mut drone = RustaceansWitAttitudesDrone::new(
                 drone.id,
                 node_event_send_drone,
                 controller_drone_recv,

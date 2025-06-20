@@ -15,16 +15,8 @@ pub enum ClientServerCommand {
     SendChatMessage(NodeId, String), // used by: Client, Server. client send a chat message to a specific node
     ClientListRequest(NodeId),
     RegistrationRequest(NodeId), // used by: Client. client request to register itself to the server
+    RemoveDrone(NodeId),
     TestCommand, //TODO: remove it
-
-    // Drone commands
-    DroneCmd(DroneCommand),
-}
-
-impl From<DroneCommand> for ClientServerCommand {
-    fn from(cmd: DroneCommand) -> Self {
-        ClientServerCommand::DroneCmd(cmd)
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
