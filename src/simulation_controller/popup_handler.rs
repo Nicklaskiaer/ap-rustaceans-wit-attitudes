@@ -1,10 +1,11 @@
+use crate::client_server::network_core::{ChatMessage, ServerType};
 use crate::simulation_controller::gui::MyApp;
 use crate::simulation_controller::gui_structs::*;
 use chrono::{DateTime, Utc};
 use chrono_tz::Europe::Rome;
 use eframe::egui;
+use std::path::Path;
 use wg_2024::network::NodeId;
-use crate::client_server::network_core::{ChatMessage, ServerType};
 
 pub fn show_popup(app: &mut MyApp, ctx: &egui::Context, name: &str) {
     let current_time: DateTime<Utc> = Utc::now();
@@ -79,10 +80,15 @@ fn show_drone_controls(
 
             if ui.button("Update").clicked() {
                 if (*entry - drop_rate).abs() > f32::EPSILON {
-                    app.simulation_controller.handle_set_packet_drop_rate(node_id, *entry);
+                    app.simulation_controller
+                        .handle_set_packet_drop_rate(node_id, *entry);
                     app.logs_vec.push(LogEntry {
                         timestamp: formatted_time.to_string(),
-                        message: format!("[COMMAND] Updated PDR of Drone {} to {:.2}%", node_id, *entry * 100.0),
+                        message: format!(
+                            "[COMMAND] Updated PDR of Drone {} to {:.2}%",
+                            node_id,
+                            *entry * 100.0
+                        ),
                     });
                 }
             }
@@ -111,7 +117,8 @@ fn show_drone_controls(
             if ui.button("Remove Sender").clicked() {
                 match input_text.parse::<NodeId>() {
                     Ok(sender_id) => {
-                        let message = format!("[COMMAND] Removed sender {} from {}", sender_id, name);
+                        let message =
+                            format!("[COMMAND] Removed sender {} from {}", sender_id, name);
                         app.logs_vec.push(LogEntry {
                             timestamp: formatted_time.to_string(),
                             message,
@@ -131,29 +138,35 @@ fn show_drone_controls(
                     timestamp: formatted_time.to_string(),
                     message,
                 });
-                app.simulation_controller.handle_crash(node_id, neighbors.clone());
+                app.simulation_controller
+                    .handle_crash(node_id, neighbors.clone());
             }
         }
     }
 }
 
-fn show_client_controls(
-    app: &mut MyApp,
-    ui: &mut egui::Ui,
-    node_id: NodeId,
-) {
+fn show_client_controls(app: &mut MyApp, ui: &mut egui::Ui, node_id: NodeId) {
     // Track selected screen for this client
-    let screen = app.client_popup_screens.entry(node_id).or_insert(ClientPopupScreen::Chatroom);
-    
+    let screen = app
+        .client_popup_screens
+        .entry(node_id)
+        .or_insert(ClientPopupScreen::Chatroom);
+
     // Track selected server for this client
     let mut server_id_sel: u8 = 0;
 
     // Navigation bar
     ui.horizontal(|ui| {
-        if ui.selectable_label(*screen == ClientPopupScreen::Chatroom, "Chatroom").clicked() {
+        if ui
+            .selectable_label(*screen == ClientPopupScreen::Chatroom, "Chatroom")
+            .clicked()
+        {
             *screen = ClientPopupScreen::Chatroom;
         }
-        if ui.selectable_label(*screen == ClientPopupScreen::Other, "Images").clicked() {
+        if ui
+            .selectable_label(*screen == ClientPopupScreen::Other, "Images")
+            .clicked()
+        {
             *screen = ClientPopupScreen::Other;
         }
     });
@@ -164,7 +177,7 @@ fn show_client_controls(
         ClientPopupScreen::Chatroom => {
             let selected_server = app.selected_server.entry(node_id).or_default();
             let registered_servers = app.registered_servers.entry(node_id).or_default();
-            
+
             ui.horizontal(|ui| {
                 // Dropdown menu for servers
                 egui::ComboBox::from_label("")
@@ -182,7 +195,13 @@ fn show_client_controls(
                         for (server_id, (_, _, server_type)) in servers {
                             if let ServerType::CommunicationServer = server_type {
                                 let server_id_str = format!("Server {}", server_id);
-                                if ui.selectable_label(selected_server == &server_id_str, &server_id_str).clicked() {
+                                if ui
+                                    .selectable_label(
+                                        selected_server == &server_id_str,
+                                        &server_id_str,
+                                    )
+                                    .clicked()
+                                {
                                     *selected_server = server_id_str;
                                 }
                             }
@@ -195,21 +214,21 @@ fn show_client_controls(
                         server_id_sel = server_id;
                     }
                 }
-                
+
                 // If register is pressed, server id is pushed in vec and request is sent to server.
                 if ui.button("Register").clicked() {
                     if !registered_servers.contains(&server_id_sel) {
-                        app.simulation_controller.handle_registration_request(node_id, server_id_sel.clone());
+                        app.simulation_controller
+                            .handle_registration_request(node_id, server_id_sel.clone());
                     }
                 }
-                
+
                 // After client has registered to server then "Client List" button is displayed.
                 if registered_servers.contains(&server_id_sel) {
-                    if ui.button("Client List").clicked(){ 
+                    if ui.button("Client List").clicked() {
                         //todo!(FIND A WAY TO SHOW THE USER THE CLIENTS THAT ARE REGISTERED TO THE CHATROOM)
                     }
                 }
-                
             });
 
             ui.separator();
@@ -220,18 +239,23 @@ fn show_client_controls(
                 .max_height(100.0)
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
-                    
+
                     // debug!("bbbbbbbbbbbb {:?}, {:?}, {:?}", server_id_sel,
-                    //     app.registered_servers.clone(), 
+                    //     app.registered_servers.clone(),
                     //     app.registered_servers.clone().get(&server_id_sel)
                     // );
                     let mut display_message = String::from("You are not registered to the server!");
                     if let Some(servers) = app.registered_servers.get(&node_id) {
                         if servers.contains(&server_id_sel) {
                             display_message = String::from("");
-                            if let Some(message_list) = app.chatrooms_messages.get_mut(&server_id_sel) {
+                            if let Some(message_list) =
+                                app.chatrooms_messages.get_mut(&server_id_sel)
+                            {
                                 for chat_message in message_list {
-                                    ui.label(format!("{}: {}", chat_message.sender_id, chat_message.content));
+                                    ui.label(format!(
+                                        "{}: {}",
+                                        chat_message.sender_id, chat_message.content
+                                    ));
                                 }
                             }
                         }
@@ -247,18 +271,99 @@ fn show_client_controls(
                 ui.add(
                     egui::TextEdit::singleline(text_input)
                         .desired_width(ui.available_width() - 70.0)
-                        .hint_text("Message")
+                        .hint_text("Message"),
                 );
-                
+
                 ui.add_space(2.0);
-                
+
                 if ui.button("Send").clicked() {
-                    app.simulation_controller.handle_send_chat_message(node_id, server_id_sel, text_input.parse().unwrap())
+                    app.simulation_controller.handle_send_chat_message(
+                        node_id,
+                        server_id_sel,
+                        text_input.parse().unwrap(),
+                    )
                 }
             });
         }
         ClientPopupScreen::Other => {
-            ui.label("Advanced controls coming soon...");
+            // let selected_server = app.selected_server.entry(node_id).or_default();
+
+            // // Converted selected_server to u8
+            // if let Some(num_str) = selected_server.split_whitespace().last() {
+            //     if let Ok(server_id) = num_str.parse::<u8>() {
+            //         server_id_sel = server_id;
+            //     }
+            // }
+
+            // ui.horizontal(|ui| {
+            //     let image_id_input = app
+            //         .client_image_id_inputs
+            //         .entry(node_id)
+            //         .or_insert(String::new());
+            //     ui.add(
+            //         egui::TextEdit::singleline(image_id_input)
+            //             .desired_width(ui.available_width() - 90.0)
+            //             .hint_text("Image ID"),
+            //     );
+
+            //     ui.add_space(2.0);
+
+            //     if ui.button("Request Image").clicked() {
+            //         if let Ok(image_id) = image_id_input.parse::<u64>() {
+            //             app.simulation_controller.handle_image_request(
+            //                 node_id,
+            //                 server_id_sel,
+            //                 image_id,
+            //             );
+            //             image_id_input.clear();
+            //         } else {
+            //             // Optionally, show an error or ignore invalid input
+            //         }
+            //     }
+            // });
+
+            if let Some(image_ids) = app.client_images.get(&node_id) {
+                let columns = 3;
+                let mut row = 0;
+
+                app.simulation_controller.handle_image_request(10, 60, 1);
+
+                egui::Grid::new("client_images_grid")
+                    .num_columns(columns)
+                    .spacing([10.0, 10.0])
+                    .show(ui, |ui| {
+                        for (i, image_id) in image_ids.iter().enumerate() {
+                            let image_path = format!("server_conten/image/{}.jpg", image_id);
+
+                            if let Ok(image) = image::open(&Path::new(&image_path)) {
+                                let size = [100.0, 100.0];
+
+                                let texture = ui.ctx().load_texture(
+                                    format!("image_{}", image_id),
+                                    egui::ColorImage::from_rgba_unmultiplied(
+                                        [size[0] as usize, size[1] as usize],
+                                        &image.to_rgba8().into_raw(),
+                                    ),
+                                    egui::TextureOptions::default(),
+                                );
+
+                                ui.add(
+                                    egui::Image::new(&texture)
+                                        .fit_to_exact_size(egui::vec2(size[0], size[1])),
+                                );
+                            } else {
+                                ui.label("Image not found");
+                            }
+
+                            if (i + 1) % columns == 0 {
+                                ui.end_row();
+                                row += 1;
+                            }
+                        }
+                    });
+            } else {
+                ui.label("No images available for this client.");
+            }
         }
     }
 }

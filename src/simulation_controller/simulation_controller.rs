@@ -69,7 +69,7 @@ impl SimulationController {
                 .unwrap();
         }
     }
-    
+
     pub fn handle_crash(&mut self, drone_sender_id: NodeId, neighbors: Vec<NodeId>) {
         let crashed_drone_sender = self
             .drones
@@ -178,14 +178,26 @@ impl SimulationController {
                 .unwrap();
         }
     }
-    
+
+    pub fn handle_image_request(&self, client_id: NodeId, server_id: NodeId, image_id: u64) {
+        if let Some((client_sender, _)) = self.clients.get(&client_id) {
+            client_sender
+                .send(ClientServerCommand::RequestImage(server_id, image_id))
+                .unwrap();
+        }
+    }
+
     pub fn handle_test_command(&self, node_id: NodeId) {
         if let Some((client_sender, _)) = self.clients.get(&node_id) {
-            client_sender.send(ClientServerCommand::TestCommand).unwrap();
+            client_sender
+                .send(ClientServerCommand::TestCommand)
+                .unwrap();
         }
 
         if let Some((server_sender, _, _)) = self.servers.get(&node_id) {
-            server_sender.send(ClientServerCommand::TestCommand).unwrap();
+            server_sender
+                .send(ClientServerCommand::TestCommand)
+                .unwrap();
         }
     }
 }

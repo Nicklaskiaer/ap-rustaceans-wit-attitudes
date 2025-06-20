@@ -105,7 +105,7 @@ impl NetworkNode for Client {
             .send(ClientEvent::MessageReceived {
                 receiver: self.id,
                 content: message
-                })
+            })
             .expect("this is fine 🔥☕");
     }
 }
@@ -238,7 +238,7 @@ impl Client {
                 for server_id in self.server_type_map.keys().cloned().collect::<Vec<_>>() {
                     if let Some(None) = self.server_type_map.get(&server_id) {
                         self.send_server_type_request(server_id);
-                        
+
                         // TODO: remove it
                         // test 11->42
                         // if self.id == 11 && server_id == 62 {
@@ -266,6 +266,17 @@ impl Client {
                 );
                 self.send_text_request_text(node_id, file_id);
             }
+            ClientServerCommand::RequestImage(node_id, image_id) => {
+                debug!(
+                    "Client: {:?} received RequestImage, Server id: {:?} image id: {:?}",
+                    self.id, node_id, image_id
+                );
+                self.send_image_request(node_id, image_id);
+            }
+            ClientServerCommand::ImageResponse(_, _) => {
+                debug!("Client: {:?} received ImageResponse command", self.id);
+            }
+
             ClientServerCommand::TestCommand => {
                 debug!(
                     "\n\
@@ -381,9 +392,9 @@ impl Client {
                     match &message.content {
                         ServerTypeResponse::ServerType(server_type) => {
                             debug!(
-                            "Client: {:?} received server type {:?} from {:?}",
-                            self.id, server_type, message.source_id
-                        );
+                                "Client: {:?} received server type {:?} from {:?}",
+                                self.id, server_type, message.source_id
+                            );
                             self.server_type_map.insert(message.source_id, Some(server_type.clone()));
 
                             // remove the session id from the session_ids
@@ -406,15 +417,15 @@ impl Client {
                         }
                         TextResponse::Text(_file) => {
                             debug!(
-                            "Client: {:?} received TextResponse::Text from {:?} file: {:?}",
-                            self.id, message.source_id, _file
-                        );
+                                "Client: {:?} received TextResponse::Text from {:?} file: {:?}",
+                                self.id, message.source_id, _file
+                            );
                         }
                         TextResponse::NotFound => {
                             debug!(
-                            "Client: {:?} received TextResponse::NotFound from {:?}",
-                            self.id, message.source_id
-                        );
+                                "Client: {:?} received TextResponse::NotFound from {:?}",
+                                self.id, message.source_id
+                            );
                         }
                     }
                 }
@@ -442,27 +453,27 @@ impl Client {
                     match message.content {
                         MediaResponse::MediaList(_media_list) => {
                             debug!(
-                            "Client: {:?} received MediaList from {:?}: {:?}",
-                            self.id, message.source_id, _media_list
-                        );
+                                "Client: {:?} received MediaList from {:?}: {:?}",
+                                self.id, message.source_id, _media_list
+                            );
                         }
                         MediaResponse::Media(_media_id, _media) => {
                             debug!(
-                            "Client: {:?} received full media from media id {:?}: {:?}",
-                            self.id, message.source_id, _media_id
-                        );
+                                "Client: {:?} received full media from media id {:?}: {:?}",
+                                self.id, message.source_id, _media_id
+                            );
                         }
                         MediaResponse::NotFound => {
                             debug!(
-                            "Client: {:?} received NotFound from {:?}",
-                            self.id, message.source_id
-                        );
+                                "Client: {:?} received NotFound from {:?}",
+                                self.id, message.source_id
+                            );
                         }
                     }
                 } else {
                     debug!(
-                    "Client: {:?} received unknown data: {:?}",
-                    self.id, str_data
+                        "Client: {:?} received unknown data: {:?}",
+                        self.id, str_data
                     );
                 }
             }
@@ -503,6 +514,20 @@ impl Client {
             source_id: self.id,
             session_id,
             content: TextRequest::Text(file_id),
+        };
+        debug!(
+            "Server: {:?} sending msg to client {:?}, msg: {:?}",
+            self.id, server_id, message
+        );
+        self.send_message_in_fragments(server_id, session_id, message);
+    }
+
+    fn send_image_request(&mut self, server_id: NodeId, image_id: u64) {
+        let session_id = random::<u64>();
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: MediaRequest::Media(image_id),
         };
         debug!(
             "Server: {:?} sending msg to client {:?}, msg: {:?}",

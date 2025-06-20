@@ -94,7 +94,8 @@ impl NetworkNode for CommunicationServer {
         self.controller_send
             .send(ServerEvent::MessageReceived {
                 receiver: self.id,
-                content: message })
+                content: message,
+            })
             .expect("this is fine 🔥☕");
     }
 }
@@ -185,8 +186,9 @@ impl CommunicationServer {
             ClientServerCommand::RequestServerType => { /* servers do not need to use it */ }
             ClientServerCommand::RequestFileList(_) => { /* servers do not need to use it */ }
             ClientServerCommand::RequestFile(_, _) => { /* servers do not need to use it */ }
-            ClientServerCommand::RegistrationRequest(_) => { /* this server do not need to use it */
-            }
+            ClientServerCommand::RegistrationRequest(_) => { /* this server not need to use it */ }
+            ClientServerCommand::ImageResponse(_, _) => { /* this server doesnt need to use it */ }
+            ClientServerCommand::RequestImage(_, _) => { /* this server doesnt need to use it */ }
             ClientServerCommand::TestCommand => {
                 debug!(
                     "\n\
@@ -286,15 +288,16 @@ impl CommunicationServer {
                     match message.content {
                         ServerTypeRequest::GetServerType => {
                             debug!(
-                            "Server: {:?} received ServerTypeRequest from {:?}",
-                            self.id, message.source_id
-                        );
+                                "Server: {:?} received ServerTypeRequest from {:?}",
+                                self.id, message.source_id
+                            );
                             self.send_server_type_response(message.source_id, message.session_id);
                         }
                     }
                 }
                 // Try to parse as TextRequest
-                else if let Ok(message) = serde_json::from_str::<Message<TextRequest>>(&str_data) {
+                else if let Ok(message) = serde_json::from_str::<Message<TextRequest>>(&str_data)
+                {
                     // Send to SC
                     if let Some(content) = MessageContent::from_content(message.content.clone()) {
                         self.send_message_received_to_sc(content);
@@ -303,22 +306,23 @@ impl CommunicationServer {
                     match message.content {
                         TextRequest::TextList => {
                             debug!(
-                            "Server: {:?} received TextRequest::TextList from {:?}",
-                            self.id, message.source_id
-                        );
+                                "Server: {:?} received TextRequest::TextList from {:?}",
+                                self.id, message.source_id
+                            );
                             self.send_text_response(message.source_id, message.session_id);
                         }
                         TextRequest::Text(_file_id) => {
                             debug!(
-                            "Server: {:?} received TextRequest::Text from {:?} file id: {:?}",
-                            self.id, message.source_id, _file_id
-                        );
+                                "Server: {:?} received TextRequest::Text from {:?} file id: {:?}",
+                                self.id, message.source_id, _file_id
+                            );
                             self.send_text_response(message.source_id, message.session_id);
                         }
                     }
                 }
                 // Then try to parse as ChatRequest
-                else if let Ok(message) = serde_json::from_str::<Message<ChatRequest>>(&str_data) {
+                else if let Ok(message) = serde_json::from_str::<Message<ChatRequest>>(&str_data)
+                {
                     // Send to SC
                     if let Some(content) = MessageContent::from_content(message.content.clone()) {
                         self.send_message_received_to_sc(content);
@@ -326,22 +330,30 @@ impl CommunicationServer {
 
                     match message.content {
                         ChatRequest::Register(client_id) => {
-                            debug!("Server: {:?} received registration request from client {:?}", self.id, client_id);
+                            debug!(
+                                "Server: {:?} received registration request from client {:?}",
+                                self.id, client_id
+                            );
 
-                            self.registered_clients.insert(client_id);  // Insert client in registered_clients.
+                            self.registered_clients.insert(client_id); // Insert client in registered_clients.
 
                             let chat_message = ChatMessage {
                                 sender_id: client_id,
-                                content: String::from(format!("Client {} has entered the chatroom", client_id)),
+                                content: String::from(format!(
+                                    "Client {} has entered the chatroom",
+                                    client_id
+                                )),
                             };
 
                             self.messages_stored.push(chat_message);
-                            
+
                             // Sends to simulation controller the whole chatroom.
-                            self.send_message_received_to_sc(MessageContent::WholeChatVecResponse(Chatroom{
-                                server_id: self.id,
-                                chatroom_messages: self.messages_stored.clone(),
-                            }));
+                            self.send_message_received_to_sc(MessageContent::WholeChatVecResponse(
+                                Chatroom {
+                                    server_id: self.id,
+                                    chatroom_messages: self.messages_stored.clone(),
+                                },
+                            ));
 
                             // Respond to client with ClientRegistered
                             let session_id = random::<u64>();
@@ -353,17 +365,26 @@ impl CommunicationServer {
 
                             self.send_message_in_fragments(client_id, session_id, message);
 
-                            debug!("Server: {:?} now has registered client: {:?}", self.id, client_id);
+                            debug!(
+                                "Server: {:?} now has registered client: {:?}",
+                                self.id, client_id
+                            );
                         }
 
                         ChatRequest::ClientList => {
-                            debug!("Server: {:?} received ClientList request from {:?}", self.id, message.source_id);
+                            debug!(
+                                "Server: {:?} received ClientList request from {:?}",
+                                self.id, message.source_id
+                            );
 
                             self.send_server_client_list(message.source_id);
                         }
 
                         ChatRequest::SendMessage { from, message } => {
-                            debug!("Server: {:?} received SendMessage request from {:?}", self.id, from);
+                            debug!(
+                                "Server: {:?} received SendMessage request from {:?}",
+                                self.id, from
+                            );
 
                             self.handle_incoming_message(from, message);
                         }
@@ -382,10 +403,13 @@ impl CommunicationServer {
             content: ServerTypeResponse::ServerType(ServerType::CommunicationServer),
         };
 
-        debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
+        debug!(
+            "Server: {:?} sending msg to client {:?}, msg: {:?}",
+            self.id, client_id, message
+        );
         self.send_message_in_fragments(client_id, session_id, message);
     }
-    
+
     fn send_text_response(&mut self, client_id: NodeId, _session_id: u64) {
         debug!("Server: {:?} is a chat server!", self.id);
 
@@ -396,12 +420,14 @@ impl CommunicationServer {
             content: TextResponse::NotFound,
         };
 
-        debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
+        debug!(
+            "Server: {:?} sending msg to client {:?}, msg: {:?}",
+            self.id, client_id, message
+        );
         self.send_message_in_fragments(client_id, session_id, message);
     }
 
     fn send_server_client_list(&mut self, client_id: NodeId) {
-
         // Create response message with the client list
         let session_id = random::<u64>();
         let message = Message {
@@ -410,14 +436,20 @@ impl CommunicationServer {
             content: ChatResponse::ClientList(self.registered_clients.clone()),
         };
 
-        debug!("Server: {:?} sending client list to {:?}", self.id, client_id);
+        debug!(
+            "Server: {:?} sending client list to {:?}",
+            self.id, client_id
+        );
         self.send_message_in_fragments(client_id, session_id, message);
     }
 
     fn handle_incoming_message(&mut self, client_id: NodeId, content: String) {
         // Check if the sender is registered
         if !self.registered_clients.contains(&client_id) {
-            debug!("Server: {:?} received message from unregistered client {:?}", self.id, client_id);
+            debug!(
+                "Server: {:?} received message from unregistered client {:?}",
+                self.id, client_id
+            );
 
             //If not registered send message with ClientNotRegistered
             let session_id = random::<u64>();
@@ -427,7 +459,10 @@ impl CommunicationServer {
                 content: ChatResponse::ClientNotRegistered,
             };
 
-            debug!("Server: {:?} sending ClientNotRegistered to client {:?}, msg: {:?}", self.id, client_id, message);
+            debug!(
+                "Server: {:?} sending ClientNotRegistered to client {:?}, msg: {:?}",
+                self.id, client_id, message
+            );
             self.send_message_in_fragments(client_id, session_id, message);
             return;
         }
@@ -443,7 +478,7 @@ impl CommunicationServer {
         self.messages_stored.push(chat_message);
 
         // Sends to simulation controller the whole chatroom.
-        self.send_message_received_to_sc(MessageContent::WholeChatVecResponse(Chatroom{
+        self.send_message_received_to_sc(MessageContent::WholeChatVecResponse(Chatroom {
             server_id: self.id,
             chatroom_messages: self.messages_stored.clone(),
         }));

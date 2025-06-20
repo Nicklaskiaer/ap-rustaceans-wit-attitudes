@@ -96,7 +96,8 @@ impl NetworkNode for ContentServer {
         self.controller_send
             .send(ServerEvent::MessageReceived {
                 receiver: self.id,
-                content: message })
+                content: message,
+            })
             .expect("this is fine 🔥☕");
     }
 }
@@ -189,6 +190,45 @@ impl ContentServer {
             ClientServerCommand::RequestFile(_, _) => { /* servers do not need to use it */ }
             ClientServerCommand::RegistrationRequest(_) => { /* this server do not need to use it */
             }
+            ClientServerCommand::ImageResponse(node_id, image_id) => {
+                debug!(
+                    "Server: {:?} received ImageResponse command for node {:?} with image id: {:?}",
+                    self.id, node_id, image_id
+                );
+
+                // Check if the image exists
+                if self.files.contains(&image_id) {
+                    // Try to read the image content
+                    let file_path = format!("server_content/media_files/{}.jpg", image_id);
+                    match std::fs::read(&file_path) {
+                        Ok(image_data) => {
+                            let session_id = random::<u64>();
+                            let message = Message {
+                                source_id: self.id,
+                                session_id,
+                                content: MediaResponse::Media(image_id, image_data),
+                            };
+                            debug!(
+                                "Server: {:?} sending MediaResponse to client {:?}, msg: {:?}",
+                                self.id, node_id, message
+                            );
+                            self.send_message_in_fragments(node_id, session_id, message);
+                        }
+                        Err(e) => {
+                            debug!(
+                                "Server: {:?} failed to read image file {:?}: {}",
+                                self.id, image_id, e
+                            );
+                        }
+                    }
+                } else {
+                    debug!(
+                        "Server: {:?} does not have image file {:?}",
+                        self.id, image_id
+                    );
+                }
+            }
+            ClientServerCommand::RequestImage(_, _) => todo!(),
             ClientServerCommand::TestCommand => {
                 debug!(
                     "\n\
@@ -288,15 +328,16 @@ impl ContentServer {
                     match message.content {
                         ServerTypeRequest::GetServerType => {
                             debug!(
-                            "Server: {:?} received ServerTypeRequest from {:?}",
-                            self.id, message.source_id
-                        );
+                                "Server: {:?} received ServerTypeRequest from {:?}",
+                                self.id, message.source_id
+                            );
                             self.send_server_type_response(message.source_id, message.session_id);
                         }
                     }
                 }
                 // Try to parse as TextRequest
-                else if let Ok(message) = serde_json::from_str::<Message<TextRequest>>(&str_data) {
+                else if let Ok(message) = serde_json::from_str::<Message<TextRequest>>(&str_data)
+                {
                     // Send to SC
                     if let Some(content) = MessageContent::from_content(message.content.clone()) {
                         self.send_message_received_to_sc(content);
@@ -305,20 +346,21 @@ impl ContentServer {
                     match message.content {
                         TextRequest::TextList => {
                             debug!(
-                            "Server: {:?} received TextRequest::TextList from {:?}",
-                            self.id, message.source_id
-                        );
+                                "Server: {:?} received TextRequest::TextList from {:?}",
+                                self.id, message.source_id
+                            );
                             self.send_text_response_text_list(message.source_id);
                         }
                         TextRequest::Text(file_id) => {
                             debug!(
-                            "Server: {:?} received TextRequest::Text from {:?} file id: {:?}",
-                            self.id, message.source_id, file_id
-                        );
+                                "Server: {:?} received TextRequest::Text from {:?} file id: {:?}",
+                                self.id, message.source_id, file_id
+                            );
                             self.send_text_response_text(message.source_id, file_id);
                         }
                     }
-                } else if let Ok(message) = serde_json::from_str::<Message<MediaRequest>>(&str_data) {
+                } else if let Ok(message) = serde_json::from_str::<Message<MediaRequest>>(&str_data)
+                {
                     // Send to SC
                     if let Some(content) = MessageContent::from_content(message.content.clone()) {
                         self.send_message_received_to_sc(content);
@@ -334,8 +376,8 @@ impl ContentServer {
                     }
                 } else {
                     debug!(
-                    "Server: {:?} received unknown message format: {:?}",
-                    self.id, str_data
+                        "Server: {:?} received unknown message format: {:?}",
+                        self.id, str_data
                     );
                 }
             }
