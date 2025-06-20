@@ -1,13 +1,15 @@
 #[cfg(feature = "debug")]
 use crate::debug;
 
+use crate::assembler::assembler::*;
 use crate::client_server::network_core::{
     ClientServerCommand, ContentType, NetworkNode, ServerEvent, ServerType,
 };
 use crate::message::message::*;
-use crossbeam_channel::{select_biased, Receiver, Sender};
+use crossbeam_channel::{select_biased, Receiver, SendError, Sender};
 use rand::random;
 use std::collections::{HashMap, HashSet};
+use std::thread;
 use wg_2024::controller::DroneCommand;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, NodeType, Packet, PacketType};
@@ -187,6 +189,17 @@ impl ContentServer {
             ClientServerCommand::RequestFile(_, _) => { /* servers do not need to use it */ }
             ClientServerCommand::RegistrationRequest(_) => { /* this server do not need to use it */
             }
+            ClientServerCommand::TestCommand => {
+                debug!(
+                    "\n\
+                    \nContent Server: {:?}\
+                    \ntopology_map: {:?}\
+                    \ncontent_type: {:?}\
+                    \nfiles: {:?}\
+                    \n",
+                    self.id, self.topology_map, self.content_type, self.files
+                );
+            }
         }
     }
     fn handle_packet(&mut self, packet: Packet) {
@@ -206,7 +219,7 @@ impl ContentServer {
                 // Send fragment to assembler to be reassembled
                 match self.send_fragment_to_assembler(packet.clone()) {
                     Ok(_) => {
-                        debug!("Media Server: {:?} sent fragment to assembler", self.id);
+                        debug!("Content Server: {:?} sent fragment to assembler", self.id);
 
                         // Send ack back to the sender
                         let mut ack_packet = Packet::new_ack(
@@ -327,7 +340,7 @@ impl ContentServer {
         }
     }
 
-    fn send_server_type_response(&mut self, client_id: NodeId, _session_id: u64) {
+    fn send_server_type_response(&mut self, client_id: NodeId, session_id: u64) {
         // Create response message with Communication server type
         let session_id = random::<u64>();
         let message = Message {

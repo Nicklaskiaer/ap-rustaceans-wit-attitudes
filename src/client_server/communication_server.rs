@@ -187,6 +187,17 @@ impl CommunicationServer {
             ClientServerCommand::RequestFile(_, _) => { /* servers do not need to use it */ }
             ClientServerCommand::RegistrationRequest(_) => { /* this server do not need to use it */
             }
+            ClientServerCommand::TestCommand => {
+                debug!(
+                    "\n\
+                    \nChat Server: {:?}\
+                    \ntopology_map: {:?}\
+                    \nregistered_clients: {:?}\
+                    \nmessage_store: {:?}\
+                    \n",
+                    self.id, self.topology_map, self.registered_clients, self.messages_stored
+                );
+            }
         }
     }
     fn handle_packet(&mut self, packet: Packet) {

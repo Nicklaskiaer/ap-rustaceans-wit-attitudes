@@ -288,6 +288,16 @@ impl SimulationController {
                 .unwrap();
         }
     }
+    
+    pub fn handle_test_command(&self, node_id: NodeId) {
+        if let Some((client_sender, _)) = self.clients.get(&node_id) {
+            client_sender.send(ClientServerCommand::TestCommand).unwrap();
+        }
+
+        if let Some((server_sender, _, _)) = self.servers.get(&node_id) {
+            server_sender.send(ClientServerCommand::TestCommand).unwrap();
+        }
+    }
 }
 
 pub fn simulation_controller_main(sc: SimulationController) -> Result<(), eframe::Error> {

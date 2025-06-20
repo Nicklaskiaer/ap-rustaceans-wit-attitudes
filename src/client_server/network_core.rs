@@ -14,6 +14,8 @@ pub enum ClientServerCommand {
     SendChatMessage(NodeId, String), // used by: Client, Server. client send a chat message to a specific node
     RegistrationRequest(NodeId), // used by: Client. client request to register itself to the server
 
+    TestCommand, //TODO: remove it
+
     // Drone commands
     DroneCmd(DroneCommand),
 }
