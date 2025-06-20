@@ -13,8 +13,8 @@ pub enum ClientServerCommand {
     RequestFileList(NodeId), // used by: Client. client ask the server for its list of files
     RequestFile(NodeId, u64), // used by: Client. client ask the server for a specific file
     SendChatMessage(NodeId, String), // used by: Client, Server. client send a chat message to a specific node
+    ClientListRequest(NodeId),
     RegistrationRequest(NodeId), // used by: Client. client request to register itself to the server
-
     TestCommand, //TODO: remove it
 
     // Drone commands
