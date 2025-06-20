@@ -1,11 +1,11 @@
-use crossbeam_channel::{unbounded, Sender};
+use crossbeam_channel::unbounded;
 use std::collections::HashMap;
 use std::thread;
 use std::time::Duration;
 use wg_2024::controller::DroneEvent;
 use wg_2024::drone::Drone;
 use wg_2024::network::SourceRoutingHeader;
-use wg_2024::packet::{Ack, FloodRequest, Fragment, Nack, NackType, NodeType, Packet, PacketType};
+use wg_2024::packet::{FloodRequest, Fragment, Nack, NackType, NodeType, Packet, PacketType};
 
 /* THE FOLLOWING TESTS CHECKS IF YOUR DRONE IS HANDLING CORRECTLY PACKETS (FRAGMENT) */
 
@@ -60,7 +60,7 @@ pub fn generic_fragment_forward<T: Drone + Send + 'static>() {
 
     // d2 receives packet from d1
     assert_eq!(d2_recv.recv_timeout(TIMEOUT).unwrap(), msg);
-    
+
     // SC listen for event from the drone
     assert_eq!(
         d_event_recv.recv_timeout(TIMEOUT).unwrap(),
@@ -113,7 +113,7 @@ pub fn generic_fragment_drop<T: Drone + Send + 'static>() {
 
     // Client listens for packet from the drone (Dropped Nack)
     assert_eq!(c_recv.recv_timeout(TIMEOUT).unwrap(), nack_packet);
-    
+
     // SC listen for event from the drone
     assert_eq!(
         d_event_recv.recv_timeout(TIMEOUT).unwrap(),
@@ -235,7 +235,7 @@ pub fn generic_chain_fragment_ack<T: Drone + Send + 'static>() {
     d_send.send(msg.clone()).unwrap();
 
     msg.routing_header.hop_index = 3;
-    
+
     // Server receives the fragment
     assert_eq!(s_recv.recv_timeout(TIMEOUT).unwrap(), msg);
 
@@ -269,7 +269,7 @@ pub fn generic_chain_fragment_ack<T: Drone + Send + 'static>() {
 /// The assert consists in checking if the neighbors receive the correct FloodRequest packet.
 pub fn generic_flood_request<T: Drone + Send + 'static>() {
     // Client 1
-    let (c1_send, c1_recv) = unbounded();
+    let (c1_send, _c1_recv) = unbounded();
     // Drone 11
     let (d11_send, d11_recv) = unbounded();
     // Drone 12
@@ -286,7 +286,11 @@ pub fn generic_flood_request<T: Drone + Send + 'static>() {
         d_event_send.clone(),
         d_command_recv.clone(),
         d11_recv.clone(),
-        HashMap::from([(21, d21_send.clone()), (12, d12_send.clone()), (1, c1_send.clone())]),
+        HashMap::from([
+            (21, d21_send.clone()),
+            (12, d12_send.clone()),
+            (1, c1_send.clone()),
+        ]),
         0.0,
     );
 
@@ -296,7 +300,11 @@ pub fn generic_flood_request<T: Drone + Send + 'static>() {
         d_event_send.clone(),
         d_command_recv.clone(),
         d12_recv.clone(),
-        HashMap::from([(21, d21_send.clone()), (11, d12_send.clone()), (1, c1_send.clone())]),
+        HashMap::from([
+            (21, d21_send.clone()),
+            (11, d12_send.clone()),
+            (1, c1_send.clone()),
+        ]),
         0.0,
     );
 
@@ -306,10 +314,13 @@ pub fn generic_flood_request<T: Drone + Send + 'static>() {
         d_event_send.clone(),
         d_command_recv.clone(),
         d21_recv.clone(),
-        HashMap::from([(11, d11_send.clone()), (12, d12_send.clone()), (1, c1_send.clone())]),
+        HashMap::from([
+            (11, d11_send.clone()),
+            (12, d12_send.clone()),
+            (1, c1_send.clone()),
+        ]),
         0.0,
     );
-    
 
     // Spawn the drone's run method in a separate thread
     thread::spawn(move || {
@@ -359,8 +370,6 @@ pub fn generic_flood_request<T: Drone + Send + 'static>() {
     // while let Ok(event) = d21_recv.recv_timeout(TIMEOUT) {
     //     println!("d21 {:?}", event);
     // }
-    
-    
 
     // let mut expected_flood_request = flood_request.clone();
     // expected_flood_request.routing_header.hop_index = 2;
@@ -369,10 +378,10 @@ pub fn generic_flood_request<T: Drone + Send + 'static>() {
     //     initiator_id: 1,
     //     path_trace: vec![(1, NodeType::Client), (11, NodeType::Drone)],
     // });
-    // 
+    //
     // // Drone 12 receives the FloodRequest from Drone 11
     // assert_eq!(d2_recv.recv_timeout(TIMEOUT).unwrap(), expected_flood_request);
-    // 
+    //
     // // SC listen for event from the drone
     // assert_eq!(
     //     d_event_recv.recv_timeout(TIMEOUT).unwrap(),

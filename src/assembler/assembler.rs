@@ -64,10 +64,10 @@ impl Assembler {
                                 session_id
                             );
                         }
-                        Err(e) => {
+                        Err(_e) => {
                             debug!(
                                 "Failed to send single fragment data for session_id: {}: {}",
-                                session_id, e
+                                session_id, _e
                             );
                         }
                     }
@@ -93,10 +93,10 @@ impl Assembler {
                                     session_id
                                 );
                             }
-                            Err(e) => {
+                            Err(_e) => {
                                 debug!(
                                     "Failed to send assembled data for session_id: {}: {}",
-                                    session_id, e
+                                    session_id, _e
                                 );
                             }
                         }
@@ -125,10 +125,10 @@ impl Assembler {
                                     session_id
                                 );
                             }
-                            Err(e) => {
+                            Err(_e) => {
                                 debug!(
                                     "Failed to send assembled data for session_id: {}: {}",
-                                    session_id, e
+                                    session_id, _e
                                 );
                             }
                         }

@@ -21,9 +21,9 @@ pub struct CommunicationServer {
     packet_send: HashMap<NodeId, Sender<Packet>>,
     packet_recv: Receiver<Packet>,
     assembler_send: Sender<Packet>,
-    assembler_recv: Receiver<Packet>,
+    // assembler_recv: Receiver<Packet>,
     assembler_res_recv: Receiver<Vec<u8>>,
-    assembler_res_send: Sender<Vec<u8>>,
+    // assembler_res_send: Sender<Vec<u8>>,
     registered_clients: HashSet<NodeId>,
     message_store: HashMap<NodeId, VecDeque<ChatMessage>>,
 }
@@ -41,9 +41,9 @@ impl NetworkNode for CommunicationServer {
     fn topology_map_mut(&mut self) -> &mut HashSet<(NodeId, Vec<NodeId>)> {
         &mut self.topology_map
     }
-    fn assembler_send(&self) -> &Sender<Packet> {
-        &self.assembler_send
-    }
+    // fn assembler_send(&self) -> &Sender<Packet> {
+    //     &self.assembler_send
+    // }
 
     fn run(&mut self) {
         debug!(
@@ -106,8 +106,8 @@ impl CommunicationServer {
         packet_recv: Receiver<Packet>,
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
         assembler_send: Sender<Packet>,
-        assembler_recv: Receiver<Packet>,
-        assembler_res_send: Sender<Vec<u8>>,
+        // assembler_recv: Receiver<Packet>,
+        // assembler_res_send: Sender<Vec<u8>>,
         assembler_res_recv: Receiver<Vec<u8>>,
         registered_clients: HashSet<NodeId>,
         message_store: HashMap<NodeId, VecDeque<ChatMessage>>,
@@ -121,8 +121,8 @@ impl CommunicationServer {
             packet_send,
             topology_map,
             assembler_send,
-            assembler_recv,
-            assembler_res_send,
+            // assembler_recv,
+            // assembler_res_send,
             assembler_res_recv,
             registered_clients,
             message_store,
@@ -136,14 +136,14 @@ impl CommunicationServer {
                 match drone_cmd {
                     DroneCommand::SetPacketDropRate(_) => {}
                     DroneCommand::Crash => {}
-                    DroneCommand::AddSender(id, sender) => {}
-                    DroneCommand::RemoveSender(id) => {}
+                    DroneCommand::AddSender(_id, _sender) => {}
+                    DroneCommand::RemoveSender(_id) => {}
                 }
             }
-            ClientServerCommand::SendChatMessage(target_id, msg) => {
+            ClientServerCommand::SendChatMessage(_target_id, _msg) => {
                 debug!(
                     "Server: {:?} sending chat message to {:?}: {:?}",
-                    self.id, target_id, msg
+                    self.id, _target_id, _msg
                 );
             }
             ClientServerCommand::StartFloodRequest => {
@@ -186,7 +186,7 @@ impl CommunicationServer {
             }
         }
     }
-    fn handle_packet(&mut self, mut packet: Packet) {
+    fn handle_packet(&mut self, packet: Packet) {
         match &packet.pack_type {
             PacketType::Nack(_nack) => {
                 debug!("Server: {:?} received a Ack {:?}", self.id, _nack);
@@ -216,10 +216,10 @@ impl CommunicationServer {
                         ack_packet.routing_header.increase_hop_index();
                         self.try_send_packet(&ack_packet);
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         debug!(
                             "ERROR: Server {:?} failed to send fragment to assembler: {}",
-                            self.id, e
+                            self.id, _e
                         );
                     }
                 }
@@ -254,7 +254,7 @@ impl CommunicationServer {
             }
         }
     }
-    fn handle_assembler_data(&mut self, mut data: Vec<u8>) {
+    fn handle_assembler_data(&mut self, data: Vec<u8>) {
         if let Ok(str_data) = String::from_utf8(data.clone()) {
             debug!(
                 "Server {:?} received assembled message: {:?}",
@@ -293,10 +293,10 @@ impl CommunicationServer {
                         );
                         self.send_text_response(message.source_id, message.session_id);
                     }
-                    TextRequest::Text(file_id) => {
+                    TextRequest::Text(_file_id) => {
                         debug!(
                             "Server: {:?} received TextRequest::Text from {:?} file id: {:?}",
-                            self.id, message.source_id, file_id
+                            self.id, message.source_id, _file_id
                         );
                         self.send_text_response(message.source_id, message.session_id);
                     }
@@ -357,7 +357,7 @@ impl CommunicationServer {
         }
     }
 
-    fn send_server_type_response(&mut self, client_id: NodeId, session_id: u64) {
+    fn send_server_type_response(&mut self, client_id: NodeId, _session_id: u64) {
         // Create response message with Communication server type
         let session_id = random::<u64>();
         let message = Message {
@@ -371,7 +371,7 @@ impl CommunicationServer {
         );
         self.send_message_in_fragments(client_id, session_id, message);
     }
-    fn send_text_response(&mut self, client_id: NodeId, session_id: u64) {
+    fn send_text_response(&mut self, client_id: NodeId, _session_id: u64) {
         debug!("Server: {:?} is a chat server!", self.id);
         let session_id = random::<u64>();
         let message = Message {

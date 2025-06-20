@@ -1,4 +1,3 @@
-use crate::assembler::assembler::Assembler;
 #[cfg(feature = "debug")]
 use crate::debug;
 
@@ -9,17 +8,13 @@ use crate::message::message::{
     ChatRequest, ChatResponse, MediaResponse, Message, MessageContent, ServerTypeRequest,
     ServerTypeResponse, TextRequest, TextResponse,
 };
-use crossbeam_channel::{after, select_biased, Receiver, Sender};
-use rand::{random, thread_rng, Rng};
-use std::collections::{HashMap, HashSet, VecDeque};
+use crossbeam_channel::{select_biased, Receiver, Sender};
+use rand::random;
+use std::collections::{HashMap, HashSet};
 use std::thread;
-use std::thread::ThreadId;
 use wg_2024::controller::DroneCommand;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet;
-use wg_2024::packet::{
-    Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType,
-};
+use wg_2024::packet::{FloodRequest, NodeType, Packet, PacketType};
 
 pub struct Client {
     id: NodeId,
@@ -32,8 +27,8 @@ pub struct Client {
     topology_map: HashSet<(NodeId, Vec<NodeId>)>,
     server_type_map: HashMap<NodeId, Option<ServerType>>,
     assembler_send: Sender<Packet>,
-    assembler_recv: Receiver<Packet>,
-    assembler_res_send: Sender<Vec<u8>>,
+    // assembler_recv: Receiver<Packet>,
+    // assembler_res_send: Sender<Vec<u8>>,
     assembler_res_recv: Receiver<Vec<u8>>,
 }
 
@@ -50,9 +45,9 @@ impl NetworkNode for Client {
     fn topology_map_mut(&mut self) -> &mut HashSet<(NodeId, Vec<NodeId>)> {
         &mut self.topology_map
     }
-    fn assembler_send(&self) -> &Sender<Packet> {
-        &self.assembler_send
-    }
+    // fn assembler_send(&self) -> &Sender<Packet> {
+    //     &self.assembler_send
+    // }
 
     fn run(&mut self) {
         debug!("Client: {:?} started and waiting for packets", self.id);
@@ -113,8 +108,8 @@ impl Client {
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
         server_type_map: HashMap<NodeId, Option<ServerType>>,
         assembler_send: Sender<Packet>,
-        assembler_recv: Receiver<Packet>,
-        assembler_res_send: Sender<Vec<u8>>,
+        // assembler_recv: Receiver<Packet>,
+        // assembler_res_send: Sender<Vec<u8>>,
         assembler_res_recv: Receiver<Vec<u8>>,
     ) -> Self {
         Self {
@@ -128,8 +123,8 @@ impl Client {
             topology_map,
             server_type_map,
             assembler_send,
-            assembler_recv,
-            assembler_res_send,
+            // assembler_recv,
+            // assembler_res_send,
             assembler_res_recv,
         }
     }
@@ -166,8 +161,8 @@ impl Client {
                 match drone_cmd {
                     DroneCommand::SetPacketDropRate(_) => {}
                     DroneCommand::Crash => {}
-                    DroneCommand::AddSender(id, sender) => {}
-                    DroneCommand::RemoveSender(id) => {}
+                    DroneCommand::AddSender(_id, _sender) => {}
+                    DroneCommand::RemoveSender(_id) => {}
                 }
             }
             ClientServerCommand::SendChatMessage(node_id, msg) => {
@@ -246,18 +241,18 @@ impl Client {
                     "Client: {:?} received RequestFileList, Server id: {:?}",
                     self.id, node_id
                 );
-                self.send_text_request_TextList(node_id);
+                self.send_text_request_text_list(node_id);
             }
             ClientServerCommand::RequestFile(node_id, file_id) => {
                 debug!(
                     "Client: {:?} received RequestFile, Server id: {:?} file id: {:?}",
                     self.id, node_id, file_id
                 );
-                self.send_text_request_Text(node_id, file_id);
+                self.send_text_request_text(node_id, file_id);
             }
         }
     }
-    fn handle_packet(&mut self, mut packet: Packet) {
+    fn handle_packet(&mut self, packet: Packet) {
         self.send_packet_received_to_sc(packet.clone());
 
         match &packet.pack_type {
@@ -289,10 +284,10 @@ impl Client {
                         ack_packet.routing_header.increase_hop_index();
                         self.try_send_packet(&ack_packet);
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         debug!(
                             "ERROR: Server {:?} failed to send fragment to assembler: {}",
-                            self.id, e
+                            self.id, _e
                         );
                     }
                 }
@@ -368,13 +363,13 @@ impl Client {
                 }
 
                 match message.content {
-                    TextResponse::TextList(file_list) => {
-                        debug!("Client: {:?} received TextResponse::TextList from {:?} file list: {:?}", self.id, message.source_id, file_list);
+                    TextResponse::TextList(_file_list) => {
+                        debug!("Client: {:?} received TextResponse::TextList from {:?} file list: {:?}", self.id, message.source_id, _file_list);
                     }
-                    TextResponse::Text(file) => {
+                    TextResponse::Text(_file) => {
                         debug!(
                             "Client: {:?} received TextResponse::Text from {:?} file: {:?}",
-                            self.id, message.source_id, file
+                            self.id, message.source_id, _file
                         );
                     }
                     TextResponse::NotFound => {
@@ -408,16 +403,16 @@ impl Client {
                 }
 
                 match message.content {
-                    MediaResponse::MediaList(media_list) => {
+                    MediaResponse::MediaList(_media_list) => {
                         debug!(
                             "Client: {:?} received MediaList from {:?}: {:?}",
-                            self.id, message.source_id, media_list
+                            self.id, message.source_id, _media_list
                         );
                     }
-                    MediaResponse::Media(media) => {
+                    MediaResponse::Media(_media) => {
                         debug!(
                             "Client: {:?} received Media from {:?}: {:?}",
-                            self.id, message.source_id, media
+                            self.id, message.source_id, _media
                         );
                     }
                     MediaResponse::NotFound => {
@@ -450,7 +445,7 @@ impl Client {
         );
         self.send_message_in_fragments(server_id, session_id, message);
     }
-    fn send_text_request_TextList(&mut self, server_id: NodeId) {
+    fn send_text_request_text_list(&mut self, server_id: NodeId) {
         let session_id = random::<u64>();
         let message = Message {
             source_id: self.id,
@@ -463,7 +458,7 @@ impl Client {
         );
         self.send_message_in_fragments(server_id, session_id, message);
     }
-    fn send_text_request_Text(&mut self, server_id: NodeId, file_id: u64) {
+    fn send_text_request_text(&mut self, server_id: NodeId, file_id: u64) {
         let session_id = random::<u64>();
         let message = Message {
             source_id: self.id,
