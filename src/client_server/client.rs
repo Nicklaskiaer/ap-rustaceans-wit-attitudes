@@ -32,13 +32,12 @@ pub struct Client {
     controller_recv: Receiver<ClientServerCommand>,
     packet_send: HashMap<NodeId, Sender<Packet>>,
     packet_recv: Receiver<Packet>,
-    assemblers: Vec<Assembler>,
     topology_map: HashSet<(NodeId, Vec<NodeId>)>,
     server_type_map: HashMap<NodeId, Option<ServerType>>,
     session_ids_for_request_server_type: HashSet<u64>,
     assembler_send: Sender<Packet>,
-    assembler_recv: Receiver<Packet>,
-    assembler_res_send: Sender<Vec<u8>>,
+    // assembler_recv: Receiver<Packet>,
+    // assembler_res_send: Sender<Vec<u8>>,
     assembler_res_recv: Receiver<Vec<u8>>,
 }
 
@@ -55,9 +54,9 @@ impl NetworkNode for Client {
     fn topology_map_mut(&mut self) -> &mut HashSet<(NodeId, Vec<NodeId>)> {
         &mut self.topology_map
     }
-    fn assemblers_mut(&mut self) -> &mut Vec<Assembler> {
-        &mut self.assemblers
-    }
+    // fn assembler_send(&self) -> &Sender<Packet> {
+    //     &self.assembler_send
+    // }
 
     fn run(&mut self) {
         debug!("Client: {:?} started and waiting for packets", self.id);
@@ -94,14 +93,18 @@ impl NetworkNode for Client {
     fn send_message_sent_to_sc(&mut self, message: MessageContent, target: NodeId) {
         self.controller_send
             .send(ClientEvent::MessageSent {
-                target: target,
+                from: self.id,
+                to: target,
                 content: message,
             })
             .expect("this is fine 🔥☕");
     }
     fn send_message_received_to_sc(&mut self, message: MessageContent) {
         self.controller_send
-            .send(ClientEvent::MessageReceived { content: message })
+            .send(ClientEvent::MessageReceived {
+                receiver: self.id,
+                content: message
+                })
             .expect("this is fine 🔥☕");
     }
 }
@@ -115,13 +118,12 @@ impl Client {
         controller_recv: Receiver<ClientServerCommand>,
         packet_send: HashMap<NodeId, Sender<Packet>>,
         packet_recv: Receiver<Packet>,
-        assemblers: Vec<Assembler>,
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
         server_type_map: HashMap<NodeId, Option<ServerType>>,
-        session_id_storage: HashSet<u64>,
+        session_ids_for_request_server_type: HashSet<u64>,
         assembler_send: Sender<Packet>,
-        assembler_recv: Receiver<Packet>,
-        assembler_res_send: Sender<Vec<u8>>,
+        // assembler_recv: Receiver<Packet>,
+        // assembler_res_send: Sender<Vec<u8>>,
         assembler_res_recv: Receiver<Vec<u8>>,
     ) -> Self {
         Self {
@@ -132,13 +134,12 @@ impl Client {
             controller_recv,
             packet_recv,
             packet_send,
-            assemblers,
             topology_map,
             server_type_map,
-            session_ids_for_request_server_type: session_id_storage,
+            session_ids_for_request_server_type,
             assembler_send,
-            assembler_recv,
-            assembler_res_send,
+            // assembler_recv,
+            // assembler_res_send,
             assembler_res_recv,
         }
     }
@@ -175,8 +176,8 @@ impl Client {
                 match drone_cmd {
                     DroneCommand::SetPacketDropRate(_) => {}
                     DroneCommand::Crash => {}
-                    DroneCommand::AddSender(id, sender) => {}
-                    DroneCommand::RemoveSender(id) => {}
+                    DroneCommand::AddSender(_id, _sender) => {}
+                    DroneCommand::RemoveSender(_id) => {}
                 }
             },
             ClientServerCommand::SendChatMessage(node_id, msg) => {
@@ -235,11 +236,13 @@ impl Client {
                 // Query all servers in the server_type_map that have None as their type
                 for server_id in self.server_type_map.keys().cloned().collect::<Vec<_>>() {
                     if let Some(None) = self.server_type_map.get(&server_id) {
+                        self.send_server_type_request(server_id);
+                        /*
                         // TODO: remove it
                         // test 11->42
                         if self.id == 11 && server_id == 62 {
                             self.send_server_type_request(server_id);
-                        }
+                        }*/
                     }
                 }
             },
@@ -253,30 +256,20 @@ impl Client {
                     "Client: {:?} received RequestFileList, Server id: {:?}",
                     self.id, node_id
                 );
-                self.send_text_request_TextList(node_id);
-            },
+                self.send_text_request_text_list(node_id);
+            }
             ClientServerCommand::RequestFile(node_id, file_id) => {
                 debug!(
                     "Client: {:?} received RequestFile, Server id: {:?} file id: {:?}",
                     self.id, node_id, file_id
                 );
-                self.send_text_request_Text(node_id, file_id);
-            },
-            ClientServerCommand::TestCommand => {
-                debug!(
-                    "\n\
-                    \nClient: {:?}\
-                    \ntopology_map: {:?}\
-                    \nserver_type_map: {:?}\
-                    \nsession_ids_for_request_server_type: {:?}\
-                    \n",
-                    self.id, self.topology_map, self.server_type_map, self.session_ids_for_request_server_type
-                );
+                self.send_text_request_text(node_id, file_id);
             }
         }
     }
-    fn handle_packet(&mut self, mut packet: Packet) {
+    fn handle_packet(&mut self, packet: Packet) {
         self.send_packet_received_to_sc(packet.clone());
+
         match &packet.pack_type {
             PacketType::Nack(_nack) => {
                 debug!("Client: {:?} received a Nack {:?}", self.id, _nack);
@@ -313,10 +306,10 @@ impl Client {
                         ack_packet.routing_header.increase_hop_index();
                         self.try_send_packet(&ack_packet);
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         debug!(
                             "ERROR: Server {:?} failed to send fragment to assembler: {}",
-                            self.id, e
+                            self.id, _e
                         );
                     }
                 }
@@ -393,13 +386,13 @@ impl Client {
                 }
 
                 match message.content {
-                    TextResponse::TextList(file_list) => {
-                        debug!("Client: {:?} received TextResponse::TextList from {:?} file list: {:?}", self.id, message.source_id, file_list);
-                    },
-                    TextResponse::Text(file) => {
+                    TextResponse::TextList(_file_list) => {
+                        debug!("Client: {:?} received TextResponse::TextList from {:?} file list: {:?}", self.id, message.source_id, _file_list);
+                    }
+                    TextResponse::Text(_file) => {
                         debug!(
                             "Client: {:?} received TextResponse::Text from {:?} file: {:?}",
-                            self.id, message.source_id, file
+                            self.id, message.source_id, _file
                         );
                     }
                     TextResponse::NotFound => {
@@ -418,14 +411,48 @@ impl Client {
                 }
 
                 match &message.content {
-                    ChatResponse::ClientNotRegistered => {
-                        //todo!(I added this, need to send it to GUI)
+                    ChatResponse::ClientNotRegistered=> {
                         debug!("Client: {:?} received a ClientNotRegistered", self.id);
+                    }
+                    ChatResponse::ClientRegistered(_) => {
+                        debug!("Client: {:?} received a ClientRegistered", self.id);
                     }
                     _ => {}
                 }
             }
+            // try to parse as media response
+            else if let Ok(message) = serde_json::from_str::<Message<MediaResponse>>(&str_data) {
+                // Send to SC
+                if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                    self.send_message_received_to_sc(content);
+                }
 
+                match message.content {
+                    MediaResponse::MediaList(_media_list) => {
+                        debug!(
+                            "Client: {:?} received MediaList from {:?}: {:?}",
+                            self.id, message.source_id, _media_list
+                        );
+                    }
+                    MediaResponse::Media(_media) => {
+                        debug!(
+                            "Client: {:?} received Media from {:?}: {:?}",
+                            self.id, message.source_id, _media
+                        );
+                    }
+                    MediaResponse::NotFound => {
+                        debug!(
+                            "Client: {:?} received NotFound from {:?}",
+                            self.id, message.source_id
+                        );
+                    }
+                }
+            } else {
+                debug!(
+                    "Client: {:?} received unknown data: {:?}",
+                    self.id, str_data
+                );
+            }
         }
     }
 
@@ -444,7 +471,7 @@ impl Client {
         );
         self.send_message_in_fragments(server_id, session_id, message);
     }
-    fn send_text_request_TextList(&mut self, server_id: NodeId) {
+    fn send_text_request_text_list(&mut self, server_id: NodeId) {
         let session_id = random::<u64>();
         let message = Message {
             source_id: self.id,
@@ -457,7 +484,7 @@ impl Client {
         );
         self.send_message_in_fragments(server_id, session_id, message);
     }
-    fn send_text_request_Text(&mut self, server_id: NodeId, file_id: u64) {
+    fn send_text_request_text(&mut self, server_id: NodeId, file_id: u64) {
         let session_id = random::<u64>();
         let message = Message {
             source_id: self.id,
@@ -509,25 +536,19 @@ impl Client {
     }
 
     fn send_fragment_to_assembler(&mut self, packet: Packet) -> Result<(), String> {
-        for assembler in &mut self.assemblers {
-            if assembler.session_id == packet.session_id {
-                assembler
-                    .packet_send
-                    .send(packet)
-                    .map_err(|e| format!("Failed to send packet to assembler: {}", e))?;
-                return Ok(());
+        // send the packet to the assembler
+        match self.assembler_send.send(packet) {
+            Ok(_) => {
+                debug!("Client: {:?} sent packet to assembler", self.id);
+                Ok(())
+            }
+            Err(e) => {
+                debug!(
+                    "Client: {:?} failed to send packet to assembler: {}",
+                    self.id, e
+                );
+                Err(format!("Failed to send packet to assembler: {}", e))
             }
         }
-
-        // If no assembler found, create a new one
-        let assembler = Assembler::new(
-            packet.session_id,
-            self.assembler_send.clone(),
-            self.assembler_recv.clone(),
-            self.assembler_res_send.clone(),
-            self.assembler_res_recv.clone(),
-        );
-        self.assemblers.push(assembler);
-        Ok(())
     }
 }

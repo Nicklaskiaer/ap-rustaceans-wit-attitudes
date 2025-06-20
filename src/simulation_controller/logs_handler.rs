@@ -6,6 +6,7 @@ use crate::client_server::network_core::{ClientEvent, ServerEvent};
 use crate::simulation_controller::gui::MyApp;
 use chrono::{DateTime, Utc};
 use chrono_tz::Europe::Rome;
+use crate::message::message::MessageContent;
 
 //Function to log events/commands from drones, clients and server.
 pub fn logs(app: &mut MyApp, event: Event) {
@@ -67,11 +68,67 @@ pub fn logs(app: &mut MyApp, event: Event) {
                     .unwrap_or_else(|| "None".to_string()) // Handle the None case.
                 )
             }
-            ClientEvent::MessageSent { .. } => {
-                format!("[EVENT] Packet Received by TODO.")
+            ClientEvent::MessageSent {from, to, content} => {
+                match content {
+                    MessageContent::ServerTypeRequest(_) => {
+                        format!("[EVENT] ServerTypeRequest sent by {:?} to {:?}.", from, to) 
+                    }
+                    MessageContent::ServerTypeResponse(_) => {
+                        format!("[EVENT] ServerTypeResponse sent by {:?} to {:?}.", from, to)
+                    }
+                    MessageContent::TextRequest(_) => {
+                        format!("[EVENT] TextRequest sent by {:?} to {:?}.", from, to)
+                    }
+                    MessageContent::TextResponse(_) => {
+                        format!("[EVENT] TextResponse sent by {:?} to {:?}.", from, to)
+                    }
+                    MessageContent::WholeChatVecResponse(_) => {
+                        format!("[EVENT] WholeChatVecResponse sent by {:?} to {:?}.", from, to)
+                    }
+                    MessageContent::ChatRequest(_) => {
+                        format!("[EVENT] ChatRequest sent by {:?} to {:?}.", from, to)
+                    }
+                    MessageContent::ChatResponse(_) => {
+                        format!("[EVENT] ChatResponse sent by {:?} to {:?}.", from, to)
+                    }
+                    MessageContent::MediaRequest(_) => {
+                        format!("[EVENT] MediaRequest sent by {:?} to {:?}.", from, to)
+                    }
+                    MessageContent::MediaResponse(_) => {
+                        format!("[EVENT] MediaResponse sent by {:?} to {:?}.", from, to)
+                    }
+                }
             }
-            ClientEvent::MessageReceived { .. } => {
-                format!("[EVENT] Packet Received by TODO.")
+            ClientEvent::MessageReceived {receiver, content} => {
+                match content {
+                    MessageContent::ServerTypeRequest(_) => {
+                        format!("[EVENT] ServerTypeRequest received by {:?}.", receiver)
+                    }
+                    MessageContent::ServerTypeResponse(_) => {
+                        format!("[EVENT] ServerTypeResponse received by {:?}.", receiver)
+                    }
+                    MessageContent::TextRequest(_) => {
+                        format!("[EVENT] TextRequest received by {:?}.", receiver)
+                    }
+                    MessageContent::TextResponse(_) => {
+                        format!("[EVENT] TextResponse received by {:?}.", receiver)
+                    }
+                    MessageContent::WholeChatVecResponse(_) => {
+                        format!("[EVENT] WholeChatVecResponse received by {:?}.", receiver)
+                    }
+                    MessageContent::ChatRequest(_) => {
+                        format!("[EVENT] ChatRequest received by {:?}.", receiver)
+                    }
+                    MessageContent::ChatResponse(_) => {
+                        format!("[EVENT] ChatResponse received by {:?}.", receiver)
+                    }
+                    MessageContent::MediaRequest(_) => {
+                        format!("[EVENT] MediaRequest received by {:?}.", receiver)
+                    }
+                    MessageContent::MediaResponse(_) => {
+                        format!("[EVENT] MediaResponse received by {:?}.", receiver)
+                    }
+                }
             }
         },
 
@@ -93,8 +150,69 @@ pub fn logs(app: &mut MyApp, event: Event) {
                     .map(|&hop| hop.to_string()) // Convert u8 to String if it exists.
                     .unwrap_or_else(|| "None".to_string()) // Handle the None case.
                 )
-            },
-            ServerEvent::MessageSent { .. } | ServerEvent::MessageReceived { .. } => todo!()
+            }
+            ServerEvent::MessageSent {from, to, content} => {
+                match content {
+                    MessageContent::ServerTypeRequest(_) => {
+                        format!("[EVENT] ServerTypeRequest sent by {:?} to {:?}.", from, to)
+                    }
+                    MessageContent::ServerTypeResponse(_) => {
+                        format!("[EVENT] ServerTypeResponse sent by {:?} to {:?}.", from, to)
+                    }
+                    MessageContent::TextRequest(_) => {
+                        format!("[EVENT] TextRequest sent by {:?} to {:?}.", from, to)
+                    }
+                    MessageContent::TextResponse(_) => {
+                        format!("[EVENT] TextResponse sent by {:?} to {:?}.", from, to)
+                    }
+                    MessageContent::WholeChatVecResponse(_) => {
+                        format!("[EVENT] WholeChatVecResponse sent by {:?} to {:?}.", from, to)
+                    }
+                    MessageContent::ChatRequest(_) => {
+                        format!("[EVENT] ChatRequest sent by {:?} to {:?}.", from, to)
+                    }
+                    MessageContent::ChatResponse(_) => {
+                        format!("[EVENT] ChatResponse sent by {:?} to {:?}.", from, to)
+                    }
+                    MessageContent::MediaRequest(_) => {
+                        format!("[EVENT] MediaRequest sent by {:?} to {:?}.", from, to)
+                    }
+                    MessageContent::MediaResponse(_) => {
+                        format!("[EVENT] MediaResponse sent by {:?} to {:?}.", from, to)
+                    }
+                }
+            }
+            ServerEvent::MessageReceived {receiver, content} => {
+                match content {
+                    MessageContent::ServerTypeRequest(_) => {
+                        format!("[EVENT] ServerTypeRequest received by {:?}.", receiver)
+                    }
+                    MessageContent::ServerTypeResponse(_) => {
+                        format!("[EVENT] ServerTypeResponse received by {:?}.", receiver)
+                    }
+                    MessageContent::TextRequest(_) => {
+                        format!("[EVENT] TextRequest received by {:?}.", receiver)
+                    }
+                    MessageContent::TextResponse(_) => {
+                        format!("[EVENT] TextResponse received by {:?}.", receiver)
+                    }
+                    MessageContent::WholeChatVecResponse(_) => {
+                        format!("[EVENT] WholeChatVecResponse received by {:?}.", receiver)
+                    }
+                    MessageContent::ChatRequest(_) => {
+                        format!("[EVENT] ChatRequest received by {:?}.", receiver)
+                    }
+                    MessageContent::ChatResponse(_) => {
+                        format!("[EVENT] ChatResponse received by {:?}.", receiver)
+                    }
+                    MessageContent::MediaRequest(_) => {
+                        format!("[EVENT] MediaRequest received by {:?}.", receiver)
+                    }
+                    MessageContent::MediaResponse(_) => {
+                        format!("[EVENT] MediaResponse received by {:?}.", receiver)
+                    }
+                }
+            }
         },
     };
 
