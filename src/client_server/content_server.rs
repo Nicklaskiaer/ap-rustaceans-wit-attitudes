@@ -84,14 +84,17 @@ impl NetworkNode for ContentServer {
     fn send_message_sent_to_sc(&mut self, message: MessageContent, target: NodeId) {
         self.controller_send
             .send(ServerEvent::MessageSent {
-                target: target,
+                from: self.id,
+                to: target,
                 content: message,
             })
             .expect("this is fine 🔥☕");
     }
     fn send_message_received_to_sc(&mut self, message: MessageContent) {
         self.controller_send
-            .send(ServerEvent::MessageReceived { content: message })
+            .send(ServerEvent::MessageReceived {
+                receiver: self.id,
+                content: message })
             .expect("this is fine 🔥☕");
     }
 }

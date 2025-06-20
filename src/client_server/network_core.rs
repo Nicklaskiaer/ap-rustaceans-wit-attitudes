@@ -40,10 +40,12 @@ pub enum ServerEvent {
     PacketSent(Packet),
     PacketReceived(Packet),
     MessageSent {
-        target: NodeId,
+        from: NodeId,
+        to: NodeId,
         content: MessageContent,
     },
     MessageReceived {
+        receiver: NodeId,
         content: MessageContent,
     },
 }
@@ -52,10 +54,12 @@ pub enum ClientEvent {
     PacketSent(Packet),
     PacketReceived(Packet),
     MessageSent {
-        target: NodeId,
+        from: NodeId,
+        to: NodeId,
         content: MessageContent,
     },
     MessageReceived {
+        receiver: NodeId,
         content: MessageContent,
     },
 }

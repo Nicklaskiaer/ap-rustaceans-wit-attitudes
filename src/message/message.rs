@@ -1,8 +1,8 @@
-use crate::client_server::network_core::ServerType;
+use std::collections::{HashMap, HashSet};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use wg_2024::network::NodeId;
+use crate::client_server::network_core::{ChatMessage, ServerType};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound(deserialize = "M: DeserializeOwned"))]
@@ -32,6 +32,9 @@ pub enum MessageContent {
     ServerTypeResponse(ServerTypeResponse),
     TextRequest(TextRequest),
     TextResponse(TextResponse),
+    WholeChatVecResponse(Chatroom),
+    ChatRequest(ChatRequest),
+    ChatResponse(ChatResponse),
     MediaRequest(MediaRequest),
     MediaResponse(MediaResponse),
 }
@@ -201,6 +204,13 @@ pub enum ChatResponse {
     MessageFrom { from: NodeId, message: Vec<u8> },
     MessageSent,
     ClientNotRegistered,
+    ClientRegistered(NodeId)
+}
+
+#[derive(Clone, Debug)]
+pub struct Chatroom {
+    pub server_id: NodeId,
+    pub chatroom_messages: Vec<ChatMessage>,
 }
 
 impl DroneSend for ChatResponse {
@@ -219,6 +229,7 @@ impl Response for ChatResponse {
             ChatResponse::MessageFrom { .. } => "MessageFrom".to_string(),
             ChatResponse::MessageSent => "MessageSent".to_string(),
             ChatResponse::ClientNotRegistered => "ClientNotRegistered".to_string(),
+            ChatResponse::ClientRegistered(_) => "ClientRegistered".to_string()
         }
     }
 }

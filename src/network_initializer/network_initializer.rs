@@ -346,7 +346,7 @@ pub fn main() {
                         // assembler_send_res,
                         assembler_recv_res,
                         HashSet::new(),
-                        HashMap::new(),
+                        Vec::new(),
                     );
                     server.run();
                 });

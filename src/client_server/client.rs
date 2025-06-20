@@ -84,14 +84,18 @@ impl NetworkNode for Client {
     fn send_message_sent_to_sc(&mut self, message: MessageContent, target: NodeId) {
         self.controller_send
             .send(ClientEvent::MessageSent {
-                target: target,
+                from: self.id,
+                to: target,
                 content: message,
             })
             .expect("this is fine 🔥☕");
     }
     fn send_message_received_to_sc(&mut self, message: MessageContent) {
         self.controller_send
-            .send(ClientEvent::MessageReceived { content: message })
+            .send(ClientEvent::MessageReceived {
+                receiver: self.id,
+                content: message 
+                })
             .expect("this is fine 🔥☕");
     }
 }
@@ -388,9 +392,11 @@ impl Client {
                 }
 
                 match &message.content {
-                    ChatResponse::ClientNotRegistered => {
-                        //todo!(I added this, need to send it to GUI)
+                    ChatResponse::ClientNotRegistered=> {
                         debug!("Client: {:?} received a ClientNotRegistered", self.id);
+                    }
+                    ChatResponse::ClientRegistered(_) => {
+                        debug!("Client: {:?} received a ClientRegistered", self.id);
                     }
                     _ => {}
                 }

@@ -69,7 +69,7 @@ impl SimulationController {
                 .unwrap();
         }
     }
-
+    
     pub fn handle_crash(&mut self, drone_sender_id: NodeId, neighbors: Vec<NodeId>) {
         let crashed_drone_sender = self
             .drones
