@@ -21,9 +21,7 @@ pub struct CommunicationServer {
     packet_send: HashMap<NodeId, Sender<Packet>>,
     packet_recv: Receiver<Packet>,
     assembler_send: Sender<Packet>,
-    // assembler_recv: Receiver<Packet>,
     assembler_res_recv: Receiver<Vec<u8>>,
-    // assembler_res_send: Sender<Vec<u8>>,
     registered_clients: HashSet<NodeId>,
     messages_stored: Vec<ChatMessage>,
 }
@@ -41,9 +39,6 @@ impl NetworkNode for CommunicationServer {
     fn topology_map_mut(&mut self) -> &mut HashSet<(NodeId, Vec<NodeId>)> {
         &mut self.topology_map
     }
-    // fn assembler_send(&self) -> &Sender<Packet> {
-    //     &self.assembler_send
-    // }
 
     fn run(&mut self) {
         debug!(
@@ -109,8 +104,6 @@ impl CommunicationServer {
         packet_recv: Receiver<Packet>,
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
         assembler_send: Sender<Packet>,
-        // assembler_recv: Receiver<Packet>,
-        // assembler_res_send: Sender<Vec<u8>>,
         assembler_res_recv: Receiver<Vec<u8>>,
         registered_clients: HashSet<NodeId>,
         messages_stored: Vec<ChatMessage>,
@@ -134,15 +127,6 @@ impl CommunicationServer {
 
     fn handle_command(&mut self, command: ClientServerCommand) {
         match command {
-            ClientServerCommand::DroneCmd(drone_cmd) => {
-                // Handle drone command
-                match drone_cmd {
-                    DroneCommand::SetPacketDropRate(_) => {}
-                    DroneCommand::Crash => {}
-                    DroneCommand::AddSender(_id, _sender) => {}
-                    DroneCommand::RemoveSender(_id) => {}
-                }
-            }
             ClientServerCommand::SendChatMessage(_target_id, _msg) => {
                 debug!(
                     "Server: {:?} sending chat message to {:?}: {:?}",
@@ -151,6 +135,9 @@ impl CommunicationServer {
             }
             ClientServerCommand::StartFloodRequest => {
                 debug!("Server: {:?} received StartFloodRequest command", self.id);
+
+                // clear the hashmap
+                self.topology_map.clear();
 
                 // Generate a unique flood ID using current time
                 let timestamp = std::time::SystemTime::now()
@@ -198,7 +185,10 @@ impl CommunicationServer {
                     self.id, self.topology_map, self.registered_clients, self.messages_stored
                 );
             },
-            ClientServerCommand::ClientListRequest(_) => { /* servers do not need to use it */ }
+            ClientServerCommand::ClientListRequest(_) => { /* servers do not need to use it */ },
+            ClientServerCommand::RemoveDrone(drone_id) => {
+                self.connected_drone_ids.retain(|&id| id != drone_id);
+            }
         }
     }
     

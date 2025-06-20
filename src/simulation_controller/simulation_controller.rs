@@ -85,12 +85,28 @@ impl SimulationController {
                     // Send RemoveSender command
                     neighbor_sender.send(DroneCommand::RemoveSender(drone_sender_id)).unwrap();
                 }
+
+                if let Some((neighbor_sender, neighbor_list)) = self.clients.get_mut(&neighbor_id) {
+                    // Update neighbor's list
+                    neighbor_list.retain(|&id| id != drone_sender_id);
+
+                    // Send RemoveSender command
+                    neighbor_sender.send(ClientServerCommand::RemoveDrone(drone_sender_id)).unwrap();
+                }
+
+                if let Some((neighbor_sender, neighbor_list, _)) = self.servers.get_mut(&neighbor_id) {
+                    // Update neighbor's list
+                    neighbor_list.retain(|&id| id != drone_sender_id);
+
+                    // Send RemoveSender command
+                    neighbor_sender.send(ClientServerCommand::RemoveDrone(drone_sender_id)).unwrap();
+                }
             }
 
             // send the Crash command to the drone and remove it
             drone_sender.send(DroneCommand::Crash).unwrap();
             self.drones.remove(&drone_sender_id);
-
+            
             // initialize another flooding
             self.start_flood_request_for_all();
         }
