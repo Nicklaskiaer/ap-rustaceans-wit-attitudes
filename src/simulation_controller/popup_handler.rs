@@ -24,7 +24,7 @@ pub fn show_popup(app: &mut MyApp, ctx: &egui::Context, name: &str) {
             }
         }
     }
-    
+
     let current_time: DateTime<Utc> = Utc::now();
     let italian_time = current_time.with_timezone(&Rome);
     let formatted_time = italian_time.format("%d-%m-%y %H:%M:%S").to_string();
