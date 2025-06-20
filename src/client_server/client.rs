@@ -254,7 +254,7 @@ impl Client {
                     self.id, node_id
                 );
                 self.send_text_request_TextList(node_id);
-            }
+            },
             ClientServerCommand::RequestFile(node_id, file_id) => {
                 debug!(
                     "Client: {:?} received RequestFile, Server id: {:?} file id: {:?}",

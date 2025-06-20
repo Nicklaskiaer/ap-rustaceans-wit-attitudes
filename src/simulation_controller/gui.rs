@@ -244,7 +244,8 @@ impl eframe::App for MyApp{
                                 for client in &self.simulation_controller.get_client_ids() {
                                     if ui.button(client).clicked() {
                                         self.open_popups.insert(client.clone(), true);
-
+                                        
+                                        //TODO: remove
                                         // trigger test command
                                         if let Some(node_id_str) = client.split_whitespace().nth(1) {
                                             if let Ok(node_id) = node_id_str.parse::<NodeId>() {
@@ -254,6 +255,7 @@ impl eframe::App for MyApp{
                                     }
                                 }
 
+                                //TODO: remove
                                 ui.separator();
                                 ui.label("Servers:");
                                 for server in &self.simulation_controller.get_server_ids() {
