@@ -195,7 +195,7 @@ impl CommunicationServer {
                     \nregistered_clients: {:?}\
                     \nmessage_store: {:?}\
                     \n",
-                    self.id, self.topology_map, self.registered_clients, self.message_store
+                    self.id, self.topology_map, self.registered_clients, self.messages_stored
                 );
             }
         }

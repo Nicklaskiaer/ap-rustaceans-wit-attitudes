@@ -15,7 +15,7 @@ use rand::{Rng, thread_rng, random};
 use serde::{Deserialize, Serialize};
 use crate::assembler::assembler::Assembler;
 use crate::client_server::network_core::{ClientEvent, ClientServerCommand, ContentType, NetworkNode, ServerType};
-use crate::message::message::{ChatRequest, ChatResponse, Message, MessageContent, ServerTypeRequest, ServerTypeResponse, TextRequest, TextResponse};
+use crate::message::message::{ChatRequest, ChatResponse, MediaResponse, Message, MessageContent, ServerTypeRequest, ServerTypeResponse, TextRequest, TextResponse};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerTypeWithSessionId {
@@ -264,6 +264,17 @@ impl Client {
                     self.id, node_id, file_id
                 );
                 self.send_text_request_text(node_id, file_id);
+            }
+            ClientServerCommand::TestCommand => {
+                debug!(
+                    "\n\
+                    \nChat Server: {:?}\
+                    \ntopology_map: {:?}\
+                    \nserver_type_map: {:?}\
+                    \nsession_ids_for_request_server_type: {:?}\
+                    \n",
+                    self.id, self.topology_map, self.server_type_map, self.session_ids_for_request_server_type
+                );
             }
         }
     }
