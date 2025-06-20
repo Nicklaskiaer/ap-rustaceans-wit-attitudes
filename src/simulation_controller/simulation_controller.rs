@@ -88,10 +88,8 @@ impl SimulationController {
                 }
             }
 
-            // Then, send the Crash command to the drone
+            // send the Crash command to the drone and remove it
             drone_sender.send(DroneCommand::Crash).unwrap();
-
-            // Finally, remove the drone from controller's state
             self.drones.remove(&drone_sender_id);
 
             // initialize another flooding
