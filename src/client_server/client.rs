@@ -1,3 +1,4 @@
+use std::any::Any;
 #[cfg(feature = "debug")]
 use crate::debug;
 
@@ -237,12 +238,12 @@ impl Client {
                 for server_id in self.server_type_map.keys().cloned().collect::<Vec<_>>() {
                     if let Some(None) = self.server_type_map.get(&server_id) {
                         self.send_server_type_request(server_id);
-                        /*
+                        
                         // TODO: remove it
                         // test 11->42
-                        if self.id == 11 && server_id == 62 {
-                            self.send_server_type_request(server_id);
-                        }*/
+                        // if self.id == 11 && server_id == 62 {
+                        //     self.send_server_type_request(server_id);
+                        // }
                     }
                 }
             },
@@ -268,7 +269,7 @@ impl Client {
             ClientServerCommand::TestCommand => {
                 debug!(
                     "\n\
-                    \nChat Server: {:?}\
+                    \nClient: {:?}\
                     \ntopology_map: {:?}\
                     \nserver_type_map: {:?}\
                     \nsession_ids_for_request_server_type: {:?}\
@@ -363,106 +364,107 @@ impl Client {
         }
     }
     fn handle_assembler_data(&mut self, data: Vec<u8>) {
-        if let Ok(str_data) = String::from_utf8(data) {
+        if let Ok(str_data_raw) = String::from_utf8(data.clone()) {
             debug!(
                 "Client {:?} received assembled message: {:?}",
-                self.id, str_data
+                self.id, str_data_raw
             );
 
-            // Try to parse as ServerTypeResponse
-            if let Ok(message) = serde_json::from_str::<Message<ServerTypeResponse>>(&str_data) {
-                // Send to SC
-                if let Some(content) = MessageContent::from_content(message.content.clone()) {
-                    self.send_message_received_to_sc(content);
-                }
+            if let Some(str_data) = str_data_raw.split("\0").nth(0) {
+                // Try to parse as ServerTypeResponse
+                if let Ok(message) = serde_json::from_str::<Message<ServerTypeResponse>>(&str_data) {
+                    // Send to SC
+                    if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                        self.send_message_received_to_sc(content);
+                    }
 
-                match &message.content {
-                    ServerTypeResponse::ServerType(server_type) => {
-                        debug!(
+                    match &message.content {
+                        ServerTypeResponse::ServerType(server_type) => {
+                            debug!(
                             "Client: {:?} received server type {:?} from {:?}",
                             self.id, server_type, message.source_id
                         );
-                        self.server_type_map.insert(message.source_id, Some(server_type.clone()));
+                            self.server_type_map.insert(message.source_id, Some(server_type.clone()));
 
-                        // remove the session id from the session_ids
-                        self.session_ids_for_request_server_type.remove(&message.session_id);
+                            // remove the session id from the session_ids
+                            // TODO: Fix do not forget
+                            let remvoed = self.session_ids_for_request_server_type.remove(&message.session_id);
+                            debug!("session_ids_for_request_server_type is present? {:?}", remvoed);
+                        }
                     }
                 }
-            }
-            // Try to parse as TextResponse
-            else if let Ok(message) = serde_json::from_str::<Message<TextResponse>>(&str_data) {
-                // Send to SC
-                if let Some(content) = MessageContent::from_content(message.content.clone()) {
-                    self.send_message_received_to_sc(content);
-                }
-
-                match message.content {
-                    TextResponse::TextList(_file_list) => {
-                        debug!("Client: {:?} received TextResponse::TextList from {:?} file list: {:?}", self.id, message.source_id, _file_list);
+                // Try to parse as TextResponse
+                else if let Ok(message) = serde_json::from_str::<Message<TextResponse>>(&str_data) {
+                    // Send to SC
+                    if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                        self.send_message_received_to_sc(content);
                     }
-                    TextResponse::Text(_file) => {
-                        debug!(
+
+                    match message.content {
+                        TextResponse::TextList(_file_list) => {
+                            debug!("Client: {:?} received TextResponse::TextList from {:?} file list: {:?}", self.id, message.source_id, _file_list);
+                        }
+                        TextResponse::Text(_file) => {
+                            debug!(
                             "Client: {:?} received TextResponse::Text from {:?} file: {:?}",
                             self.id, message.source_id, _file
                         );
-                    }
-                    TextResponse::NotFound => {
-                        debug!(
+                        }
+                        TextResponse::NotFound => {
+                            debug!(
                             "Client: {:?} received TextResponse::NotFound from {:?}",
                             self.id, message.source_id
                         );
+                        }
                     }
                 }
-            }
-            // Try to parse as ChatRequest
-            else if let Ok(message) = serde_json::from_str::<Message<ChatResponse>>(&str_data) {
-                // Send to SC
-                if let Some(content) = MessageContent::from_content(message.content.clone()) {
-                    self.send_message_received_to_sc(content);
+                // Try to parse as ChatRequest
+                else if let Ok(message) = serde_json::from_str::<Message<ChatResponse>>(&str_data) {
+                    match &message.content {
+                        ChatResponse::ClientNotRegistered=> {
+                            debug!("Client: {:?} received a ClientNotRegistered", self.id);
+                            self.send_message_received_to_sc(MessageContent::ChatResponse(ChatResponse::ClientNotRegistered));
+                        }
+                        ChatResponse::ClientRegistered(node_id) => {
+                            debug!("Client: {:?} received a ClientRegistered", self.id);
+                            self.send_message_received_to_sc(MessageContent::ChatResponse(ChatResponse::ClientRegistered(*node_id)));
+                        }
+                        _ => {}
+                    }
                 }
+                // try to parse as media response
+                else if let Ok(message) = serde_json::from_str::<Message<MediaResponse>>(&str_data) {
+                    // Send to SC
+                    if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                        self.send_message_received_to_sc(content);
+                    }
 
-                match &message.content {
-                    ChatResponse::ClientNotRegistered=> {
-                        debug!("Client: {:?} received a ClientNotRegistered", self.id);
-                    }
-                    ChatResponse::ClientRegistered(_) => {
-                        debug!("Client: {:?} received a ClientRegistered", self.id);
-                    }
-                    _ => {}
-                }
-            }
-            // try to parse as media response
-            else if let Ok(message) = serde_json::from_str::<Message<MediaResponse>>(&str_data) {
-                // Send to SC
-                if let Some(content) = MessageContent::from_content(message.content.clone()) {
-                    self.send_message_received_to_sc(content);
-                }
-
-                match message.content {
-                    MediaResponse::MediaList(_media_list) => {
-                        debug!(
+                    match message.content {
+                        MediaResponse::MediaList(_media_list) => {
+                            debug!(
                             "Client: {:?} received MediaList from {:?}: {:?}",
                             self.id, message.source_id, _media_list
                         );
-                    }
-                    MediaResponse::Media(_media) => {
-                        debug!(
-                            "Client: {:?} received Media from {:?}: {:?}",
-                            self.id, message.source_id, _media
+                        }
+                        MediaResponse::Media(_media_id, _media) => {
+                            debug!(
+                            "Client: {:?} received full media from media id {:?}: {:?}",
+                            self.id, message.source_id, _media_id
                         );
-                    }
-                    MediaResponse::NotFound => {
-                        debug!(
+                        }
+                        MediaResponse::NotFound => {
+                            debug!(
                             "Client: {:?} received NotFound from {:?}",
                             self.id, message.source_id
                         );
+                        }
                     }
-                }
-            } else {
-                debug!(
+                } else {
+                    debug!(
                     "Client: {:?} received unknown data: {:?}",
                     self.id, str_data
-                );
+                    );
+                }
             }
         }
     }

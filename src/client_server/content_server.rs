@@ -271,71 +271,73 @@ impl ContentServer {
         }
     }
     fn handle_assembler_data(&mut self, data: Vec<u8>) {
-        if let Ok(str_data) = String::from_utf8(data.clone()) {
+        if let Ok(str_data_raw) = String::from_utf8(data.clone()) {
             debug!(
                 "Server {:?} received assembled message: {:?}",
-                self.id, str_data
+                self.id, str_data_raw
             );
 
-            // Try to parse as ServerTypeRequest
-            if let Ok(message) = serde_json::from_str::<Message<ServerTypeRequest>>(&str_data) {
-                // Send to SC
-                if let Some(content) = MessageContent::from_content(message.content.clone()) {
-                    self.send_message_received_to_sc(content);
-                }
+            if let Some(str_data) = str_data_raw.split("\0").nth(0) {
+                // Try to parse as ServerTypeRequest
+                if let Ok(message) = serde_json::from_str::<Message<ServerTypeRequest>>(&str_data) {
+                    // Send to SC
+                    if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                        self.send_message_received_to_sc(content);
+                    }
 
-                match message.content {
-                    ServerTypeRequest::GetServerType => {
-                        debug!(
+                    match message.content {
+                        ServerTypeRequest::GetServerType => {
+                            debug!(
                             "Server: {:?} received ServerTypeRequest from {:?}",
                             self.id, message.source_id
                         );
-                        self.send_server_type_response(message.source_id, message.session_id);
+                            self.send_server_type_response(message.source_id, message.session_id);
+                        }
                     }
                 }
-            }
-            // Try to parse as TextRequest
-            else if let Ok(message) = serde_json::from_str::<Message<TextRequest>>(&str_data) {
-                // Send to SC
-                if let Some(content) = MessageContent::from_content(message.content.clone()) {
-                    self.send_message_received_to_sc(content);
-                }
+                // Try to parse as TextRequest
+                else if let Ok(message) = serde_json::from_str::<Message<TextRequest>>(&str_data) {
+                    // Send to SC
+                    if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                        self.send_message_received_to_sc(content);
+                    }
 
-                match message.content {
-                    TextRequest::TextList => {
-                        debug!(
+                    match message.content {
+                        TextRequest::TextList => {
+                            debug!(
                             "Server: {:?} received TextRequest::TextList from {:?}",
                             self.id, message.source_id
                         );
-                        self.send_text_response_text_list(message.source_id);
-                    }
-                    TextRequest::Text(file_id) => {
-                        debug!(
+                            self.send_text_response_text_list(message.source_id);
+                        }
+                        TextRequest::Text(file_id) => {
+                            debug!(
                             "Server: {:?} received TextRequest::Text from {:?} file id: {:?}",
                             self.id, message.source_id, file_id
                         );
-                        self.send_text_response_text(message.source_id, file_id);
+                            self.send_text_response_text(message.source_id, file_id);
+                        }
                     }
-                }
-            } else if let Ok(message) = serde_json::from_str::<Message<MediaRequest>>(&str_data) {
-                // Send to SC
-                if let Some(content) = MessageContent::from_content(message.content.clone()) {
-                    self.send_message_received_to_sc(content);
-                }
+                } else if let Ok(message) = serde_json::from_str::<Message<MediaRequest>>(&str_data) {
+                    // Send to SC
+                    if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                        self.send_message_received_to_sc(content);
+                    }
 
-                match message.content {
-                    MediaRequest::MediaList => {
-                        self.handle_media_list_request(message.source_id);
+                    match message.content {
+                        MediaRequest::MediaList => {
+                            self.handle_media_list_request(message.source_id);
+                        }
+                        MediaRequest::Media(file_nr) => {
+                            self.handle_media_request(message.source_id, file_nr);
+                        }
                     }
-                    MediaRequest::Media(file_nr) => {
-                        self.handle_media_request(message.source_id, file_nr);
-                    }
-                }
-            } else {
-                debug!(
+                } else {
+                    debug!(
                     "Server: {:?} received unknown message format: {:?}",
                     self.id, str_data
-                );
+                    );
+                }
             }
         }
     }
@@ -469,6 +471,7 @@ impl ContentServer {
                 source_id: self.id,
                 session_id,
                 content: MediaResponse::Media(
+                    file_nr,
                     std::fs::read(format!("server_content/media_files/{}.jpg", file_nr))
                         .unwrap_or_else(|_e| {
                             debug!(

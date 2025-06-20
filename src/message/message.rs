@@ -36,7 +36,30 @@ pub enum MessageContent {
     ChatRequest(ChatRequest),
     ChatResponse(ChatResponse),
     MediaRequest(MediaRequest),
-    MediaResponse(MediaResponse),
+    MediaResponse(MediaResponseForMessageContent),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MediaResponseForMessageContent {
+    MediaList(Vec<u64>),
+    Media(u64),
+    NotFound,
+}
+
+impl MediaResponseForMessageContent {
+    pub fn new(media_response: MediaResponse) -> Self {
+        match &media_response {
+            MediaResponse::MediaList(_m) => {
+                Self::MediaList(_m.clone())
+            }
+            MediaResponse::Media(_m, _) => {
+                Self::Media(_m.clone())
+            }
+            MediaResponse::NotFound => {
+                Self::NotFound
+            }
+        }
+    }
 }
 
 impl MessageContent {
@@ -64,7 +87,7 @@ impl MessageContent {
         {
             Some(MessageContent::MediaRequest(content))
         } else if let Ok(content) =
-            serde_json::to_value(&content).and_then(|v| serde_json::from_value::<MediaResponse>(v))
+            serde_json::to_value(&content).and_then(|v| serde_json::from_value::<MediaResponseForMessageContent>(v))
         {
             Some(MessageContent::MediaResponse(content))
         } else {
@@ -176,7 +199,7 @@ impl Response for TextResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MediaResponse {
     MediaList(Vec<u64>),
-    Media(Vec<u8>),
+    Media(u64, Vec<u8>),
     NotFound,
 }
 
@@ -192,7 +215,7 @@ impl Response for MediaResponse {
     fn response_type(&self) -> String {
         match self {
             MediaResponse::MediaList(_) => "MediaList".to_string(),
-            MediaResponse::Media(_) => "Media".to_string(),
+            MediaResponse::Media(_, _) => "Media".to_string(),
             MediaResponse::NotFound => "NotFound".to_string(),
         }
     }

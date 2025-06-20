@@ -269,96 +269,104 @@ impl CommunicationServer {
         }
     }
     fn handle_assembler_data(&mut self, data: Vec<u8>) {
-        if let Ok(str_data) = String::from_utf8(data.clone()) {
+        if let Ok(str_data_raw) = String::from_utf8(data.clone()) {
             debug!(
                 "Server {:?} received assembled message: {:?}",
-                self.id, str_data
+                self.id, str_data_raw
             );
 
             // Try to parse as ServerTypeRequest
-            if let Ok(message) = serde_json::from_str::<Message<ServerTypeRequest>>(&str_data) {
-                // Send to SC
-                if let Some(content) = MessageContent::from_content(message.content.clone()) {
-                    self.send_message_received_to_sc(content);
-                }
+            if let Some(str_data) = str_data_raw.split("\0").nth(0) {
+                if let Ok(message) = serde_json::from_str::<Message<ServerTypeRequest>>(&str_data) {
+                    // Send to SC
+                    if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                        self.send_message_received_to_sc(content);
+                    }
 
-                match message.content {
-                    ServerTypeRequest::GetServerType => {
-                        debug!(
+                    match message.content {
+                        ServerTypeRequest::GetServerType => {
+                            debug!(
                             "Server: {:?} received ServerTypeRequest from {:?}",
                             self.id, message.source_id
                         );
-                        self.send_server_type_response(message.source_id, message.session_id);
+                            self.send_server_type_response(message.source_id, message.session_id);
+                        }
                     }
                 }
-            }
-            // Try to parse as TextRequest
-            else if let Ok(message) = serde_json::from_str::<Message<TextRequest>>(&str_data) {
-                // Send to SC
-                if let Some(content) = MessageContent::from_content(message.content.clone()) {
-                    self.send_message_received_to_sc(content);
-                }
+                // Try to parse as TextRequest
+                else if let Ok(message) = serde_json::from_str::<Message<TextRequest>>(&str_data) {
+                    // Send to SC
+                    if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                        self.send_message_received_to_sc(content);
+                    }
 
-                match message.content {
-                    TextRequest::TextList => {
-                        debug!(
+                    match message.content {
+                        TextRequest::TextList => {
+                            debug!(
                             "Server: {:?} received TextRequest::TextList from {:?}",
                             self.id, message.source_id
                         );
-                        self.send_text_response(message.source_id, message.session_id);
-                    }
-                    TextRequest::Text(_file_id) => {
-                        debug!(
+                            self.send_text_response(message.source_id, message.session_id);
+                        }
+                        TextRequest::Text(_file_id) => {
+                            debug!(
                             "Server: {:?} received TextRequest::Text from {:?} file id: {:?}",
                             self.id, message.source_id, _file_id
                         );
-                        self.send_text_response(message.source_id, message.session_id);
+                            self.send_text_response(message.source_id, message.session_id);
+                        }
                     }
                 }
-            }
-            // Then try to parse as ChatRequest
-            else if let Ok(message) = serde_json::from_str::<Message<ChatRequest>>(&str_data) {
-                // Send to SC
-                if let Some(content) = MessageContent::from_content(message.content.clone()) {
-                    self.send_message_received_to_sc(content);
-                }
-
-                match message.content {
-                    ChatRequest::Register(client_id) => {
-                        debug!("Server: {:?} received registration request from client {:?}", self.id, client_id);
-
-                        self.registered_clients.insert(client_id);  // Insert client in registered_clients.
-
-                        let chat_message = ChatMessage {
-                            sender_id: client_id,
-                            content: String::from(format!("Client {} has entered the chatroom", client_id)),
-                        };
-
-                        self.messages_stored.push(chat_message);
-
-                        // Respond to client with ClientRegistered
-                        let session_id = random::<u64>();
-                        let message = Message {
-                            source_id: self.id,
-                            session_id,
-                            content: ChatResponse::ClientRegistered(self.id),
-                        };
-
-                        self.send_message_in_fragments(client_id, session_id, message);
-
-                        debug!("Server: {:?} now has registered client: {:?}", self.id, client_id);
+                // Then try to parse as ChatRequest
+                else if let Ok(message) = serde_json::from_str::<Message<ChatRequest>>(&str_data) {
+                    // Send to SC
+                    if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                        self.send_message_received_to_sc(content);
                     }
 
-                    ChatRequest::ClientList => {
-                        debug!("Server: {:?} received ClientList request from {:?}", self.id, message.source_id);
+                    match message.content {
+                        ChatRequest::Register(client_id) => {
+                            debug!("Server: {:?} received registration request from client {:?}", self.id, client_id);
 
-                        self.send_server_client_list(message.source_id);
-                    }
+                            self.registered_clients.insert(client_id);  // Insert client in registered_clients.
 
-                    ChatRequest::SendMessage { from, message } => {
-                        debug!("Server: {:?} received SendMessage request from {:?}", self.id, from);
+                            let chat_message = ChatMessage {
+                                sender_id: client_id,
+                                content: String::from(format!("Client {} has entered the chatroom", client_id)),
+                            };
 
-                        self.handle_incoming_message(from, message);
+                            self.messages_stored.push(chat_message);
+                            
+                            // Sends to simulation controller the whole chatroom.
+                            self.send_message_received_to_sc(MessageContent::WholeChatVecResponse(Chatroom{
+                                server_id: self.id,
+                                chatroom_messages: self.messages_stored.clone(),
+                            }));
+
+                            // Respond to client with ClientRegistered
+                            let session_id = random::<u64>();
+                            let message = Message {
+                                source_id: self.id,
+                                session_id,
+                                content: ChatResponse::ClientRegistered(self.id),
+                            };
+
+                            self.send_message_in_fragments(client_id, session_id, message);
+
+                            debug!("Server: {:?} now has registered client: {:?}", self.id, client_id);
+                        }
+
+                        ChatRequest::ClientList => {
+                            debug!("Server: {:?} received ClientList request from {:?}", self.id, message.source_id);
+
+                            self.send_server_client_list(message.source_id);
+                        }
+
+                        ChatRequest::SendMessage { from, message } => {
+                            debug!("Server: {:?} received SendMessage request from {:?}", self.id, from);
+
+                            self.handle_incoming_message(from, message);
+                        }
                     }
                 }
             }
