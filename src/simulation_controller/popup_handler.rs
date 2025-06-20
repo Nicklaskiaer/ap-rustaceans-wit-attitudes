@@ -154,6 +154,7 @@ fn show_client_controls(app: &mut MyApp, ui: &mut egui::Ui, node_id: NodeId) {
 
     // Track selected server for this client
     let mut server_id_sel: u8 = 0;
+    let mut server_id_sel_images: u8 = 0;
 
     // Navigation bar
     ui.horizontal(|ui| {
@@ -286,48 +287,71 @@ fn show_client_controls(app: &mut MyApp, ui: &mut egui::Ui, node_id: NodeId) {
             });
         }
         ClientPopupScreen::Other => {
-            // let selected_server = app.selected_server.entry(node_id).or_default();
+            let selected_server_images = app.selected_server.entry(node_id).or_default();
 
-            // // Converted selected_server to u8
-            // if let Some(num_str) = selected_server.split_whitespace().last() {
-            //     if let Ok(server_id) = num_str.parse::<u8>() {
-            //         server_id_sel = server_id;
-            //     }
-            // }
 
-            // ui.horizontal(|ui| {
-            //     let image_id_input = app
-            //         .client_image_id_inputs
-            //         .entry(node_id)
-            //         .or_insert(String::new());
-            //     ui.add(
-            //         egui::TextEdit::singleline(image_id_input)
-            //             .desired_width(ui.available_width() - 90.0)
-            //             .hint_text("Image ID"),
-            //     );
+            ui.horizontal(|ui| {
+                egui::ComboBox::from_label("")
+                    .width(100.0)
+                    .selected_text(if selected_server_images.is_empty() {
+                        "Select Server".to_string()
+                    } else {
+                        selected_server_images.clone()
+                    })
+                    .show_ui(ui, |ui| {
+                        // Get all server IDs and their types
+                        let servers = app.simulation_controller.get_servers();
 
-            //     ui.add_space(2.0);
+                        // Filter to only CommunicationServers
+                        for (server_id, (_, _, server_type)) in servers {
+                            if let ServerType::ContentServer(media) = server_type {
+                                let server_id_str = format!("Server {}", server_id);
+                                if ui
+                                    .selectable_label(
+                                        selected_server_images == &server_id_str,
+                                        &server_id_str,
+                                    )
+                                    .clicked()
+                                {
+                                    *selected_server_images = server_id_str;
+                                }
+                            }
+                        }
+                    });
+            });
 
-            //     if ui.button("Request Image").clicked() {
-            //         if let Ok(image_id) = image_id_input.parse::<u64>() {
-            //             app.simulation_controller.handle_image_request(
-            //                 node_id,
-            //                 server_id_sel,
-            //                 image_id,
-            //             );
-            //             image_id_input.clear();
-            //         } else {
-            //             // Optionally, show an error or ignore invalid input
-            //         }
-            //     }
-            // });
+            // Converted selected_server to u8
+                if let Some(num_str) = selected_server_images.split_whitespace().last() {
+                    if let Ok(server_id) = num_str.parse::<u8>() {
+                        server_id_sel_images = server_id;
+                    }
+                }
 
+                // If register is pressed, server id is pushed in vec and request is sent to server.
+                if ui.button("Request image list").clicked() {
+                    let registered_servers = app.registered_servers.entry(node_id).or_default();
+                    if !registered_servers.contains(&server_id_sel_images) {
+                        app.simulation_controller
+                            .handle_image_list_request(node_id, server_id_sel_images.clone());
+                    }
+                }
+                
+                if ui.button("Request image").clicked() {
+                    if let Some(server_id) = selected_server_images.split_whitespace().last() {
+                        if let Ok(server_id) = server_id.parse::<u8>() {
+                            app.simulation_controller
+                                .handle_image_request(node_id, server_id, 0);
+                        }
+                    }
+                }
+
+
+            
             if let Some(image_ids) = app.client_images.get(&node_id) {
                 let columns = 3;
                 let mut row = 0;
 
-                app.simulation_controller.handle_image_request(10, 60, 1);
-
+               
                 egui::Grid::new("client_images_grid")
                     .num_columns(columns)
                     .spacing([10.0, 10.0])

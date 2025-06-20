@@ -8,6 +8,7 @@ use crate::client_server::network_core::{
 use crate::message::message::*;
 use crossbeam_channel::{select_biased, Receiver, SendError, Sender};
 use rand::random;
+use wg_2024::config::Client;
 use std::collections::{HashMap, HashSet};
 use std::thread;
 use wg_2024::controller::DroneCommand;
@@ -190,6 +191,10 @@ impl ContentServer {
             ClientServerCommand::RequestFile(_, _) => { /* servers do not need to use it */ }
             ClientServerCommand::RegistrationRequest(_) => { /* this server do not need to use it */
             }
+            ClientServerCommand::RequestImage(_, _) => todo!(),
+            ClientServerCommand::RequestImageList(_) => {
+                debug!("Server: {:?} received RegistrationResponse command", self.id);
+            }
             ClientServerCommand::ImageResponse(node_id, image_id) => {
                 debug!(
                     "Server: {:?} received ImageResponse command for node {:?} with image id: {:?}",
@@ -228,7 +233,6 @@ impl ContentServer {
                     );
                 }
             }
-            ClientServerCommand::RequestImage(_, _) => todo!(),
             ClientServerCommand::TestCommand => {
                 debug!(
                     "\n\

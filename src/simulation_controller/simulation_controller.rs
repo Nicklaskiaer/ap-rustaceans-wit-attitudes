@@ -187,6 +187,14 @@ impl SimulationController {
         }
     }
 
+    pub fn handle_image_list_request(&self, client_id: NodeId, server_id: NodeId) {
+        if let Some((client_sender, _)) = self.clients.get(&client_id) {
+            client_sender
+                .send(ClientServerCommand::RequestImageList(server_id))
+                .unwrap();
+        }
+    }
+
     pub fn handle_test_command(&self, node_id: NodeId) {
         if let Some((client_sender, _)) = self.clients.get(&node_id) {
             client_sender

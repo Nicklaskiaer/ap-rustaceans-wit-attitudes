@@ -189,6 +189,7 @@ impl CommunicationServer {
             ClientServerCommand::RegistrationRequest(_) => { /* this server not need to use it */ }
             ClientServerCommand::ImageResponse(_, _) => { /* this server doesnt need to use it */ }
             ClientServerCommand::RequestImage(_, _) => { /* this server doesnt need to use it */ }
+            ClientServerCommand::RequestImageList(_) => { /* this server doesnt need to use it */ }
             ClientServerCommand::TestCommand => {
                 debug!(
                     "\n\

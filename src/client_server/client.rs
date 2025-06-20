@@ -16,7 +16,7 @@ use rand::{Rng, thread_rng, random};
 use serde::{Deserialize, Serialize};
 use crate::assembler::assembler::Assembler;
 use crate::client_server::network_core::{ClientEvent, ClientServerCommand, ContentType, NetworkNode, ServerType};
-use crate::message::message::{ChatRequest, ChatResponse, MediaResponse, Message, MessageContent, ServerTypeRequest, ServerTypeResponse, TextRequest, TextResponse};
+use crate::message::message::{ChatRequest, ChatResponse, MediaRequest, MediaResponse, Message, MessageContent, ServerTypeRequest, ServerTypeResponse, TextRequest, TextResponse};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerTypeWithSessionId {
@@ -276,6 +276,13 @@ impl Client {
             ClientServerCommand::ImageResponse(_, _) => {
                 debug!("Client: {:?} received ImageResponse command", self.id);
             }
+            ClientServerCommand::RequestImageList(node_id) => {
+                debug!(
+                    "Client: {:?} received RequestImageList command, Server id: {:?}",
+                    self.id, node_id
+                );
+                self.send_image_list_request(node_id);
+            }
 
             ClientServerCommand::TestCommand => {
                 debug!(
@@ -528,6 +535,20 @@ impl Client {
             source_id: self.id,
             session_id,
             content: MediaRequest::Media(image_id),
+        };
+        debug!(
+            "Server: {:?} sending msg to client {:?}, msg: {:?}",
+            self.id, server_id, message
+        );
+        self.send_message_in_fragments(server_id, session_id, message);
+    }
+
+    fn send_image_list_request(&mut self, server_id: NodeId) {
+        let session_id = random::<u64>();
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: MediaRequest::MediaList,
         };
         debug!(
             "Server: {:?} sending msg to client {:?}, msg: {:?}",
