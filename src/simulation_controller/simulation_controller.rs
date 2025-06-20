@@ -1,11 +1,13 @@
-use std::collections::HashMap;
+use crate::client_server::network_core::{
+    ClientEvent, ClientServerCommand, ServerEvent, ServerType,
+};
+use crate::simulation_controller::gui::MyApp;
 use crossbeam_channel::{Receiver, Sender};
 use eframe::egui;
+use std::collections::HashMap;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::network::NodeId;
-use wg_2024::packet::{FloodResponse, NodeType, Packet};
-use crate::client_server::network_core::{ClientEvent, ClientServerCommand, ServerEvent, ServerType};
-use crate::simulation_controller::gui::MyApp;
+use wg_2024::packet::Packet;
 
 pub struct SimulationController {
     drones: HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>, f32)>,
@@ -14,7 +16,7 @@ pub struct SimulationController {
     drone_event_recv: Receiver<DroneEvent>,
     client_event_recv: Receiver<ClientEvent>,
     server_event_recv: Receiver<ServerEvent>,
-    packet_channels: HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>
+    packet_channels: HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
 }
 
 impl SimulationController {
@@ -25,7 +27,7 @@ impl SimulationController {
         drone_event_recv: Receiver<DroneEvent>,
         client_event_recv: Receiver<ClientEvent>,
         server_event_recv: Receiver<ServerEvent>,
-        packet_channels: HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>
+        packet_channels: HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)>,
     ) -> Self {
         SimulationController {
             drones,
@@ -34,43 +36,60 @@ impl SimulationController {
             drone_event_recv,
             client_event_recv,
             server_event_recv,
-            packet_channels
+            packet_channels,
         }
     }
 
     pub fn handle_remove_sender(&self, drone_sender_id: NodeId, drone_id: NodeId) {
         if let Some((drone_sender, _, _)) = self.drones.get(&drone_sender_id) {
-            drone_sender.send(DroneCommand::RemoveSender(drone_id)).unwrap();
+            drone_sender
+                .send(DroneCommand::RemoveSender(drone_id))
+                .unwrap();
         }
     }
 
-    pub fn handle_add_sender(&self, drone_sender_id: NodeId, drone_id: NodeId, drone_packet: Sender<Packet>) {
+    pub fn handle_add_sender(
+        &self,
+        drone_sender_id: NodeId,
+        drone_id: NodeId,
+        drone_packet: Sender<Packet>,
+    ) {
         if let Some((drone_sender, _, _)) = self.drones.get(&drone_sender_id) {
-            drone_sender.send(DroneCommand::AddSender(drone_id, drone_packet)).unwrap();
+            drone_sender
+                .send(DroneCommand::AddSender(drone_id, drone_packet))
+                .unwrap();
         }
     }
 
     pub fn handle_set_packet_drop_rate(&mut self, drone_sender_id: NodeId, drop_rate: f32) {
         if let Some((drone_sender, _, stored_rate)) = self.drones.get_mut(&drone_sender_id) {
             *stored_rate = drop_rate;
-            drone_sender.send(DroneCommand::SetPacketDropRate(drop_rate)).unwrap();
+            drone_sender
+                .send(DroneCommand::SetPacketDropRate(drop_rate))
+                .unwrap();
         }
     }
     
     pub fn handle_crash(&mut self, drone_sender_id: NodeId, neighbors: Vec<NodeId>) {
-        let crashed_drone_sender = self.drones.get(&drone_sender_id).map(|(sender, _, _)| sender.clone());
+        let crashed_drone_sender = self
+            .drones
+            .get(&drone_sender_id)
+            .map(|(sender, _, _)| sender.clone());
 
         if let Some((_sender, _, _)) = self.drones.remove(&drone_sender_id) {
             debug!("Removing {} from network...", drone_sender_id);
         }
 
         for neighbor in neighbors {
-            if let Some((neighbor_drone_sender, neighbor_list, _)) = self.drones.get_mut(&neighbor) {
+            if let Some((neighbor_drone_sender, neighbor_list, _)) = self.drones.get_mut(&neighbor)
+            {
                 // Remove the crashed drone from the neighbor's list
                 neighbor_list.retain(|&id| id != drone_sender_id);
 
                 // Send remove command to the neighbor
-                neighbor_drone_sender.send(DroneCommand::RemoveSender(drone_sender_id)).unwrap();
+                neighbor_drone_sender
+                    .send(DroneCommand::RemoveSender(drone_sender_id))
+                    .unwrap();
             }
         }
 
@@ -78,12 +97,12 @@ impl SimulationController {
         if let Some(sender) = crashed_drone_sender {
             sender.send(DroneCommand::Crash).unwrap();
         }
-        
+
         // initialize the first flooding
         self.start_flood_request_for_all();
     }
 
-/*    pub fn update_topology(&mut self, flood_response: &FloodResponse) {
+    /*    pub fn update_topology(&mut self, flood_response: &FloodResponse) {
         // Extract information from flood response
         for &(node_id, node_type) in &flood_response.path_trace {
             match node_type {
@@ -157,20 +176,20 @@ impl SimulationController {
                 //     if !self.servers.contains_key(&node_id) {
                 //         // Create placeholder for new server
                 //         let (sender, _) = crossbeam_channel::unbounded();
-                // 
+                //
                 //         // Find neighbors from the path trace
                 //         let mut neighbors = Vec::new();
                 //         let server_pos = flood_response.path_trace.iter()
                 //             .position(|&(id, _)| id == node_id)
                 //             .unwrap_or(0);
-                // 
+                //
                 //         if server_pos > 0 {
                 //             neighbors.push(flood_response.path_trace[server_pos-1].0);
                 //         }
                 //         if server_pos < flood_response.path_trace.len() - 1 {
                 //             neighbors.push(flood_response.path_trace[server_pos+1].0);
                 //         }
-                // 
+                //
                 //         // Convert from the flood response server type to our internal type
                 //         let server_type_internal = match server_type {
                 //             wg_2024::packet::ServerType::Content(content_type) => {
@@ -184,7 +203,7 @@ impl SimulationController {
                 //             wg_2024::packet::ServerType::Communication =>
                 //                 ServerType::CommunicationServer,
                 //         };
-                // 
+                //
                 //         self.servers.insert(node_id, (sender, neighbors, server_type_internal));
                 //         println!("Added new server: {}", node_id);
                 //     }
@@ -198,23 +217,26 @@ impl SimulationController {
     }*/
 
     pub fn get_drone_ids(&self) -> Vec<String> {
-        self.drones.keys()
+        self.drones
+            .keys()
             .map(|node_id| format!("Drone {}", node_id.to_string()))
             .collect()
     }
 
     pub fn get_client_ids(&self) -> Vec<String> {
-        self.clients.keys()
+        self.clients
+            .keys()
             .map(|node_id| format!("Client {}", node_id.to_string()))
             .collect()
     }
 
     pub fn get_server_ids(&self) -> Vec<String> {
-        self.servers.keys()
+        self.servers
+            .keys()
             .map(|node_id| format!("Server {}", node_id.to_string()))
             .collect()
     }
-    
+
     pub fn get_drones(&self) -> &HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>, f32)> {
         &self.drones
     }
@@ -223,7 +245,9 @@ impl SimulationController {
         &self.clients
     }
 
-    pub fn get_servers(&self) -> &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>, ServerType)> {
+    pub fn get_servers(
+        &self,
+    ) -> &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>, ServerType)> {
         &self.servers
     }
 
@@ -239,23 +263,29 @@ impl SimulationController {
         &self.server_event_recv
     }
 
-    pub fn get_packet_channels(&self) -> &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)> {&self.packet_channels}
+    pub fn get_packet_channels(&self) -> &HashMap<NodeId, (Sender<Packet>, Receiver<Packet>)> {
+        &self.packet_channels
+    }
 
-    pub fn start_flood_request_for_all(&self){
-        for (_, (sender,_)) in &self.clients{
+    pub fn start_flood_request_for_all(&self) {
+        for (_, (sender, _)) in &self.clients {
             sender.send(ClientServerCommand::StartFloodRequest).unwrap();
         }
     }
 
-    pub fn handle_registration_request(&self, client_id: NodeId, server_id: NodeId){
+    pub fn handle_registration_request(&self, client_id: NodeId, server_id: NodeId) {
         if let Some((client_sender, _)) = self.clients.get(&client_id) {
-            client_sender.send(ClientServerCommand::RegistrationRequest(server_id)).unwrap();
+            client_sender
+                .send(ClientServerCommand::RegistrationRequest(server_id))
+                .unwrap();
         }
     }
 
-    pub fn handle_send_chat_message(&self, client_id: NodeId, server_id: NodeId, message: String){
+    pub fn handle_send_chat_message(&self, client_id: NodeId, server_id: NodeId, message: String) {
         if let Some((client_sender, _)) = self.clients.get(&client_id) {
-            client_sender.send(ClientServerCommand::SendChatMessage(server_id, message)).unwrap();
+            client_sender
+                .send(ClientServerCommand::SendChatMessage(server_id, message))
+                .unwrap();
         }
     }
 }
@@ -271,10 +301,10 @@ pub fn simulation_controller_main(sc: SimulationController) -> Result<(), eframe
 
     // start GUI
     let native_options = eframe::NativeOptions::default();
-    let ctx = egui::Context::default();
+    let _ctx = egui::Context::default();
     eframe::run_native(
         "Rustaceans Wit Attitudes",
         native_options,
-        Box::new(|_cc| Ok(Box::new(MyApp::new(sc))))
+        Box::new(|_cc| Ok(Box::new(MyApp::new(sc)))),
     )
 }

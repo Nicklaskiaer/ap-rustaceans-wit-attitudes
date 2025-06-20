@@ -15,10 +15,10 @@ use wg_2024::packet::{Packet, PacketType};
 
 pub struct MyApp {
     pub(crate) simulation_controller: SimulationController,
-    current_screen: Screen, //Network diagram or Logs Page screen.
+    current_screen: Screen,             //Network diagram or Logs Page screen.
     pub(crate) logs_vec: Vec<LogEntry>, //Vector of logs shown in the Logs page
     show_confirmation_dialog: bool, //Confirmation dialog box when clicking "X" button of the window.
-    allowed_to_close: bool, //Confirm closing the program window.
+    allowed_to_close: bool,         //Confirm closing the program window.
     pub(crate) open_popups: HashMap<String, bool>, //Hashmap of popup windows for clients and drones.
     pub(crate) slider_temp_pdrs: HashMap<NodeId, f32>, //Hashmap of displayed PDR's of drones.
     pub(crate) drone_text_inputs: HashMap<NodeId, String>, //Hashmap of inputs for drones (add/rem sender id).
@@ -40,7 +40,8 @@ pub struct NetworkTopology {
     pub connections: Vec<(usize, usize)>, //Connections (lines) between nodes.
 }
 
-fn load_image(path: &str) -> Result<egui::ColorImage, image::ImageError> {  //Function to load Icons of clients, server and drones.
+fn load_image(path: &str) -> Result<egui::ColorImage, image::ImageError> {
+    //Function to load Icons of clients, server and drones.
     let image_bytes = std::fs::read(path)?;
     let image = image::load_from_memory(&image_bytes)?;
     let size = [image.width() as usize, image.height() as usize];
@@ -81,15 +82,15 @@ impl MyApp {
         popup_handler::show_popup(self, ctx, name);
     }
 
-    fn logs(&mut self, event: Event){
+    fn logs(&mut self, event: Event) {
         logs_handler::logs(self, event);
     }
 }
 
-impl eframe::App for MyApp{
+impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         //Poll for new events and log them.
-        while let Ok(event) = self.simulation_controller.get_drone_event_recv().try_recv(){
+        while let Ok(event) = self.simulation_controller.get_drone_event_recv().try_recv() {
             match event {
                 DroneEvent::PacketSent(_) => {}
                 DroneEvent::PacketDropped(_) => {}
@@ -107,8 +108,8 @@ impl eframe::App for MyApp{
                         PacketType::Ack(_) => {}
                         PacketType::Nack(_) => {}
                         PacketType::FloodRequest(_) => {}
-                        PacketType::FloodResponse(floodResponse) => {
-                            // self.simulation_controller.update_topology(floodResponse);
+                        PacketType::FloodResponse(_flood_response) => {
+                            // self.simulation_controller.update_topology(flood_esponse);
                             self.topology_needs_update = true;
                         }
                     }
@@ -149,6 +150,18 @@ impl eframe::App for MyApp{
                         PacketType::Ack(_) => {}
                         PacketType::Nack(_) => {}
                         PacketType::FloodRequest(_) => {}
+                        PacketType::FloodResponse(_flood_response) => {
+                            // self.simulation_controller.update_topology(floodResponse);
+                            self.topology_needs_update = true;
+                        }
+                    }},
+                ServerEvent::MessageSent { .. } => {}
+                ServerEvent::MessageReceived { .. } => {
+                    match message_context {
+                        PacketType::MsgFragment(_) => {}
+                        PacketType::Ack(_) => {}
+                        PacketType::Nack(_) => {}
+                        PacketType::FloodRequest(_) => {}
                         PacketType::FloodResponse(floodResponse) => {
                             // self.simulation_controller.update_topology(floodResponse);
                             self.topology_needs_update = true;
@@ -175,31 +188,19 @@ impl eframe::App for MyApp{
         //Load icon textures for nodes in graph.
         if self.client_texture.is_none() {
             if let Ok(image) = load_image("images/client.png") {
-                self.client_texture = Some(ctx.load_texture(
-                    "client",
-                    image,
-                    Default::default()
-                ));
+                self.client_texture = Some(ctx.load_texture("client", image, Default::default()));
             }
         }
 
         if self.server_texture.is_none() {
             if let Ok(image) = load_image("images/server.png") {
-                self.server_texture = Some(ctx.load_texture(
-                    "server",
-                    image,
-                    Default::default()
-                ));
+                self.server_texture = Some(ctx.load_texture("server", image, Default::default()));
             }
         }
 
         if self.drone_texture.is_none() {
             if let Ok(image) = load_image("images/drone.png") {
-                self.drone_texture = Some(ctx.load_texture(
-                    "drone",
-                    image,
-                    Default::default()
-                ));
+                self.drone_texture = Some(ctx.load_texture("drone", image, Default::default()));
             }
         }
 
@@ -221,14 +222,17 @@ impl eframe::App for MyApp{
             }
         }
 
-        if self.show_confirmation_dialog{
+        if self.show_confirmation_dialog {
             let screen_rect = ctx.screen_rect();
             let center_x = (screen_rect.left() + screen_rect.right()) / 2.0;
             let center_y = (screen_rect.top() + screen_rect.bottom()) / 2.0;
 
             let window_size = egui::vec2(170.0, 150.0);
 
-            let top_left = egui::pos2(center_x - window_size.x / 2.0, center_y - window_size.y / 2.0);
+            let top_left = egui::pos2(
+                center_x - window_size.x / 2.0,
+                center_y - window_size.y / 2.0,
+            );
 
             egui::Window::new("Confirm Exit").fixed_size(window_size).fixed_pos(top_left).collapsible(false).resizable(false)
                 .show(ctx, |ui| {
@@ -291,15 +295,15 @@ impl eframe::App for MyApp{
                                 }
                             });
 
-                        egui::CentralPanel::default().show(ctx, |ui| {
-                            self.topology.draw(
-                                ui,
-                                self.client_texture.as_ref(),
-                                self.server_texture.as_ref(),
-                                self.drone_texture.as_ref()
-                            );
-                        });
-                    },
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        self.topology.draw(
+                            ui,
+                            self.client_texture.as_ref(),
+                            self.server_texture.as_ref(),
+                            self.drone_texture.as_ref(),
+                        );
+                    });
+                }
 
                     Screen::LogsScreen => {
                         egui::SidePanel::left("log_filters")
@@ -386,7 +390,6 @@ impl eframe::App for MyApp{
                         ui.horizontal(|ui| { ui.colored_label(egui::Color32::RED, " ● Client"); });
                         ui.horizontal(|ui| { ui.colored_label(egui::Color32::GREEN, " ● Server"); }); 
                     });
-                
             }
         }
     }

@@ -1,28 +1,20 @@
 #[cfg(feature = "debug")]
 use crate::debug;
 
-use crossbeam_channel::{after, select_biased, unbounded, Receiver, SendError, Sender};
-use std::collections::{HashMap, HashSet, VecDeque};
+use crate::client_server::network_core::{
+    ClientEvent, ClientServerCommand, NetworkNode, ServerType,
+};
+use crate::message::message::{
+    ChatRequest, ChatResponse, MediaResponse, Message, MessageContent, ServerTypeRequest,
+    ServerTypeResponse, TextRequest, TextResponse,
+};
+use crossbeam_channel::{select_biased, Receiver, Sender};
+use rand::random;
+use std::collections::{HashMap, HashSet};
 use std::thread;
-use std::thread::ThreadId;
 use wg_2024::controller::DroneCommand;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet;
-use wg_2024::packet::{
-    Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType,
-};
-use rand::{Rng, thread_rng, random};
-use serde::{Deserialize, Serialize};
-use crate::assembler::assembler::Assembler;
-use crate::client_server::network_core::{ClientEvent, ClientServerCommand, ContentType, NetworkNode, ServerType};
-use crate::message::message::{ChatRequest, ChatResponse, Message, MessageContent, ServerTypeRequest, ServerTypeResponse, TextRequest, TextResponse};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ServerTypeWithSessionId {
-    SessionId,
-    ContentServer(ContentType),
-    CommunicationServer,
-}
+use wg_2024::packet::{FloodRequest, NodeType, Packet, PacketType};
 
 pub struct Client {
     id: NodeId,
@@ -32,13 +24,11 @@ pub struct Client {
     controller_recv: Receiver<ClientServerCommand>,
     packet_send: HashMap<NodeId, Sender<Packet>>,
     packet_recv: Receiver<Packet>,
-    assemblers: Vec<Assembler>,
     topology_map: HashSet<(NodeId, Vec<NodeId>)>,
     server_type_map: HashMap<NodeId, Option<ServerType>>,
-    session_ids_for_request_server_type: HashSet<u64>,
     assembler_send: Sender<Packet>,
-    assembler_recv: Receiver<Packet>,
-    assembler_res_send: Sender<Vec<u8>>,
+    // assembler_recv: Receiver<Packet>,
+    // assembler_res_send: Sender<Vec<u8>>,
     assembler_res_recv: Receiver<Vec<u8>>,
 }
 
@@ -55,9 +45,9 @@ impl NetworkNode for Client {
     fn topology_map_mut(&mut self) -> &mut HashSet<(NodeId, Vec<NodeId>)> {
         &mut self.topology_map
     }
-    fn assemblers_mut(&mut self) -> &mut Vec<Assembler> {
-        &mut self.assemblers
-    }
+    // fn assembler_send(&self) -> &Sender<Packet> {
+    //     &self.assembler_send
+    // }
 
     fn run(&mut self) {
         debug!("Client: {:?} started and waiting for packets", self.id);
@@ -119,13 +109,11 @@ impl Client {
         controller_recv: Receiver<ClientServerCommand>,
         packet_send: HashMap<NodeId, Sender<Packet>>,
         packet_recv: Receiver<Packet>,
-        assemblers: Vec<Assembler>,
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
         server_type_map: HashMap<NodeId, Option<ServerType>>,
-        session_id_storage: HashSet<u64>,
         assembler_send: Sender<Packet>,
-        assembler_recv: Receiver<Packet>,
-        assembler_res_send: Sender<Vec<u8>>,
+        // assembler_recv: Receiver<Packet>,
+        // assembler_res_send: Sender<Vec<u8>>,
         assembler_res_recv: Receiver<Vec<u8>>,
     ) -> Self {
         Self {
@@ -136,13 +124,11 @@ impl Client {
             controller_recv,
             packet_recv,
             packet_send,
-            assemblers,
             topology_map,
             server_type_map,
-            session_ids_for_request_server_type: session_id_storage,
             assembler_send,
-            assembler_recv,
-            assembler_res_send,
+            // assembler_recv,
+            // assembler_res_send,
             assembler_res_recv,
         }
     }
@@ -179,15 +165,15 @@ impl Client {
                 match drone_cmd {
                     DroneCommand::SetPacketDropRate(_) => {}
                     DroneCommand::Crash => {}
-                    DroneCommand::AddSender(id, sender) => {}
-                    DroneCommand::RemoveSender(id) => {}
+                    DroneCommand::AddSender(_id, _sender) => {}
+                    DroneCommand::RemoveSender(_id) => {}
                 }
-            },
+            }
             ClientServerCommand::SendChatMessage(node_id, msg) => {
                 debug!("Client: {:?} received SendChatMessage command", self.id);
 
                 self.send_chat_message(node_id, msg);
-            },
+            }
             ClientServerCommand::StartFloodRequest => {
                 debug!("Client: {:?} received StartFloodRequest command", self.id);
 
@@ -229,7 +215,7 @@ impl Client {
                         .send(ClientServerCommand::RequestServerType)
                         .ok();
                 });
-            },
+            }
             ClientServerCommand::RequestServerType => {
                 debug!(
                     "Client: {:?} received RequestServerType command, servers found: {:?}",
@@ -248,44 +234,38 @@ impl Client {
                         }*/
                     }
                 }
-            },
+            }
             ClientServerCommand::RegistrationRequest(node_id) => {
                 debug!("Client: {:?} received RegistrationRequest command", node_id);
 
                 self.send_registration_request(node_id);
-            },
+            }
             ClientServerCommand::RequestFileList(node_id) => {
                 debug!(
                     "Client: {:?} received RequestFileList, Server id: {:?}",
                     self.id, node_id
                 );
-                self.send_text_request_TextList(node_id);
+                self.send_text_request_text_list(node_id);
             }
             ClientServerCommand::RequestFile(node_id, file_id) => {
                 debug!(
                     "Client: {:?} received RequestFile, Server id: {:?} file id: {:?}",
                     self.id, node_id, file_id
                 );
-                self.send_text_request_Text(node_id, file_id);
-            },
+                self.send_text_request_text(node_id, file_id);
+            }
         }
     }
-    fn handle_packet(&mut self, mut packet: Packet) {
+    fn handle_packet(&mut self, packet: Packet) {
         self.send_packet_received_to_sc(packet.clone());
+
         match &packet.pack_type {
             PacketType::Nack(_nack) => {
                 debug!("Client: {:?} received a Nack {:?}", self.id, _nack);
-
-                // If a request server type was dropped, a new one will be created
-                if self.session_ids_for_request_server_type.contains(&packet.session_id) {
-                    if let Some(server_id) = packet.routing_header.destination() {
-                        self.send_server_type_request(server_id);
-                    }
-                }
-            },
+            }
             PacketType::Ack(_ack) => {
                 debug!("Client: {:?} received a Ack {:?}", self.id, _ack);
-            },
+            }
             PacketType::MsgFragment(_fragment) => {
                 debug!(
                     "Client: {:?} received a MsgFragment {:?}",
@@ -308,14 +288,14 @@ impl Client {
                         ack_packet.routing_header.increase_hop_index();
                         self.try_send_packet(&ack_packet);
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         debug!(
                             "ERROR: Server {:?} failed to send fragment to assembler: {}",
-                            self.id, e
+                            self.id, _e
                         );
                     }
                 }
-            },
+            }
             PacketType::FloodRequest(_flood_request) => {
                 debug!(
                     "Client: {:?} received a FloodRequest {:?}",
@@ -336,7 +316,7 @@ impl Client {
 
                 // Try to send packet
                 self.try_send_packet(&flood_response_packet);
-            },
+            }
             PacketType::FloodResponse(_flood_response) => {
                 debug!(
                     "Client: {:?} received a FloodResponse {:?}",
@@ -350,9 +330,10 @@ impl Client {
                 if _node_type == NodeType::Server {
                     self.server_type_map.insert(node_id, None);
                 }
-            },
+            }
         }
     }
+
     fn handle_assembler_data(&mut self, data: Vec<u8>) {
         if let Ok(str_data) = String::from_utf8(data) {
             debug!(
@@ -373,10 +354,8 @@ impl Client {
                             "Client: {:?} received server type {:?} from {:?}",
                             self.id, server_type, message.source_id
                         );
-                        self.server_type_map.insert(message.source_id, Some(server_type.clone()));
-
-                        // remove the session id from the session_ids
-                        self.session_ids_for_request_server_type.remove(&message.session_id);
+                        self.server_type_map
+                            .insert(message.source_id, Some(server_type.clone()));
                     }
                 }
             }
@@ -388,13 +367,13 @@ impl Client {
                 }
 
                 match message.content {
-                    TextResponse::TextList(file_list) => {
-                        debug!("Client: {:?} received TextResponse::TextList from {:?} file list: {:?}", self.id, message.source_id, file_list);
-                    },
-                    TextResponse::Text(file) => {
+                    TextResponse::TextList(_file_list) => {
+                        debug!("Client: {:?} received TextResponse::TextList from {:?} file list: {:?}", self.id, message.source_id, _file_list);
+                    }
+                    TextResponse::Text(_file) => {
                         debug!(
                             "Client: {:?} received TextResponse::Text from {:?} file: {:?}",
-                            self.id, message.source_id, file
+                            self.id, message.source_id, _file
                         );
                     }
                     TextResponse::NotFound => {
@@ -422,7 +401,39 @@ impl Client {
                     _ => {}
                 }
             }
+            // try to parse as media response
+            else if let Ok(message) = serde_json::from_str::<Message<MediaResponse>>(&str_data) {
+                // Send to SC
+                if let Some(content) = MessageContent::from_content(message.content.clone()) {
+                    self.send_message_received_to_sc(content);
+                }
 
+                match message.content {
+                    MediaResponse::MediaList(_media_list) => {
+                        debug!(
+                            "Client: {:?} received MediaList from {:?}: {:?}",
+                            self.id, message.source_id, _media_list
+                        );
+                    }
+                    MediaResponse::Media(_media) => {
+                        debug!(
+                            "Client: {:?} received Media from {:?}: {:?}",
+                            self.id, message.source_id, _media
+                        );
+                    }
+                    MediaResponse::NotFound => {
+                        debug!(
+                            "Client: {:?} received NotFound from {:?}",
+                            self.id, message.source_id
+                        );
+                    }
+                }
+            } else {
+                debug!(
+                    "Client: {:?} received unknown data: {:?}",
+                    self.id, str_data
+                );
+            }
         }
     }
 
@@ -434,14 +445,13 @@ impl Client {
             session_id,
             content: ServerTypeRequest::GetServerType,
         };
-        self.session_ids_for_request_server_type.insert(session_id);
         debug!(
             "Server: {:?} sending msg to client {:?}, msg: {:?}",
             self.id, server_id, message
         );
         self.send_message_in_fragments(server_id, session_id, message);
     }
-    fn send_text_request_TextList(&mut self, server_id: NodeId) {
+    fn send_text_request_text_list(&mut self, server_id: NodeId) {
         let session_id = random::<u64>();
         let message = Message {
             source_id: self.id,
@@ -454,7 +464,7 @@ impl Client {
         );
         self.send_message_in_fragments(server_id, session_id, message);
     }
-    fn send_text_request_Text(&mut self, server_id: NodeId, file_id: u64) {
+    fn send_text_request_text(&mut self, server_id: NodeId, file_id: u64) {
         let session_id = random::<u64>();
         let message = Message {
             source_id: self.id,
@@ -506,25 +516,19 @@ impl Client {
     }
 
     fn send_fragment_to_assembler(&mut self, packet: Packet) -> Result<(), String> {
-        for assembler in &mut self.assemblers {
-            if assembler.session_id == packet.session_id {
-                assembler
-                    .packet_send
-                    .send(packet)
-                    .map_err(|e| format!("Failed to send packet to assembler: {}", e))?;
-                return Ok(());
+        // send the packet to the assembler
+        match self.assembler_send.send(packet) {
+            Ok(_) => {
+                debug!("Client: {:?} sent packet to assembler", self.id);
+                Ok(())
+            }
+            Err(e) => {
+                debug!(
+                    "Client: {:?} failed to send packet to assembler: {}",
+                    self.id, e
+                );
+                Err(format!("Failed to send packet to assembler: {}", e))
             }
         }
-
-        // If no assembler found, create a new one
-        let assembler = Assembler::new(
-            packet.session_id,
-            self.assembler_send.clone(),
-            self.assembler_recv.clone(),
-            self.assembler_res_send.clone(),
-            self.assembler_res_recv.clone(),
-        );
-        self.assemblers.push(assembler);
-        Ok(())
     }
 }

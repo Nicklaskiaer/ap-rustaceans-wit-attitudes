@@ -35,7 +35,8 @@ pub enum MessageContent {
     WholeChatVecResponse(Chatroom),
     ChatRequest(ChatRequest),
     ChatResponse(ChatResponse),
-    //TODO: IMPORTANT, EDIT TEXT AND IMAGE RESPONSE TO NO HAVE THE BASE64 TEXT (SEND ONLY THE IMAGE ID)
+    MediaRequest(MediaRequest),
+    MediaResponse(MediaResponse),
 }
 
 impl MessageContent {
@@ -43,17 +44,29 @@ impl MessageContent {
     pub fn from_content<T: DroneSend>(content: T) -> Option<Self> {
         // Try type conversions for each supported message type
         if let Ok(content) = serde_json::to_value(&content)
-            .and_then(|v| serde_json::from_value::<ServerTypeRequest>(v)) {
+            .and_then(|v| serde_json::from_value::<ServerTypeRequest>(v))
+        {
             Some(MessageContent::ServerTypeRequest(content))
         } else if let Ok(content) = serde_json::to_value(&content)
-            .and_then(|v| serde_json::from_value::<ServerTypeResponse>(v)) {
+            .and_then(|v| serde_json::from_value::<ServerTypeResponse>(v))
+        {
             Some(MessageContent::ServerTypeResponse(content))
-        } else if let Ok(content) = serde_json::to_value(&content)
-            .and_then(|v| serde_json::from_value::<TextRequest>(v)) {
+        } else if let Ok(content) =
+            serde_json::to_value(&content).and_then(|v| serde_json::from_value::<TextRequest>(v))
+        {
             Some(MessageContent::TextRequest(content))
-        } else if let Ok(content) = serde_json::to_value(&content)
-            .and_then(|v| serde_json::from_value::<TextResponse>(v)) {
+        } else if let Ok(content) =
+            serde_json::to_value(&content).and_then(|v| serde_json::from_value::<TextResponse>(v))
+        {
             Some(MessageContent::TextResponse(content))
+        } else if let Ok(content) =
+            serde_json::to_value(&content).and_then(|v| serde_json::from_value::<MediaRequest>(v))
+        {
+            Some(MessageContent::MediaRequest(content))
+        } else if let Ok(content) =
+            serde_json::to_value(&content).and_then(|v| serde_json::from_value::<MediaResponse>(v))
+        {
+            Some(MessageContent::MediaResponse(content))
         } else {
             None
         }
@@ -113,10 +126,7 @@ impl Request for MediaRequest {
 pub enum ChatRequest {
     ClientList,
     Register(NodeId),
-    SendMessage {
-        from: NodeId,
-        message: String,
-    },
+    SendMessage { from: NodeId, message: String },
 }
 
 impl DroneSend for ChatRequest {
@@ -166,7 +176,8 @@ impl Response for TextResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MediaResponse {
     MediaList(Vec<u64>),
-    Media(Vec<u8>), // should we use some other type?
+    Media(Vec<u8>),
+    NotFound,
 }
 
 impl DroneSend for MediaResponse {
@@ -182,6 +193,7 @@ impl Response for MediaResponse {
         match self {
             MediaResponse::MediaList(_) => "MediaList".to_string(),
             MediaResponse::Media(_) => "Media".to_string(),
+            MediaResponse::NotFound => "NotFound".to_string(),
         }
     }
 }
