@@ -103,7 +103,7 @@ pub trait NetworkNode {
                 topology_map.insert((target_node_id, new_path));
                 debug!(
                     "Node {:?}, updated topology_map: {:?}",
-                    node_id, topology_map
+                    _node_id, topology_map
                 );
             }
         } else {
@@ -117,7 +117,7 @@ pub trait NetworkNode {
                     topology_map.insert((target_node_id, new_path));
                     debug!(
                         "Node {:?}, updated topology_map: {:?}",
-                        node_id, topology_map
+                        _node_id, topology_map
                     );
                 }
             }
@@ -130,20 +130,20 @@ pub trait NetworkNode {
         if let Some(sender) = packet_send.get(target_node_id) {
             match sender.send(packet.clone()) {
                 Ok(_) => {
-                    debug!("{:?} -> {:?}\nPacket: {:?}", id, target_node_id, packet);
+                    debug!("{:?} -> {:?}\nPacket: {:?}", _id, target_node_id, packet);
                     self.send_packet_sent_to_sc(packet.clone());
                 }
                 Err(_e) => {
                     debug!(
                         "ERROR, {:?} -> {:?}\nError: {:?}\nPacket: {:?}",
-                        id, target_node_id, _e, packet
+                        _id, target_node_id, _e, packet
                     );
                 }
             }
         } else {
             debug!(
                 "ERROR, {:?} -> {:?} but {:?} was not found\nPacket: {:?}",
-                id, target_node_id, target_node_id, packet
+                _id, target_node_id, target_node_id, packet
             );
         }
     }
@@ -168,7 +168,7 @@ pub trait NetworkNode {
         message: Message<M>,
     ) {
         let _id = self.id();
-        debug!("Node {:?} sending message to {:?}", id, target_node_id);
+        debug!("Node {:?} sending message to {:?}", _id, target_node_id);
 
         // Serialize the message
         let serialized = serde_json::to_string(&message).unwrap();
