@@ -38,14 +38,17 @@ impl Assembler {
                 recv(self.packet_recv) -> packet => {
                     debug!("Assembler received packet: {:?}", packet);
                     if let Ok(packet) = packet {
-                        self.handle_fragment(packet);
+                        self.handle_packet(packet);
+                    }
+                    else {
+                        debug!("ERROR: Assembler experienced an error while receiving packet");
                     }
                 }
             }
         }
     }
 
-    fn handle_fragment(&mut self, packet: Packet) {
+    fn handle_packet(&mut self, packet: Packet) {
         debug!("Assembler handling fragment: {:?}", fragment);
         let session_id = packet.session_id;
 
@@ -55,12 +58,12 @@ impl Assembler {
                     debug!("Received fragment with total_n_fragments == 0, ignoring");
                     return;
                 }
-                // If total_n_fragments is 1, we can directly send the data
+                // If total_n_fragments is 1, we can directly send back the data
                 if fragment.total_n_fragments == 1 {
                     match self.result_send.send(fragment.data.to_vec().clone()) {
                         Ok(_) => {
                             debug!(
-                                "Single fragment data sent successfully for session_id: {}",
+                                "Assembled data sent successfully for session_id: {}",
                                 session_id
                             );
                         }
@@ -84,12 +87,12 @@ impl Assembler {
                     assembly.data.extend(fragment.data.clone());
                     assembly.current_fragment_index += 1;
 
-                    if assembly.current_fragment_index == assembly.total_fragments - 1 {
+                    if assembly.current_fragment_index == assembly.total_fragments {
                         // All fragments received, process the data
                         match self.result_send.send(assembly.data.clone()) {
                             Ok(_) => {
                                 debug!(
-                                    "Data assembly for session_id: {} sent successfully",
+                                    "Assembled data for session_id: {} sent successfully",
                                     session_id
                                 );
                             }
@@ -100,10 +103,6 @@ impl Assembler {
                                 );
                             }
                         }
-                        debug!(
-                            "All fragments received for session_id: {} assembled data sent, data",
-                            session_id
-                        );
                     }
                 } else {
                     // No assembly in progress, create a new one
@@ -116,12 +115,12 @@ impl Assembler {
                     new_assembly.data.extend(fragment.data.clone());
 
                     // Check if this is the last fragment
-                    if new_assembly.current_fragment_index == new_assembly.total_fragments - 1 {
+                    if new_assembly.current_fragment_index == new_assembly.total_fragments {
                         // All fragments received, process the data
                         match self.result_send.send(new_assembly.data.clone()) {
                             Ok(_) => {
                                 debug!(
-                                    "Data assembly for session_id: {} sent successfully",
+                                    "Assembled data for session_id: {} sent successfully",
                                     session_id
                                 );
                             }
@@ -132,10 +131,6 @@ impl Assembler {
                                 );
                             }
                         }
-                        debug!(
-                            "All fragments received for session_id: {} assembled data sent, data",
-                            session_id
-                        );
                     }
 
                     self.assemblies.push(new_assembly);
@@ -144,7 +139,6 @@ impl Assembler {
             }
             _ => {
                 debug!("Received non-fragment packet: {:?}", packet);
-                // Handle other packet types if necessary
             }
         }
     }
