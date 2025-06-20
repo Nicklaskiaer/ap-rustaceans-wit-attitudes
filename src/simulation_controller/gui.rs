@@ -130,8 +130,8 @@ impl eframe::App for MyApp {
                                 ChatResponse::MessageSent => {}
                                 ChatResponse::ClientNotRegistered => {}
                                 ChatResponse::ClientRegistered(server_id) => {
-                                    // Insert the client in the registered_servers.
-                                    self.registered_servers.insert(*receiver, vec![*server_id]);
+                                    // Insert the client in the registered_servers
+                                    self.registered_servers.entry(*receiver).or_insert_with(Vec::new).push(*server_id);
                                 }
                             }
                         }
@@ -306,6 +306,21 @@ impl eframe::App for MyApp {
                                     if ui.button(drones).clicked() {
                                         self.open_popups.insert(drones.clone(), true);
                                     }
+                                }
+
+                                //TODO: remove
+                                ui.separator();
+                                ui.label("Other:");
+                                if ui.button("sc").clicked() {
+                                    debug!(
+                                        "drones: {:?}\nclients: {:?}\nservers: {:?}",
+                                        self.simulation_controller.get_drone_ids(),
+                                        self.simulation_controller.get_client_ids(),
+                                        self.simulation_controller.get_server_ids()
+                                    );
+                                }
+                                if ui.button("flood again").clicked() {
+                                    self.simulation_controller.start_flood_request_for_all();
                                 }
                             });
 

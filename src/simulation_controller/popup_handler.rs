@@ -221,10 +221,6 @@ fn show_client_controls(
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     
-                    // debug!("bbbbbbbbbbbb {:?}, {:?}, {:?}", server_id_sel,
-                    //     app.registered_servers.clone(), 
-                    //     app.registered_servers.clone().get(&server_id_sel)
-                    // );
                     let mut display_message = String::from("You are not registered to the server!");
                     if let Some(servers) = app.registered_servers.get(&node_id) {
                         if servers.contains(&server_id_sel) {

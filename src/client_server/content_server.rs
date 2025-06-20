@@ -266,7 +266,7 @@ impl ContentServer {
                     "Server: {:?} received a FloodResponse {:?}",
                     self.id, _flood_response
                 );
-                self.update_topology_with_flood_response(_flood_response);
+                self.update_topology_with_flood_response(_flood_response, false);
             }
         }
     }
@@ -344,7 +344,6 @@ impl ContentServer {
 
     fn send_server_type_response(&mut self, client_id: NodeId, session_id: u64) {
         // Create response message with Communication server type
-        let session_id = random::<u64>();
         let message = Message {
             source_id: self.id,
             session_id,
