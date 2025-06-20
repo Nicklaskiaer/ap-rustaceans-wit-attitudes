@@ -8,7 +8,6 @@ use crate::message::message::*;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::random;
 use std::collections::{HashMap, HashSet};
-use std::thread;
 use wg_2024::controller::DroneCommand;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, NodeType, Packet, PacketType};
@@ -22,8 +21,8 @@ pub struct ContentServer {
     packet_send: HashMap<NodeId, Sender<Packet>>,
     packet_recv: Receiver<Packet>,
     assembler_send: Sender<Packet>,
-    assembler_recv: Receiver<Packet>,
-    assembler_res_send: Sender<Vec<u8>>,
+    // assembler_recv: Receiver<Packet>,
+    // assembler_res_send: Sender<Vec<u8>>,
     assembler_res_recv: Receiver<Vec<u8>>,
     content_type: ContentType,
     files: Vec<u64>,
@@ -42,9 +41,9 @@ impl NetworkNode for ContentServer {
     fn topology_map_mut(&mut self) -> &mut HashSet<(NodeId, Vec<NodeId>)> {
         &mut self.topology_map
     }
-    fn assembler_send(&self) -> &Sender<Packet> {
-        &self.assembler_send
-    }
+    // fn assembler_send(&self) -> &Sender<Packet> {
+    //     &self.assembler_send
+    // }
 
     fn run(&mut self) {
         debug!(
@@ -107,8 +106,8 @@ impl ContentServer {
         packet_recv: Receiver<Packet>,
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
         assembler_send: Sender<Packet>,
-        assembler_recv: Receiver<Packet>,
-        assembler_res_send: Sender<Vec<u8>>,
+        // assembler_recv: Receiver<Packet>,
+        // assembler_res_send: Sender<Vec<u8>>,
         assembler_res_recv: Receiver<Vec<u8>>,
         content_type: ContentType,
         files: Vec<u64>,
@@ -122,8 +121,8 @@ impl ContentServer {
             packet_send,
             topology_map,
             assembler_send,
-            assembler_recv,
-            assembler_res_send,
+            // assembler_recv,
+            // assembler_res_send,
             assembler_res_recv,
             content_type,
             files,
@@ -137,14 +136,14 @@ impl ContentServer {
                 match drone_cmd {
                     DroneCommand::SetPacketDropRate(_) => {}
                     DroneCommand::Crash => {}
-                    DroneCommand::AddSender(id, sender) => {}
-                    DroneCommand::RemoveSender(id) => {}
+                    DroneCommand::AddSender(_id, _sender) => {}
+                    DroneCommand::RemoveSender(_id) => {}
                 }
             }
-            ClientServerCommand::SendChatMessage(node_id, msg) => {
+            ClientServerCommand::SendChatMessage(_node_id, _msg) => {
                 debug!(
                     "Server: {:?} received SendChatMessage command for node {:?}: {:?}",
-                    self.id, node_id, msg
+                    self.id, _node_id, _msg
                 );
             }
             ClientServerCommand::StartFloodRequest => {
@@ -187,10 +186,10 @@ impl ContentServer {
             }
         }
     }
-    fn handle_packet(&mut self, mut packet: Packet) {
+    fn handle_packet(&mut self, packet: Packet) {
         match &packet.pack_type {
-            PacketType::Nack(_Nack) => {
-                debug!("Server: {:?} received a FloodResponse {:?}", self.id, _Nack);
+            PacketType::Nack(_nack) => {
+                debug!("Server: {:?} received a FloodResponse {:?}", self.id, _nack);
             }
             PacketType::Ack(_ack) => {
                 debug!("Server: {:?} received a Ack {:?}", self.id, _ack);
@@ -217,10 +216,10 @@ impl ContentServer {
                         ack_packet.routing_header.increase_hop_index();
                         self.try_send_packet(&ack_packet);
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         debug!(
                             "ERROR: Server {:?} failed to send fragment to assembler: {}",
-                            self.id, e
+                            self.id, _e
                         );
                     }
                 }
@@ -292,14 +291,14 @@ impl ContentServer {
                             "Server: {:?} received TextRequest::TextList from {:?}",
                             self.id, message.source_id
                         );
-                        self.send_text_response_TextList(message.source_id);
+                        self.send_text_response_text_list(message.source_id);
                     }
                     TextRequest::Text(file_id) => {
                         debug!(
                             "Server: {:?} received TextRequest::Text from {:?} file id: {:?}",
                             self.id, message.source_id, file_id
                         );
-                        self.send_text_response_Text(message.source_id, file_id);
+                        self.send_text_response_text(message.source_id, file_id);
                     }
                 }
             } else if let Ok(message) = serde_json::from_str::<Message<MediaRequest>>(&str_data) {
@@ -325,7 +324,7 @@ impl ContentServer {
         }
     }
 
-    fn send_server_type_response(&mut self, client_id: NodeId, session_id: u64) {
+    fn send_server_type_response(&mut self, client_id: NodeId, _session_id: u64) {
         // Create response message with Communication server type
         let session_id = random::<u64>();
         let message = Message {
@@ -341,7 +340,7 @@ impl ContentServer {
         );
         self.send_message_in_fragments(client_id, session_id, message);
     }
-    fn send_text_response_TextList(&mut self, client_id: NodeId) {
+    fn send_text_response_text_list(&mut self, client_id: NodeId) {
         let session_id = random::<u64>();
         let message = Message {
             source_id: self.id,
@@ -354,7 +353,7 @@ impl ContentServer {
         );
         self.send_message_in_fragments(client_id, session_id, message);
     }
-    fn send_text_response_Text(&mut self, client_id: NodeId, file_id: u64) {
+    fn send_text_response_text(&mut self, client_id: NodeId, file_id: u64) {
         if self.files.contains(&file_id) {
             // Try to read file content
             let file_path = format!("server_content/text_files/{}", file_id);
@@ -372,10 +371,10 @@ impl ContentServer {
                     );
                     self.send_message_in_fragments(client_id, session_id, message);
                 }
-                Err(e) => {
+                Err(_e) => {
                     debug!(
                         "Server: {:?} failed to read file {:?}: {}",
-                        self.id, file_id, e
+                        self.id, file_id, _e
                     );
                     let session_id = random::<u64>();
                     let message = Message {
@@ -455,10 +454,10 @@ impl ContentServer {
                 session_id,
                 content: MediaResponse::Media(
                     std::fs::read(format!("server_content/media_files/{}.jpg", file_nr))
-                        .unwrap_or_else(|e| {
+                        .unwrap_or_else(|_e| {
                             debug!(
                                 "Server: {:?} failed to read media file {:?}: {}",
-                                self.id, file_nr, e
+                                self.id, file_nr, _e
                             );
                             vec![]
                         }),

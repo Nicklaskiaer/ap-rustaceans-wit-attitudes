@@ -6,18 +6,20 @@ use crate::simulation_controller::logs_handler;
 use crate::simulation_controller::popup_handler;
 use crate::simulation_controller::simulation_controller::SimulationController;
 
-use crate::client_server::network_core::{ClientEvent, ClientServerCommand, ServerEvent, ServerType};
+use crate::client_server::network_core::{
+    ClientEvent, ClientServerCommand, ServerEvent, ServerType,
+};
 use crossbeam_channel::Sender;
 use eframe::egui;
 use std::collections::HashMap;
-use wg_2024::packet::{Packet, PacketType};
+use wg_2024::packet::PacketType;
 
 pub struct MyApp {
     pub(crate) simulation_controller: SimulationController,
-    current_screen: Screen, //Network diagram or Logs Page screen.
+    current_screen: Screen,             //Network diagram or Logs Page screen.
     pub(crate) logs_vec: Vec<LogEntry>, //Vector of logs shown in the Logs page
     show_confirmation_dialog: bool, //Confirmation dialog box when clicking "X" button of the window.
-    allowed_to_close: bool, //Confirm closing the program window.
+    allowed_to_close: bool,         //Confirm closing the program window.
     pub(crate) open_popups: HashMap<String, bool>, //Hashmap of popup windows for clients and drones.
     pub(crate) slider_temp_pdrs: HashMap<NodeId, f32>, //Hashmap of displayed PDR's of drones.
     pub(crate) drone_text_inputs: HashMap<NodeId, String>, //Hashmap of inputs for drones (add/rem sender id).
@@ -37,7 +39,8 @@ pub struct NetworkTopology {
     pub connections: Vec<(usize, usize)>, //Connections (lines) between nodes.
 }
 
-fn load_image(path: &str) -> Result<egui::ColorImage, image::ImageError> {  //Function to load Icons of clients, server and drones.
+fn load_image(path: &str) -> Result<egui::ColorImage, image::ImageError> {
+    //Function to load Icons of clients, server and drones.
     let image_bytes = std::fs::read(path)?;
     let image = image::load_from_memory(&image_bytes)?;
     let size = [image.width() as usize, image.height() as usize];
@@ -76,61 +79,90 @@ impl MyApp {
         popup_handler::show_popup(self, ctx, name);
     }
 
-    fn logs(&mut self, event: Event){
+    fn logs(&mut self, event: Event) {
         logs_handler::logs(self, event);
     }
 }
 
-impl eframe::App for MyApp{
+impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         //Poll for new events and log them.
-        while let Ok(event) = self.simulation_controller.get_drone_event_recv().try_recv(){
+        while let Ok(event) = self.simulation_controller.get_drone_event_recv().try_recv() {
             match event {
-                DroneEvent::PacketSent(_) => {println!("drone PacketSent")}
-                DroneEvent::PacketDropped(_) => {println!("drone PacketDropped")}
-                DroneEvent::ControllerShortcut(_) => {println!("drone ControllerShortcut")}
+                DroneEvent::PacketSent(_) => {
+                    println!("drone PacketSent")
+                }
+                DroneEvent::PacketDropped(_) => {
+                    println!("drone PacketDropped")
+                }
+                DroneEvent::ControllerShortcut(_) => {
+                    println!("drone ControllerShortcut")
+                }
             }
             self.logs(Event::Drone(event));
         }
 
-        
-        while let Ok(event) = self.simulation_controller.get_client_event_recv().try_recv(){
+        while let Ok(event) = self
+            .simulation_controller
+            .get_client_event_recv()
+            .try_recv()
+        {
             match &event {
-                ClientEvent::PacketSent(_) => {println!("client PacketSent")},
+                ClientEvent::PacketSent(_) => {
+                    println!("client PacketSent")
+                }
                 ClientEvent::PacketReceived(p) => {
                     match &p.pack_type {
                         PacketType::MsgFragment(_) => {}
                         PacketType::Ack(_) => {}
                         PacketType::Nack(_) => {}
                         PacketType::FloodRequest(_) => {}
-                        PacketType::FloodResponse(floodResponse) => {
-                            // self.simulation_controller.update_topology(floodResponse);
+                        PacketType::FloodResponse(_flood_response) => {
+                            // self.simulation_controller.update_topology(flood_esponse);
                             self.topology_needs_update = true;
                         }
                     }
-                },
-                ClientEvent::MessageSent { target: a, content: b } => {println!("client MessageSent")},
-                ClientEvent::MessageReceived{..} => {println!("client MessageReceived")},
+                }
+                ClientEvent::MessageSent {
+                    target: _a,
+                    content: _b,
+                } => {
+                    println!("client MessageSent")
+                }
+                ClientEvent::MessageReceived { .. } => {
+                    println!("client MessageReceived")
+                }
             }
             self.logs(Event::Client(event));
         }
 
-        while let Ok(event) = self.simulation_controller.get_server_event_recv().try_recv(){
+        while let Ok(event) = self
+            .simulation_controller
+            .get_server_event_recv()
+            .try_recv()
+        {
             match &event {
-                ServerEvent::PacketSent(_) => {println!("server PacketSent")},
-                ServerEvent::PacketReceived(p) => {                    
+                ServerEvent::PacketSent(_) => {
+                    println!("server PacketSent")
+                }
+                ServerEvent::PacketReceived(p) => {
                     match &p.pack_type {
-                    PacketType::MsgFragment(_) => {}
-                    PacketType::Ack(_) => {}
-                    PacketType::Nack(_) => {}
-                    PacketType::FloodRequest(_) => {}
-                    PacketType::FloodResponse(floodResponse) => {
-                        // self.simulation_controller.update_topology(floodResponse);
-                        self.topology_needs_update = true;
+                        PacketType::MsgFragment(_) => {}
+                        PacketType::Ack(_) => {}
+                        PacketType::Nack(_) => {}
+                        PacketType::FloodRequest(_) => {}
+                        PacketType::FloodResponse(_flood_esponse) => {
+                            // self.simulation_controller.update_topology(floodResponse);
+                            self.topology_needs_update = true;
+                        }
                     }
-                }},
-                ServerEvent::MessageSent{..} => {println!("server MessageSent")},
-                ServerEvent::MessageReceived{..} => {println!("server MessageReceived")},
+                }
+                ServerEvent::MessageSent { .. } => {
+                    println!("server MessageSent")
+                }
+                ServerEvent::MessageReceived { .. } => {
+                    println!("server MessageReceived")
+                }
             }
             self.logs(Event::Server(event));
         }
@@ -140,31 +172,19 @@ impl eframe::App for MyApp{
         //Load icon textures for nodes in graph.
         if self.client_texture.is_none() {
             if let Ok(image) = load_image("images/client.png") {
-                self.client_texture = Some(ctx.load_texture(
-                    "client",
-                    image,
-                    Default::default()
-                ));
+                self.client_texture = Some(ctx.load_texture("client", image, Default::default()));
             }
         }
 
         if self.server_texture.is_none() {
             if let Ok(image) = load_image("images/server.png") {
-                self.server_texture = Some(ctx.load_texture(
-                    "server",
-                    image,
-                    Default::default()
-                ));
+                self.server_texture = Some(ctx.load_texture("server", image, Default::default()));
             }
         }
 
         if self.drone_texture.is_none() {
             if let Ok(image) = load_image("images/drone.png") {
-                self.drone_texture = Some(ctx.load_texture(
-                    "drone",
-                    image,
-                    Default::default()
-                ));
+                self.drone_texture = Some(ctx.load_texture("drone", image, Default::default()));
             }
         }
 
@@ -186,23 +206,31 @@ impl eframe::App for MyApp{
             }
         }
 
-        if self.show_confirmation_dialog{
+        if self.show_confirmation_dialog {
             let screen_rect = ctx.screen_rect();
             let center_x = (screen_rect.left() + screen_rect.right()) / 2.0;
             let center_y = (screen_rect.top() + screen_rect.bottom()) / 2.0;
 
             let window_size = egui::vec2(170.0, 150.0);
 
-            let top_left = egui::pos2(center_x - window_size.x / 2.0, center_y - window_size.y / 2.0);
+            let top_left = egui::pos2(
+                center_x - window_size.x / 2.0,
+                center_y - window_size.y / 2.0,
+            );
 
-            egui::Window::new("Confirm Exit").fixed_size(window_size).fixed_pos(top_left).collapsible(false).resizable(false)
+            egui::Window::new("Confirm Exit")
+                .fixed_size(window_size)
+                .fixed_pos(top_left)
+                .collapsible(false)
+                .resizable(false)
                 .show(ctx, |ui| {
                     ui.vertical(|ui| {
                         ui.label("Are you sure you want to exit?");
                         ui.separator();
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                            let button = egui::Button::new("Exit").fill(egui::Color32::from_rgb(0, 0, 250)); // Red fill color
+                            let button =
+                                egui::Button::new("Exit").fill(egui::Color32::from_rgb(0, 0, 250)); // Red fill color
                             if ui.add(button).clicked() {
                                 self.show_confirmation_dialog = false;
                                 self.allowed_to_close = true;
@@ -215,7 +243,7 @@ impl eframe::App for MyApp{
                         });
                     });
                 });
-        }else{
+        } else {
             egui::TopBottomPanel::top("navigation_panel").show(ctx, |ui| {
                 ui.add_space(3.0);
 
@@ -232,89 +260,101 @@ impl eframe::App for MyApp{
                 ui.add_space(2.0)
             });
 
-            egui::CentralPanel::default().show(ctx, |ui| {
-                match self.current_screen {
-                    Screen::NetworkScreen => {
-                        egui::SidePanel::left("network_menu").min_width(140.0).max_width(140.0)
-                            .show(ctx, |ui| {
-                                ui.heading("Network Menu");
+            egui::CentralPanel::default().show(ctx, |_ui| match self.current_screen {
+                Screen::NetworkScreen => {
+                    egui::SidePanel::left("network_menu")
+                        .min_width(140.0)
+                        .max_width(140.0)
+                        .show(ctx, |ui| {
+                            ui.heading("Network Menu");
 
-                                ui.separator();
-                                ui.label("Clients:");
-                                for client in &self.simulation_controller.get_client_ids() {
-                                    if ui.button(client).clicked() {
-                                        self.open_popups.insert(client.clone(), true);
-                                    }
+                            ui.separator();
+                            ui.label("Clients:");
+                            for client in &self.simulation_controller.get_client_ids() {
+                                if ui.button(client).clicked() {
+                                    self.open_popups.insert(client.clone(), true);
                                 }
+                            }
 
-                                ui.separator();
-                                ui.label("Drones:");
-                                for drones in &self.simulation_controller.get_drone_ids() {
-                                    if ui.button(drones).clicked() {
-                                        self.open_popups.insert(drones.clone(), true);
-                                    }
+                            ui.separator();
+                            ui.label("Drones:");
+                            for drones in &self.simulation_controller.get_drone_ids() {
+                                if ui.button(drones).clicked() {
+                                    self.open_popups.insert(drones.clone(), true);
                                 }
-                            });
-
-                        egui::CentralPanel::default().show(ctx, |ui| {
-                            self.topology.draw(
-                                ui,
-                                self.client_texture.as_ref(),
-                                self.server_texture.as_ref(),
-                                self.drone_texture.as_ref()
-                            );
+                            }
                         });
-                    },
 
-                    Screen::LogsScreen => {
-                        egui::SidePanel::left("log_filters")
-                            .min_width(140.0)
-                            .max_width(140.0)
-                            .show(ctx, |ui| {
-                                ui.heading("Log Filters");
-                                ui.separator();
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        self.topology.draw(
+                            ui,
+                            self.client_texture.as_ref(),
+                            self.server_texture.as_ref(),
+                            self.drone_texture.as_ref(),
+                        );
+                    });
+                }
 
-                                ui.checkbox(&mut self.log_filters.show_events, "Show Events");
-                                ui.checkbox(&mut self.log_filters.show_commands, "Show Commands");
+                Screen::LogsScreen => {
+                    egui::SidePanel::left("log_filters")
+                        .min_width(140.0)
+                        .max_width(140.0)
+                        .show(ctx, |ui| {
+                            ui.heading("Log Filters");
+                            ui.separator();
 
-                                ui.separator();
+                            ui.checkbox(&mut self.log_filters.show_events, "Show Events");
+                            ui.checkbox(&mut self.log_filters.show_commands, "Show Commands");
 
-                                ui.checkbox(&mut self.log_filters.show_drones, "Show Drones");
-                                ui.checkbox(&mut self.log_filters.show_clients, "Show Clients");
-                                ui.checkbox(&mut self.log_filters.show_servers, "Show Servers");
+                            ui.separator();
 
-                                ui.separator();
+                            ui.checkbox(&mut self.log_filters.show_drones, "Show Drones");
+                            ui.checkbox(&mut self.log_filters.show_clients, "Show Clients");
+                            ui.checkbox(&mut self.log_filters.show_servers, "Show Servers");
 
-                                ui.label("Search:");
-                                ui.text_edit_singleline(&mut self.log_filters.search_text);
-                            });
+                            ui.separator();
 
-                        egui::CentralPanel::default().show(ctx, |ui| {
-                            egui::ScrollArea::vertical().show(ui, |ui| {
-                                ui.set_width(ui.available_width());
-                                for log in logs_handler::filtered_logs(self) {
-                                    let mut text_parts: Vec<egui::RichText> = Vec::new();
-
-                                    if log.message.starts_with("[EVENT]") {
-                                        text_parts.push(egui::RichText::new("[EVENT]").color(egui::Color32::GREEN));
-                                        text_parts.push(egui::RichText::new(&log.message[7..]).color(egui::Color32::WHITE));
-                                    } else if log.message.starts_with("[COMMAND]") {
-                                        text_parts.push(egui::RichText::new("[COMMAND]").color(egui::Color32::BLUE));
-                                        text_parts.push(egui::RichText::new(&log.message[9..]).color(egui::Color32::WHITE));
-                                    }
-
-                                    let formatted_log = egui::RichText::new(format!("[{}] ", log.timestamp)).color(egui::Color32::WHITE);
-
-                                    ui.horizontal(|ui| {
-                                        ui.label(formatted_log);
-                                        for part in text_parts {
-                                            ui.label(part);
-                                        }
-                                    });
-                                }
-                            });
+                            ui.label("Search:");
+                            ui.text_edit_singleline(&mut self.log_filters.search_text);
                         });
-                    }
+
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            for log in logs_handler::filtered_logs(self) {
+                                let mut text_parts: Vec<egui::RichText> = Vec::new();
+
+                                if log.message.starts_with("[EVENT]") {
+                                    text_parts.push(
+                                        egui::RichText::new("[EVENT]").color(egui::Color32::GREEN),
+                                    );
+                                    text_parts.push(
+                                        egui::RichText::new(&log.message[7..])
+                                            .color(egui::Color32::WHITE),
+                                    );
+                                } else if log.message.starts_with("[COMMAND]") {
+                                    text_parts.push(
+                                        egui::RichText::new("[COMMAND]").color(egui::Color32::BLUE),
+                                    );
+                                    text_parts.push(
+                                        egui::RichText::new(&log.message[9..])
+                                            .color(egui::Color32::WHITE),
+                                    );
+                                }
+
+                                let formatted_log =
+                                    egui::RichText::new(format!("[{}] ", log.timestamp))
+                                        .color(egui::Color32::WHITE);
+
+                                ui.horizontal(|ui| {
+                                    ui.label(formatted_log);
+                                    for part in text_parts {
+                                        ui.label(part);
+                                    }
+                                });
+                            }
+                        });
+                    });
                 }
             });
 
@@ -329,29 +369,44 @@ impl eframe::App for MyApp{
             for name in popups_to_show {
                 self.show_popup(ctx, &name);
             }
-            
+
             if self.current_screen == Screen::NetworkScreen {
                 if self.current_screen == Screen::NetworkScreen && self.topology_needs_update {
                     self.topology.update_topology(
-                        &self.simulation_controller.get_drones().iter()
-                            .map(|(id, (sender, neighbors, _))| (*id, (sender.clone(), neighbors.clone())))
+                        &self
+                            .simulation_controller
+                            .get_drones()
+                            .iter()
+                            .map(|(id, (sender, neighbors, _))| {
+                                (*id, (sender.clone(), neighbors.clone()))
+                            })
                             .collect::<HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)>>(),
                         &self.simulation_controller.get_clients(),
-                        &self.simulation_controller.get_servers()
+                        &self.simulation_controller.get_servers(),
                     );
                     self.topology_needs_update = false;
                 }
-            
+
                 let legend_width = 150.0;
                 let legend_height = 100.0;
-            
-                egui::Window::new("Legend").anchor(egui::Align2::RIGHT_TOP, [-10.0, 40.0]).collapsible(false).resizable(false).default_width(legend_width).default_height(legend_height)
+
+                egui::Window::new("Legend")
+                    .anchor(egui::Align2::RIGHT_TOP, [-10.0, 40.0])
+                    .collapsible(false)
+                    .resizable(false)
+                    .default_width(legend_width)
+                    .default_height(legend_height)
                     .show(ctx, |ui| {
-                        ui.horizontal(|ui| { ui.colored_label(egui::Color32::WHITE, " ● Drone"); });
-                        ui.horizontal(|ui| { ui.colored_label(egui::Color32::RED, " ● Client"); });
-                        ui.horizontal(|ui| { ui.colored_label(egui::Color32::GREEN, " ● Server"); }); 
+                        ui.horizontal(|ui| {
+                            ui.colored_label(egui::Color32::WHITE, " ● Drone");
+                        });
+                        ui.horizontal(|ui| {
+                            ui.colored_label(egui::Color32::RED, " ● Client");
+                        });
+                        ui.horizontal(|ui| {
+                            ui.colored_label(egui::Color32::GREEN, " ● Server");
+                        });
                     });
-                
             }
         }
     }
@@ -369,7 +424,7 @@ impl NetworkTopology {
         &mut self,
         drones: &HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)>,
         clients: &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)>,
-        servers: &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>, ServerType)>
+        servers: &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>, ServerType)>,
     ) {
         self.nodes.clear();
         self.connections.clear();
@@ -379,7 +434,7 @@ impl NetworkTopology {
         let radius = 100.0;
         let offset = 50.0;
         let client_offset_x = -20.0; // Move clients slightly left
-        let server_offset_x = 20.0;  // Move servers slightly right
+        let server_offset_x = 20.0; // Move servers slightly right
 
         let angle_increment = std::f32::consts::TAU / n as f32;
         let mut node_positions = HashMap::new();
@@ -468,8 +523,16 @@ impl NetworkTopology {
             if let Some(_pos1) = node_positions.get(node_id) {
                 for neighbor_id in neighbors {
                     if let Some(_pos2) = node_positions.get(neighbor_id) {
-                        let idx1 = self.nodes.iter().position(|n| n.id == node_id.to_string()).unwrap();
-                        let idx2 = self.nodes.iter().position(|n| n.id == neighbor_id.to_string()).unwrap();
+                        let idx1 = self
+                            .nodes
+                            .iter()
+                            .position(|n| n.id == node_id.to_string())
+                            .unwrap();
+                        let idx2 = self
+                            .nodes
+                            .iter()
+                            .position(|n| n.id == neighbor_id.to_string())
+                            .unwrap();
                         self.connections.push((idx1, idx2));
                     }
                 }
@@ -481,8 +544,16 @@ impl NetworkTopology {
             if let Some(_pos1) = node_positions.get(node_id) {
                 for neighbor_id in neighbors {
                     if let Some(_pos2) = node_positions.get(neighbor_id) {
-                        let idx1 = self.nodes.iter().position(|n| n.id == node_id.to_string()).unwrap();
-                        let idx2 = self.nodes.iter().position(|n| n.id == neighbor_id.to_string()).unwrap();
+                        let idx1 = self
+                            .nodes
+                            .iter()
+                            .position(|n| n.id == node_id.to_string())
+                            .unwrap();
+                        let idx2 = self
+                            .nodes
+                            .iter()
+                            .position(|n| n.id == neighbor_id.to_string())
+                            .unwrap();
                         self.connections.push((idx1, idx2));
                     }
                 }
@@ -525,7 +596,11 @@ impl NetworkTopology {
             let icon_rect = egui::Rect::from_center_size(center_pos, icon_size);
 
             // Enable click + drag
-            let interact = ui.interact(icon_rect, egui::Id::new(&node.id), egui::Sense::click_and_drag());
+            let interact = ui.interact(
+                icon_rect,
+                egui::Id::new(&node.id),
+                egui::Sense::click_and_drag(),
+            );
 
             // Handle dragging: update position based on mouse delta
             if interact.dragged() {
@@ -554,11 +629,12 @@ impl NetworkTopology {
             }
 
             // Label background + text
-            let label_rect = egui::Rect::from_center_size(
-                center_pos,
-                egui::Vec2::new(32.0, 18.0),
+            let label_rect = egui::Rect::from_center_size(center_pos, egui::Vec2::new(32.0, 18.0));
+            ui.painter().rect_filled(
+                label_rect,
+                4.0,
+                egui::Color32::from_rgba_unmultiplied(0, 0, 0, 180),
             );
-            ui.painter().rect_filled(label_rect, 4.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 180));
             ui.painter().text(
                 center_pos,
                 egui::Align2::CENTER_CENTER,
@@ -567,6 +643,5 @@ impl NetworkTopology {
                 egui::Color32::WHITE,
             );
         }
-
     }
 }

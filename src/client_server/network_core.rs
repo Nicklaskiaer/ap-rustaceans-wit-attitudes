@@ -7,17 +7,12 @@ use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodResponse, Fragment, NodeType, Packet};
 
 pub enum ClientServerCommand {
-    StartFloodRequest,        // used by: Client, SText, SMedia, SChat
+    StartFloodRequest,               // used by: Client, SText, SMedia, SChat
     RequestServerType, // used by: Client. client will auto call it to itself after few seconds after a StartFloodRequest
     RequestFileList(NodeId), // used by: Client. client ask the server for its list of files
     RequestFile(NodeId, u64), // used by: Client. client ask the server for a specific file
-
-    SendChatMessage(NodeId, String),
-    RegistrationRequest(NodeId),
-    // RequestServerType(NodeId), // client request the server type
-    // ResponseServerType(NodeId), // server send its server type
-    // RequestServerList(NodeId), // client request the server a list of all connected clients
-    // RequestFileList(NodeId),
+    SendChatMessage(NodeId, String), // used by: Client, Server. client send a chat message to a specific node
+    RegistrationRequest(NodeId), // used by: Client. client request to register itself to the server
 
     // Drone commands
     DroneCmd(DroneCommand),
@@ -77,7 +72,7 @@ pub trait NetworkNode {
     fn packet_send(&self) -> &HashMap<NodeId, Sender<Packet>>;
     fn topology_map(&self) -> &HashSet<(NodeId, Vec<NodeId>)>;
     fn topology_map_mut(&mut self) -> &mut HashSet<(NodeId, Vec<NodeId>)>;
-    fn assembler_send(&self) -> &Sender<Packet>;
+    // fn assembler_send(&self) -> &Sender<Packet>;
 
     // common methods to implement
     fn run(&mut self);
@@ -88,7 +83,7 @@ pub trait NetworkNode {
 
     // common methods with default implementations
     fn update_topology_with_flood_response(&mut self, flood_response: &FloodResponse) {
-        let node_id = self.id();
+        let _node_id = self.id();
         let topology_map = self.topology_map_mut();
 
         // Extract path from path trace
@@ -129,7 +124,7 @@ pub trait NetworkNode {
         }
     }
     fn try_send_packet_with_target_id(&mut self, target_node_id: &NodeId, packet: &Packet) {
-        let id = self.id();
+        let _id = self.id();
         let packet_send = self.packet_send();
 
         if let Some(sender) = packet_send.get(target_node_id) {
@@ -138,10 +133,10 @@ pub trait NetworkNode {
                     debug!("{:?} -> {:?}\nPacket: {:?}", id, target_node_id, packet);
                     self.send_packet_sent_to_sc(packet.clone());
                 }
-                Err(e) => {
+                Err(_e) => {
                     debug!(
                         "ERROR, {:?} -> {:?}\nError: {:?}\nPacket: {:?}",
-                        id, target_node_id, e, packet
+                        id, target_node_id, _e, packet
                     );
                 }
             }
@@ -172,7 +167,7 @@ pub trait NetworkNode {
         session_id: u64,
         message: Message<M>,
     ) {
-        let id = self.id();
+        let _id = self.id();
         debug!("Node {:?} sending message to {:?}", id, target_node_id);
 
         // Serialize the message
@@ -215,29 +210,29 @@ pub trait NetworkNode {
                     self.send_message_sent_to_sc(content, target_node_id);
                 }
             }
-            Err(e) => {
+            Err(_e) => {
                 debug!(
                     "ERROR: Could not compute path to node {:?}: {}",
-                    target_node_id, e
+                    target_node_id, _e
                 );
             }
         }
     }
 
-    fn send_fragment_to_assembler(&mut self, packet: Packet) -> Result<(), String> {
-        // send the packet to the assembler
-        match self.assembler_send().send(packet) {
-            Ok(_) => {
-                debug!("Client: {:?} sent packet to assembler", self.id);
-                Ok(())
-            }
-            Err(e) => {
-                debug!(
-                    "Client: {:?} failed to send packet to assembler: {}",
-                    self.id, e
-                );
-                Err(format!("Failed to send packet to assembler: {}", e))
-            }
-        }
-    }
+    // fn send_fragment_to_assembler(&mut self, packet: Packet) -> Result<(), String> {
+    //     // send the packet to the assembler
+    //     match self.assembler_send().send(packet) {
+    //         Ok(_) => {
+    //             debug!("Client: {:?} sent packet to assembler", self.id);
+    //             Ok(())
+    //         }
+    //         Err(e) => {
+    //             debug!(
+    //                 "Client: {:?} failed to send packet to assembler: {}",
+    //                 self.id, e
+    //             );
+    //             Err(format!("Failed to send packet to assembler: {}", e))
+    //         }
+    //     }
+    // }
 }
