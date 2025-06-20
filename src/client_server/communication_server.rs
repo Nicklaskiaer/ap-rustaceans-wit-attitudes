@@ -264,7 +264,7 @@ impl CommunicationServer {
                     "Server: {:?} received a FloodResponse {:?}",
                     self.id, _flood_response
                 );
-                self.update_topology_with_flood_response(_flood_response);
+                self.update_topology_with_flood_response(_flood_response, false);
             }
         }
     }
@@ -336,7 +336,7 @@ impl CommunicationServer {
                             };
 
                             self.messages_stored.push(chat_message);
-                            
+
                             // Sends to simulation controller the whole chatroom.
                             self.send_message_received_to_sc(MessageContent::WholeChatVecResponse(Chatroom{
                                 server_id: self.id,
@@ -373,9 +373,8 @@ impl CommunicationServer {
         }
     }
 
-    fn send_server_type_response(&mut self, client_id: NodeId, _session_id: u64) {
+    fn send_server_type_response(&mut self, client_id: NodeId, session_id: u64) {
         // Create response message with Communication server type
-        let session_id = random::<u64>();
         let message = Message {
             source_id: self.id,
             session_id,

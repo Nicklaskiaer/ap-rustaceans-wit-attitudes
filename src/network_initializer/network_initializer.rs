@@ -13,8 +13,17 @@ use crate::simulation_controller::simulation_controller::{
 };
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use rand::seq::SliceRandom;
-use rand::thread_rng;
+use rand::{thread_rng, Rng};
 use rustaceans_wit_attitudes::RustaceansWitAttitudesDrone;
+use skylink::SkyLinkDrone;
+use bagel_bomber::BagelBomber;
+use TrustDrone::TrustDrone as TrsDrone;
+use rustastic_drone::RustasticDrone;
+use lockheedrustin_drone::LockheedRustin;
+use rf_drone::RustAndFurious;
+use LeDron_James::Drone as LeDron_James_Drone;
+use rolling_drone::RollingDrone;
+use rustafarian_drone::RustafarianDrone;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::{fs, thread};
@@ -59,7 +68,7 @@ pub fn main() {
     let (node_event_send_drone, node_event_recv_drone): (Sender<DroneEvent>, Receiver<DroneEvent>) =
         unbounded();
     let mut controller_drones = HashMap::new();
-    for drone in config.drone.into_iter() {
+    for (i, drone) in config.drone.into_iter().enumerate() {
         // controller
         let (controller_drone_send, controller_drone_recv): (
             Sender<DroneCommand>,
@@ -83,9 +92,9 @@ pub fn main() {
             .map(|id| (id, packet_channels[&id].0.clone()))
             .collect();
 
-        // spawn
-        thread::spawn(move || {
-            let mut drone = RustaceansWitAttitudesDrone::new(
+        // test
+        thread::spawn(move || { 
+            let mut drone =SkyLinkDrone::new(
                 drone.id,
                 node_event_send_drone,
                 controller_drone_recv,
@@ -93,9 +102,23 @@ pub fn main() {
                 packet_send,
                 drone.pdr,
             );
-
             drone.run();
         });
+
+        
+        
+        // spawn
+        // thread::spawn(move || {
+        //     if i < 10 {
+        //         let mut drone = create_drone(drone.id, node_event_send_drone, controller_drone_recv, packet_recv, packet_send, drone.pdr, i);
+        //         drone.run();
+        //     } else {
+        //         let mut rng = thread_rng();
+        //         let random_i = rng.gen_range(0..10);
+        //         let mut drone = create_drone(drone.id, node_event_send_drone, controller_drone_recv, packet_recv, packet_send, drone.pdr, random_i);
+        //         drone.run();
+        //     }
+        // });
     }
 
     // INITIALIZE CLIENTS
@@ -369,6 +392,101 @@ pub fn main() {
 
     simulation_controller_main(sc).expect("GUI panicked!");
 }
+
+fn create_drone(
+    id: NodeId,
+    node_event_send_drone: Sender<DroneEvent>,
+    controller_drone_recv: Receiver<DroneCommand>,
+    packet_recv: Receiver<Packet>,
+    packet_send: HashMap<NodeId, Sender<Packet>>,
+    pdr: f32,
+    i: usize
+) -> Box<dyn Drone> {
+    match i % 10 {
+        0 => Box::new(RustaceansWitAttitudesDrone::new(
+            id,
+            node_event_send_drone,
+            controller_drone_recv,
+            packet_recv,
+            packet_send,
+            pdr,
+        )),
+        1 => Box::new(SkyLinkDrone::new(
+            id,
+            node_event_send_drone,
+            controller_drone_recv,
+            packet_recv,
+            packet_send,
+            pdr,
+        )),
+        2 => Box::new(BagelBomber::new(
+            id,
+            node_event_send_drone,
+            controller_drone_recv,
+            packet_recv,
+            packet_send,
+            pdr,
+        )),
+        3 => Box::new(TrsDrone::new(
+            id,
+            node_event_send_drone,
+            controller_drone_recv,
+            packet_recv,
+            packet_send,
+            pdr,
+        )),
+        4 => Box::new(RustasticDrone::new(
+            id,
+            node_event_send_drone,
+            controller_drone_recv,
+            packet_recv,
+            packet_send,
+            pdr,
+        )),
+        5 => Box::new(LockheedRustin::new(
+            id,
+            node_event_send_drone,
+            controller_drone_recv,
+            packet_recv,
+            packet_send,
+            pdr,
+        )),
+        6 => Box::new(RustAndFurious::new(
+            id,
+            node_event_send_drone,
+            controller_drone_recv,
+            packet_recv,
+            packet_send,
+            pdr,
+        )),
+        7 => Box::new(LeDron_James_Drone::new(
+            id,
+            node_event_send_drone,
+            controller_drone_recv,
+            packet_recv,
+            packet_send,
+            pdr,
+        )),
+        8 => Box::new(RollingDrone::new(
+            id,
+            node_event_send_drone,
+            controller_drone_recv,
+            packet_recv,
+            packet_send,
+            pdr,
+        )),
+        9 => Box::new(RustafarianDrone::new(
+            id,
+            node_event_send_drone,
+            controller_drone_recv,
+            packet_recv,
+            packet_send,
+            pdr,
+        )),
+        _ => panic!("Unexpected drone number: {}", i),
+    }
+}
+
 
 fn parse_config(file: &str) -> Config {
     let file_str = fs::read_to_string(file).unwrap();

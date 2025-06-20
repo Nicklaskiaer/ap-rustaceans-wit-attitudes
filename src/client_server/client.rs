@@ -238,12 +238,6 @@ impl Client {
                 for server_id in self.server_type_map.keys().cloned().collect::<Vec<_>>() {
                     if let Some(None) = self.server_type_map.get(&server_id) {
                         self.send_server_type_request(server_id);
-                        
-                        // TODO: remove it
-                        // test 11->42
-                        // if self.id == 11 && server_id == 62 {
-                        //     self.send_server_type_request(server_id);
-                        // }
                     }
                 }
             },
@@ -352,11 +346,10 @@ impl Client {
                     "Client: {:?} received a FloodResponse {:?}",
                     self.id, _flood_response
                 );
-                self.update_topology_with_flood_response(_flood_response);
+                self.update_topology_with_flood_response(_flood_response, true);
 
                 // if it's a server add it to the server_type_map
                 let &(node_id, _node_type) = _flood_response.path_trace.last().unwrap();
-                // TODO: change None not after the flood but after that server is called for the first time
                 if _node_type == NodeType::Server {
                     self.server_type_map.insert(node_id, None);
                 }
@@ -387,9 +380,7 @@ impl Client {
                             self.server_type_map.insert(message.source_id, Some(server_type.clone()));
 
                             // remove the session id from the session_ids
-                            // TODO: Fix do not forget
                             let remvoed = self.session_ids_for_request_server_type.remove(&message.session_id);
-                            debug!("session_ids_for_request_server_type is present? {:?}", remvoed);
                         }
                     }
                 }

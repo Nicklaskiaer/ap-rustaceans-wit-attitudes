@@ -56,7 +56,7 @@ pub fn generic_fragment_forward<T: Drone + Send + 'static>() {
 
     // "Client" sends packet to d
     d_send.send(msg.clone()).unwrap();
-    msg.routing_header.hop_index = 2; //TODO: aaaaaaaaaaaaaa (2)
+    msg.routing_header.hop_index = 2;
 
     // d2 receives packet from d1
     assert_eq!(d2_recv.recv_timeout(TIMEOUT).unwrap(), msg);
