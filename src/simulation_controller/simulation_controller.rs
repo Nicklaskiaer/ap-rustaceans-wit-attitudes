@@ -75,16 +75,14 @@ impl SimulationController {
         if let Some((drone_sender, neighbors, _)) = self.drones.get(&drone_sender_id).cloned() {
             debug!("Crashing drone {} with {} neighbors...", drone_sender_id, neighbors.len());
 
-            // First, send RemoveSender commands to all neighbors
+            // send RemoveSender commands to all neighbors
             for &neighbor_id in &neighbors {
                 if let Some((neighbor_sender, neighbor_list, _)) = self.drones.get_mut(&neighbor_id) {
                     // Update neighbor's list
                     neighbor_list.retain(|&id| id != drone_sender_id);
 
                     // Send RemoveSender command
-                    neighbor_sender
-                        .send(DroneCommand::RemoveSender(drone_sender_id))
-                        .unwrap();
+                    neighbor_sender.send(DroneCommand::RemoveSender(drone_sender_id)).unwrap();
                 }
             }
 
@@ -96,6 +94,38 @@ impl SimulationController {
             self.start_flood_request_for_all();
         }
     }
+
+    // pub fn handle_crash(&mut self, drone_sender_id: NodeId, neighbors: Vec<NodeId>) {
+    //     let crashed_drone_sender = self
+    //         .drones
+    //         .get(&drone_sender_id)
+    //         .map(|(sender, _, _)| sender.clone());
+    // 
+    //     if let Some((_sender, _, _)) = self.drones.remove(&drone_sender_id) {
+    //         debug!("Removing {} from network...", drone_sender_id);
+    //     }
+    // 
+    //     for neighbor in neighbors {
+    //         if let Some((neighbor_drone_sender, neighbor_list, _)) = self.drones.get_mut(&neighbor)
+    //         {
+    //             // Remove the crashed drone from the neighbor's list
+    //             neighbor_list.retain(|&id| id != drone_sender_id);
+    // 
+    //             // Send remove command to the neighbor
+    //             neighbor_drone_sender
+    //                 .send(DroneCommand::RemoveSender(drone_sender_id))
+    //                 .unwrap();
+    //         }
+    //     }
+    // 
+    //     //Send the crash command after removing the drone
+    //     if let Some(sender) = crashed_drone_sender {
+    //         sender.send(DroneCommand::Crash).unwrap();
+    //     }
+    // 
+    //     // initialize another flooding
+    //     self.start_flood_request_for_all();
+    // }
 
     pub fn get_drone_ids(&self) -> Vec<String> {
         self.drones
