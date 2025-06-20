@@ -366,8 +366,7 @@ impl CommunicationServer {
         debug!("Server: {:?} sending msg to client {:?}, msg: {:?}", self.id, client_id, message);
         self.send_message_in_fragments(client_id, session_id, message);
     }
-
-    fn send_text_response(&mut self, client_id: NodeId, session_id: u64) {
+    
     fn send_text_response(&mut self, client_id: NodeId, _session_id: u64) {
         debug!("Server: {:?} is a chat server!", self.id);
 

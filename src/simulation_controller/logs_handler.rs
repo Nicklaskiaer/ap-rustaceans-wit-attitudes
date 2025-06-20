@@ -91,6 +91,12 @@ pub fn logs(app: &mut MyApp, event: Event) {
                     MessageContent::ChatResponse(_) => {
                         format!("[EVENT] ChatResponse sent by {:?} to {:?}.", from, to)
                     }
+                    MessageContent::MediaRequest(_) => {
+                        format!("[EVENT] MediaRequest sent by {:?} to {:?}.", from, to)
+                    }
+                    MessageContent::MediaResponse(_) => {
+                        format!("[EVENT] MediaResponse sent by {:?} to {:?}.", from, to)
+                    }
                 }
             }
             ClientEvent::MessageReceived {receiver, content} => {
@@ -115,6 +121,12 @@ pub fn logs(app: &mut MyApp, event: Event) {
                     }
                     MessageContent::ChatResponse(_) => {
                         format!("[EVENT] ChatResponse received by {:?}.", receiver)
+                    }
+                    MessageContent::MediaRequest(_) => {
+                        format!("[EVENT] MediaRequest received by {:?}.", receiver)
+                    }
+                    MessageContent::MediaResponse(_) => {
+                        format!("[EVENT] MediaResponse received by {:?}.", receiver)
                     }
                 }
             }
@@ -162,6 +174,12 @@ pub fn logs(app: &mut MyApp, event: Event) {
                     MessageContent::ChatResponse(_) => {
                         format!("[EVENT] ChatResponse sent by {:?} to {:?}.", from, to)
                     }
+                    MessageContent::MediaRequest(_) => {
+                        format!("[EVENT] MediaRequest sent by {:?} to {:?}.", from, to)
+                    }
+                    MessageContent::MediaResponse(_) => {
+                        format!("[EVENT] MediaResponse sent by {:?} to {:?}.", from, to)
+                    }
                 }
             }
             ServerEvent::MessageReceived {receiver, content} => {
@@ -186,6 +204,12 @@ pub fn logs(app: &mut MyApp, event: Event) {
                     }
                     MessageContent::ChatResponse(_) => {
                         format!("[EVENT] ChatResponse received by {:?}.", receiver)
+                    }
+                    MessageContent::MediaRequest(_) => {
+                        format!("[EVENT] MediaRequest received by {:?}.", receiver)
+                    }
+                    MessageContent::MediaResponse(_) => {
+                        format!("[EVENT] MediaResponse received by {:?}.", receiver)
                     }
                 }
             }

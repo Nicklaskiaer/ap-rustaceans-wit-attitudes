@@ -48,7 +48,7 @@ impl Assembler {
         }
     }
 
-    fn handle_fragment(&mut self, packet: Packet) {
+    fn handle_packet(&mut self, packet: Packet) {
         debug!("Assembler handling fragment: ");
 
         let session_id = packet.session_id;

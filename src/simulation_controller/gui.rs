@@ -135,6 +135,8 @@ impl eframe::App for MyApp {
                                 }
                             }
                         }
+                        MessageContent::MediaRequest(_) => {}
+                        MessageContent::MediaResponse(_) => {}
                     }
                 }
             }
@@ -155,18 +157,6 @@ impl eframe::App for MyApp {
                             self.topology_needs_update = true;
                         }
                     }},
-                ServerEvent::MessageSent { .. } => {}
-                ServerEvent::MessageReceived { .. } => {
-                    match message_context {
-                        PacketType::MsgFragment(_) => {}
-                        PacketType::Ack(_) => {}
-                        PacketType::Nack(_) => {}
-                        PacketType::FloodRequest(_) => {}
-                        PacketType::FloodResponse(floodResponse) => {
-                            // self.simulation_controller.update_topology(floodResponse);
-                            self.topology_needs_update = true;
-                        }
-                    }},
                 ServerEvent::MessageSent { .. } => {},
                 ServerEvent::MessageReceived {receiver, content: message_context} => {
                     match message_context {
@@ -179,6 +169,8 @@ impl eframe::App for MyApp {
                         }
                         MessageContent::ChatRequest(_) => {/*not used by server*/}
                         MessageContent::ChatResponse(_) => {/*not used by server*/}
+                        MessageContent::MediaRequest(_) => {}
+                        MessageContent::MediaResponse(_) => {}
                     }
                 }
             }
