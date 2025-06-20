@@ -221,16 +221,22 @@ fn show_client_controls(
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     
-                    if registered_servers.contains(&server_id_sel) {
-                        if let Some(message_list) = app.chatrooms_messages.get_mut(&server_id_sel) {
-                            for chat_message in message_list {
-                                let display_message: String = format!("{}: {}", chat_message.sender_id, chat_message.content);
-                                ui.label(display_message);
+                    // debug!("bbbbbbbbbbbb {:?}, {:?}, {:?}", server_id_sel,
+                    //     app.registered_servers.clone(), 
+                    //     app.registered_servers.clone().get(&server_id_sel)
+                    // );
+                    let mut display_message = String::from("You are not registered to the server!");
+                    if let Some(servers) = app.registered_servers.get(&node_id) {
+                        if servers.contains(&server_id_sel) {
+                            display_message = String::from("");
+                            if let Some(message_list) = app.chatrooms_messages.get_mut(&server_id_sel) {
+                                for chat_message in message_list {
+                                    ui.label(format!("{}: {}", chat_message.sender_id, chat_message.content));
+                                }
                             }
                         }
-                    } else {
-                        ui.label("You are not registered to the server!");
                     }
+                    ui.label(display_message);
                 });
 
             ui.separator();
