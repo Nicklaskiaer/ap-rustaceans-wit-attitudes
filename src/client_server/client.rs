@@ -1,8 +1,18 @@
-use std::any::Any;
 #[cfg(feature = "debug")]
 use crate::debug;
+use std::any::Any;
 
+use crate::assembler::assembler::Assembler;
+use crate::client_server::network_core::{
+    ClientEvent, ClientServerCommand, ContentType, NetworkNode, ServerType,
+};
+use crate::message::message::{
+    ChatRequest, ChatResponse, MediaRequest, MediaResponse, MediaResponseForMessageContent,
+    Message, MessageContent, ServerTypeRequest, ServerTypeResponse, TextRequest, TextResponse,
+};
 use crossbeam_channel::{after, select_biased, unbounded, Receiver, SendError, Sender};
+use rand::{random, thread_rng, Rng};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::thread;
 use std::thread::ThreadId;
@@ -12,11 +22,6 @@ use wg_2024::packet;
 use wg_2024::packet::{
     Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType,
 };
-use rand::{Rng, thread_rng, random};
-use serde::{Deserialize, Serialize};
-use crate::assembler::assembler::Assembler;
-use crate::client_server::network_core::{ClientEvent, ClientServerCommand, ContentType, NetworkNode, ServerType};
-use crate::message::message::{ChatRequest, ChatResponse, MediaResponse, Message, MessageContent, ServerTypeRequest, ServerTypeResponse, TextRequest, TextResponse};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerTypeWithSessionId {
@@ -99,8 +104,8 @@ impl NetworkNode for Client {
         self.controller_send
             .send(ClientEvent::MessageReceived {
                 receiver: self.id,
-                content: message
-                })
+                content: message,
+            })
             .expect("this is fine 🔥☕");
     }
 }
@@ -167,10 +172,10 @@ impl Client {
                 debug!("Client: {:?} received SendChatMessage command", self.id);
 
                 self.send_chat_message(node_id, msg);
-            },
+            }
             ClientServerCommand::StartFloodRequest => {
                 debug!("Client: {:?} received StartFloodRequest command", self.id);
-                
+
                 // clear the hashmap
                 self.topology_map.clear();
                 self.server_type_map.clear();
@@ -214,7 +219,7 @@ impl Client {
                         .send(ClientServerCommand::RequestServerType)
                         .ok();
                 });
-            },
+            }
             ClientServerCommand::RequestServerType => {
                 debug!(
                     "Client: {:?} received RequestServerType command, servers found: {:?}",
@@ -227,12 +232,12 @@ impl Client {
                         self.send_server_type_request(server_id);
                     }
                 }
-            },
+            }
             ClientServerCommand::RegistrationRequest(node_id) => {
                 debug!("Client: {:?} received RegistrationRequest command", node_id);
 
                 self.send_registration_request(node_id);
-            },
+            }
             ClientServerCommand::RequestFileList(node_id) => {
                 debug!(
                     "Client: {:?} received RequestFileList, Server id: {:?}",
@@ -247,6 +252,24 @@ impl Client {
                 );
                 self.send_text_request_text(node_id, file_id);
             }
+            ClientServerCommand::RequestImage(node_id, image_id) => {
+                debug!(
+                    "Client: {:?} received RequestImage, Server id: {:?} image id: {:?}",
+                    self.id, node_id, image_id
+                );
+                self.send_image_request(node_id, image_id);
+            }
+            ClientServerCommand::ImageResponse(_, _) => {
+                debug!("Client: {:?} received ImageResponse command", self.id);
+            }
+            ClientServerCommand::RequestImageList(node_id) => {
+                debug!(
+                    "Client: {:?} received RequestImageList command, Server id: {:?}",
+                    self.id, node_id
+                );
+                self.send_image_list_request(node_id);
+            }
+
             ClientServerCommand::TestCommand => {
                 debug!(
                     "\n\
@@ -255,7 +278,10 @@ impl Client {
                     \nserver_type_map: {:?}\
                     \nsession_ids_for_request_server_type: {:?}\
                     \n",
-                    self.id, self.topology_map, self.server_type_map, self.session_ids_for_request_server_type
+                    self.id,
+                    self.topology_map,
+                    self.server_type_map,
+                    self.session_ids_for_request_server_type
                 );
             }
             ClientServerCommand::ClientListRequest(node_id) => {
@@ -276,15 +302,18 @@ impl Client {
                 debug!("Client: {:?} received a Nack {:?}", self.id, _nack);
 
                 // If a request server type was dropped, a new one will be created
-                if self.session_ids_for_request_server_type.contains(&packet.session_id) {
+                if self
+                    .session_ids_for_request_server_type
+                    .contains(&packet.session_id)
+                {
                     if let Some(server_id) = packet.routing_header.destination() {
                         self.send_server_type_request(server_id);
                     }
                 }
-            },
+            }
             PacketType::Ack(_ack) => {
                 debug!("Client: {:?} received a Ack {:?}", self.id, _ack);
-            },
+            }
             PacketType::MsgFragment(_fragment) => {
                 debug!(
                     "Client: {:?} received a MsgFragment {:?}",
@@ -314,7 +343,7 @@ impl Client {
                         );
                     }
                 }
-            },
+            }
             PacketType::FloodRequest(_flood_request) => {
                 debug!(
                     "Client: {:?} received a FloodRequest {:?}",
@@ -335,7 +364,7 @@ impl Client {
 
                 // Try to send packet
                 self.try_send_packet(&flood_response_packet);
-            },
+            }
             PacketType::FloodResponse(_flood_response) => {
                 debug!(
                     "Client: {:?} received a FloodResponse {:?}",
@@ -348,7 +377,7 @@ impl Client {
                 if _node_type == NodeType::Server {
                     self.server_type_map.insert(node_id, None);
                 }
-            },
+            }
         }
     }
     fn handle_assembler_data(&mut self, data: Vec<u8>) {
@@ -360,7 +389,8 @@ impl Client {
 
             if let Some(str_data) = str_data_raw.split("\0").nth(0) {
                 // Try to parse as ServerTypeResponse
-                if let Ok(message) = serde_json::from_str::<Message<ServerTypeResponse>>(&str_data) {
+                if let Ok(message) = serde_json::from_str::<Message<ServerTypeResponse>>(&str_data)
+                {
                     // Send to SC
                     if let Some(content) = MessageContent::from_content(message.content.clone()) {
                         self.send_message_received_to_sc(content);
@@ -369,18 +399,22 @@ impl Client {
                     match &message.content {
                         ServerTypeResponse::ServerType(server_type) => {
                             debug!(
-                            "Client: {:?} received server type {:?} from {:?}",
-                            self.id, server_type, message.source_id
-                        );
-                            self.server_type_map.insert(message.source_id, Some(server_type.clone()));
+                                "Client: {:?} received server type {:?} from {:?}",
+                                self.id, server_type, message.source_id
+                            );
+                            self.server_type_map
+                                .insert(message.source_id, Some(server_type.clone()));
 
                             // remove the session id from the session_ids
-                            let remvoed = self.session_ids_for_request_server_type.remove(&message.session_id);
+                            let remvoed = self
+                                .session_ids_for_request_server_type
+                                .remove(&message.session_id);
                         }
                     }
                 }
                 // Try to parse as TextResponse
-                else if let Ok(message) = serde_json::from_str::<Message<TextResponse>>(&str_data) {
+                else if let Ok(message) = serde_json::from_str::<Message<TextResponse>>(&str_data)
+                {
                     // Send to SC
                     if let Some(content) = MessageContent::from_content(message.content.clone()) {
                         self.send_message_received_to_sc(content);
@@ -392,67 +426,82 @@ impl Client {
                         }
                         TextResponse::Text(_file) => {
                             debug!(
-                            "Client: {:?} received TextResponse::Text from {:?} file: {:?}",
-                            self.id, message.source_id, _file
-                        );
+                                "Client: {:?} received TextResponse::Text from {:?} file: {:?}",
+                                self.id, message.source_id, _file
+                            );
                         }
                         TextResponse::NotFound => {
                             debug!(
-                            "Client: {:?} received TextResponse::NotFound from {:?}",
-                            self.id, message.source_id
-                        );
+                                "Client: {:?} received TextResponse::NotFound from {:?}",
+                                self.id, message.source_id
+                            );
                         }
                     }
                 }
                 // Try to parse as ChatRequest
-                else if let Ok(message) = serde_json::from_str::<Message<ChatResponse>>(&str_data) {
+                else if let Ok(message) = serde_json::from_str::<Message<ChatResponse>>(&str_data)
+                {
                     match &message.content {
-                        ChatResponse::ClientNotRegistered=> {
+                        ChatResponse::ClientNotRegistered => {
                             debug!("Client: {:?} received a ClientNotRegistered", self.id);
-                            self.send_message_received_to_sc(MessageContent::ChatResponse(ChatResponse::ClientNotRegistered));
+                            self.send_message_received_to_sc(MessageContent::ChatResponse(
+                                ChatResponse::ClientNotRegistered,
+                            ));
                         }
                         ChatResponse::ClientRegistered(node_id) => {
                             debug!("Client: {:?} received a ClientRegistered", self.id);
-                            self.send_message_received_to_sc(MessageContent::ChatResponse(ChatResponse::ClientRegistered(*node_id)));
+                            self.send_message_received_to_sc(MessageContent::ChatResponse(
+                                ChatResponse::ClientRegistered(*node_id),
+                            ));
                         }
                         ChatResponse::ClientList(c) => {
                             debug!("Client: {:?} received a ClientList", self.id);
-                            self.send_message_received_to_sc(MessageContent::ChatResponse(ChatResponse::ClientList(c.clone())));
+                            self.send_message_received_to_sc(MessageContent::ChatResponse(
+                                ChatResponse::ClientList(c.clone()),
+                            ));
                         }
                         _ => {}
                     }
                 }
                 // try to parse as media response
-                else if let Ok(message) = serde_json::from_str::<Message<MediaResponse>>(&str_data) {
+                else if let Ok(message) =
+                    serde_json::from_str::<Message<MediaResponse>>(&str_data)
+                {
                     // Send to SC
                     if let Some(content) = MessageContent::from_content(message.content.clone()) {
                         self.send_message_received_to_sc(content);
                     }
 
                     match message.content {
-                        MediaResponse::MediaList(_media_list) => {
-                            debug!(
-                            "Client: {:?} received MediaList from {:?}: {:?}",
-                            self.id, message.source_id, _media_list
-                        );
+                        MediaResponse::MediaList(media_list) => {
+                            self.send_message_received_to_sc(MessageContent::MediaListWithServer(
+                                message.source_id,
+                                media_list.clone(),
+                            ));
                         }
-                        MediaResponse::Media(_media_id, _media) => {
+                        MediaResponse::Media(media_id, _media) => {
+                            self.send_message_received_to_sc(MessageContent::MediaResponse(
+                                MediaResponseForMessageContent::Media(media_id),
+                            ));
                             debug!(
-                            "Client: {:?} received full media from media id {:?}: {:?}",
-                            self.id, message.source_id, _media_id
-                        );
+                                "Client: {:?} received full media from media id {:?}: {:?}",
+                                self.id, message.source_id, media_id
+                            );
                         }
                         MediaResponse::NotFound => {
+                            self.send_message_received_to_sc(MessageContent::MediaResponse(
+                                MediaResponseForMessageContent::NotFound,
+                            ));
                             debug!(
-                            "Client: {:?} received NotFound from {:?}",
-                            self.id, message.source_id
-                        );
+                                "Client: {:?} received NotFound from {:?}",
+                                self.id, message.source_id
+                            );
                         }
                     }
                 } else {
                     debug!(
-                    "Client: {:?} received unknown data: {:?}",
-                    self.id, str_data
+                        "Client: {:?} received unknown data: {:?}",
+                        self.id, str_data
                     );
                 }
             }
@@ -501,6 +550,34 @@ impl Client {
         self.send_message_in_fragments(server_id, session_id, message);
     }
 
+    fn send_image_request(&mut self, server_id: NodeId, image_id: u64) {
+        let session_id = random::<u64>();
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: MediaRequest::Media(image_id),
+        };
+        debug!(
+            "Server: {:?} sending msg to client {:?}, msg: {:?}",
+            self.id, server_id, message
+        );
+        self.send_message_in_fragments(server_id, session_id, message);
+    }
+
+    fn send_image_list_request(&mut self, server_id: NodeId) {
+        let session_id = random::<u64>();
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: MediaRequest::MediaList,
+        };
+        debug!(
+            "Server: {:?} sending msg to client {:?}, msg: {:?}",
+            self.id, server_id, message
+        );
+        self.send_message_in_fragments(server_id, session_id, message);
+    }
+
     fn send_registration_request(&mut self, server_id: NodeId) {
         debug!(
             "Client: {:?} requesting registration to server {:?}",
@@ -517,7 +594,7 @@ impl Client {
 
         self.send_message_in_fragments(server_id, session_id, message);
     }
-    
+
     fn send_client_list_request(&mut self, server_id: NodeId) {
         debug!(
             "Client: {:?} requesting client list to server {:?}",

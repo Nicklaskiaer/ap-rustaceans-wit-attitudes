@@ -6,11 +6,14 @@ use crate::simulation_controller::logs_handler;
 use crate::simulation_controller::popup_handler;
 use crate::simulation_controller::simulation_controller::SimulationController;
 
-use crate::client_server::network_core::{ChatMessage, ClientEvent, ClientServerCommand, ServerEvent, ServerType};
+use crate::client_server::network_core::{
+    ChatMessage, ClientEvent, ClientServerCommand, ContentType, ServerEvent, ServerType,
+};
+use crate::message::message::{ChatResponse, MediaResponseForMessageContent, MessageContent};
 use crossbeam_channel::Sender;
 use eframe::egui;
+
 use std::collections::{HashMap, HashSet};
-use crate::message::message::{ChatResponse, MessageContent};
 use wg_2024::packet::{Packet, PacketType};
 
 pub struct MyApp {
@@ -34,6 +37,9 @@ pub struct MyApp {
     topology_needs_update: bool,
     pub(crate) chatrooms_messages: HashMap<NodeId, Vec<ChatMessage>>, // Store chatroom messages of every server to be displayed.
     pub(crate) registered_servers: HashMap<NodeId, Vec<NodeId>>, // Maps client ID to list of servers they're registered with
+    pub client_images: HashMap<NodeId, Vec<u64>>, // Maps client ID to list of the image IDs client has downloaded
+    pub client_image_id_inputs: HashMap<NodeId, u64>, // Maps client ID to input for requesting images
+    pub client_image_lists: HashMap<(NodeId, NodeId), Vec<u64>>, // Maps (client_id, server_id) to list of available images
     pub(crate) registered_clients: HashSet<NodeId>,
 }
 
@@ -78,6 +84,9 @@ impl MyApp {
             topology_needs_update: true,
             chatrooms_messages: HashMap::new(),
             registered_servers: Default::default(),
+            client_images: HashMap::new(),
+            client_image_id_inputs: HashMap::new(),
+            client_image_lists: HashMap::new(),
             registered_clients: HashSet::new(),
         }
     }
@@ -103,7 +112,11 @@ impl eframe::App for MyApp {
             self.logs(Event::Drone(event));
         }
 
-        while let Ok(event) = self.simulation_controller.get_client_event_recv().try_recv(){
+        while let Ok(event) = self
+            .simulation_controller
+            .get_client_event_recv()
+            .try_recv()
+        {
             match &event {
                 ClientEvent::PacketSent(_) => {}
                 ClientEvent::PacketReceived(p) => {
@@ -117,15 +130,18 @@ impl eframe::App for MyApp {
                             self.topology_needs_update = true;
                         }
                     }
-                },
-                ClientEvent::MessageSent { .. } => {},
-                ClientEvent::MessageReceived { receiver, content: message_context } => {
+                }
+                ClientEvent::MessageSent { .. } => {}
+                ClientEvent::MessageReceived {
+                    receiver,
+                    content: message_context,
+                } => {
                     match message_context {
                         MessageContent::ServerTypeRequest(_) => {}
                         MessageContent::ServerTypeResponse(_) => {}
                         MessageContent::TextRequest(_) => {}
                         MessageContent::TextResponse(_) => {}
-                        MessageContent::WholeChatVecResponse(_) => {/*not used by client*/}
+                        MessageContent::WholeChatVecResponse(_) => { /*not used by client*/ }
                         MessageContent::ChatRequest(_) => {}
                         MessageContent::ChatResponse(response_context) => {
                             match response_context {
@@ -141,19 +157,43 @@ impl eframe::App for MyApp {
                                 ChatResponse::ClientNotRegistered => {}
                                 ChatResponse::ClientRegistered(server_id) => {
                                     // Insert the client in the registered_servers
-                                    self.registered_servers.entry(*receiver).or_insert_with(Vec::new).push(*server_id);
+                                    self.registered_servers
+                                        .entry(*receiver)
+                                        .or_insert_with(Vec::new)
+                                        .push(*server_id);
                                 }
                             }
                         }
                         MessageContent::MediaRequest(_) => {}
-                        MessageContent::MediaResponse(_) => {}
+                        MessageContent::MediaResponse(media_response) => {
+                            match media_response {
+                                MediaResponseForMessageContent::Media(media_id) => {
+                                    self.client_images
+                                        .entry(*receiver)
+                                        .or_default()
+                                        .push(media_id.clone());
+                                }
+                                MediaResponseForMessageContent::MediaList(_) => {
+                                    // No-op, handled by MediaListWithServer
+                                }
+                                MediaResponseForMessageContent::NotFound => {}
+                            }
+                        }
+                        MessageContent::MediaListWithServer(server_id, media_list) => {
+                            self.client_image_lists
+                                .insert((*receiver, *server_id), media_list.clone());
+                        }
                     }
                 }
             }
             self.logs(Event::Client(event));
         }
 
-        while let Ok(event) = self.simulation_controller.get_server_event_recv().try_recv(){
+        while let Ok(event) = self
+            .simulation_controller
+            .get_server_event_recv()
+            .try_recv()
+        {
             match &event {
                 ServerEvent::PacketSent(_) => {}
                 ServerEvent::PacketReceived(p) => {
@@ -166,21 +206,29 @@ impl eframe::App for MyApp {
                             // self.simulation_controller.update_topology(floodResponse);
                             self.topology_needs_update = true;
                         }
-                    }},
-                ServerEvent::MessageSent { .. } => {},
-                ServerEvent::MessageReceived {receiver, content: message_context} => {
+                    }
+                }
+                ServerEvent::MessageSent { .. } => {}
+                ServerEvent::MessageReceived {
+                    receiver: _receiver,
+                    content: message_context,
+                } => {
                     match message_context {
                         MessageContent::ServerTypeRequest(_) => {}
                         MessageContent::ServerTypeResponse(_) => {}
                         MessageContent::TextRequest(_) => {}
                         MessageContent::TextResponse(_) => {}
                         MessageContent::WholeChatVecResponse(chatroom) => {
-                            self.chatrooms_messages.insert(chatroom.server_id.clone(), chatroom.chatroom_messages.clone());
+                            self.chatrooms_messages.insert(
+                                chatroom.server_id.clone(),
+                                chatroom.chatroom_messages.clone(),
+                            );
                         }
-                        MessageContent::ChatRequest(_) => {/*not used by server*/}
-                        MessageContent::ChatResponse(_) => {/*not used by server*/}
+                        MessageContent::ChatRequest(_) => { /*not used by server*/ }
+                        MessageContent::ChatResponse(_) => { /*not used by server*/ }
                         MessageContent::MediaRequest(_) => {}
                         MessageContent::MediaResponse(_) => {}
+                        MessageContent::MediaListWithServer(_, _) => {}
                     }
                 }
             }
@@ -236,14 +284,19 @@ impl eframe::App for MyApp {
                 center_y - window_size.y / 2.0,
             );
 
-            egui::Window::new("Confirm Exit").fixed_size(window_size).fixed_pos(top_left).collapsible(false).resizable(false)
+            egui::Window::new("Confirm Exit")
+                .fixed_size(window_size)
+                .fixed_pos(top_left)
+                .collapsible(false)
+                .resizable(false)
                 .show(ctx, |ui| {
                     ui.vertical(|ui| {
                         ui.label("Are you sure you want to exit?");
                         ui.separator();
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                            let button = egui::Button::new("Exit").fill(egui::Color32::from_rgb(0, 0, 250)); // Red fill color
+                            let button =
+                                egui::Button::new("Exit").fill(egui::Color32::from_rgb(0, 0, 250)); // Red fill color
                             if ui.add(button).clicked() {
                                 self.show_confirmation_dialog = false;
                                 self.allowed_to_close = true;
@@ -256,7 +309,7 @@ impl eframe::App for MyApp {
                         });
                     });
                 });
-        }else{
+        } else {
             egui::TopBottomPanel::top("navigation_panel").show(ctx, |ui| {
                 ui.add_space(3.0);
 
@@ -276,7 +329,9 @@ impl eframe::App for MyApp {
             egui::CentralPanel::default().show(ctx, |ui| {
                 match self.current_screen {
                     Screen::NetworkScreen => {
-                        egui::SidePanel::left("network_menu").min_width(140.0).max_width(140.0)
+                        egui::SidePanel::left("network_menu")
+                            .min_width(140.0)
+                            .max_width(140.0)
                             .show(ctx, |ui| {
                                 ui.heading("Network Menu");
 
@@ -288,9 +343,11 @@ impl eframe::App for MyApp {
 
                                         //TODO: remove
                                         // trigger test command
-                                        if let Some(node_id_str) = client.split_whitespace().nth(1) {
+                                        if let Some(node_id_str) = client.split_whitespace().nth(1)
+                                        {
                                             if let Ok(node_id) = node_id_str.parse::<NodeId>() {
-                                                self.simulation_controller.handle_test_command(node_id);
+                                                self.simulation_controller
+                                                    .handle_test_command(node_id);
                                             }
                                         }
                                     }
@@ -302,9 +359,11 @@ impl eframe::App for MyApp {
                                 for server in &self.simulation_controller.get_server_ids() {
                                     if ui.button(server).clicked() {
                                         // trigger test command
-                                        if let Some(node_id_str) = server.split_whitespace().nth(1) {
+                                        if let Some(node_id_str) = server.split_whitespace().nth(1)
+                                        {
                                             if let Ok(node_id) = node_id_str.parse::<NodeId>() {
-                                                self.simulation_controller.handle_test_command(node_id);
+                                                self.simulation_controller
+                                                    .handle_test_command(node_id);
                                             }
                                         }
                                     }
@@ -334,15 +393,15 @@ impl eframe::App for MyApp {
                                 }
                             });
 
-                    egui::CentralPanel::default().show(ctx, |ui| {
-                        self.topology.draw(
-                            ui,
-                            self.client_texture.as_ref(),
-                            self.server_texture.as_ref(),
-                            self.drone_texture.as_ref(),
-                        );
-                    });
-                }
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            self.topology.draw(
+                                ui,
+                                self.client_texture.as_ref(),
+                                self.server_texture.as_ref(),
+                                self.drone_texture.as_ref(),
+                            );
+                        });
+                    }
 
                     Screen::LogsScreen => {
                         egui::SidePanel::left("log_filters")
@@ -374,14 +433,28 @@ impl eframe::App for MyApp {
                                     let mut text_parts: Vec<egui::RichText> = Vec::new();
 
                                     if log.message.starts_with("[EVENT]") {
-                                        text_parts.push(egui::RichText::new("[EVENT]").color(egui::Color32::GREEN));
-                                        text_parts.push(egui::RichText::new(&log.message[7..]).color(egui::Color32::WHITE));
+                                        text_parts.push(
+                                            egui::RichText::new("[EVENT]")
+                                                .color(egui::Color32::GREEN),
+                                        );
+                                        text_parts.push(
+                                            egui::RichText::new(&log.message[7..])
+                                                .color(egui::Color32::WHITE),
+                                        );
                                     } else if log.message.starts_with("[COMMAND]") {
-                                        text_parts.push(egui::RichText::new("[COMMAND]").color(egui::Color32::BLUE));
-                                        text_parts.push(egui::RichText::new(&log.message[9..]).color(egui::Color32::WHITE));
+                                        text_parts.push(
+                                            egui::RichText::new("[COMMAND]")
+                                                .color(egui::Color32::BLUE),
+                                        );
+                                        text_parts.push(
+                                            egui::RichText::new(&log.message[9..])
+                                                .color(egui::Color32::WHITE),
+                                        );
                                     }
 
-                                    let formatted_log = egui::RichText::new(format!("[{}] ", log.timestamp)).color(egui::Color32::WHITE);
+                                    let formatted_log =
+                                        egui::RichText::new(format!("[{}] ", log.timestamp))
+                                            .color(egui::Color32::WHITE);
 
                                     ui.horizontal(|ui| {
                                         ui.label(formatted_log);
@@ -407,27 +480,43 @@ impl eframe::App for MyApp {
             for name in popups_to_show {
                 self.show_popup(ctx, &name);
             }
-            
+
             if self.current_screen == Screen::NetworkScreen {
                 if self.current_screen == Screen::NetworkScreen && self.topology_needs_update {
                     self.topology.update_topology(
-                        &self.simulation_controller.get_drones().iter()
-                            .map(|(id, (sender, neighbors, _))| (*id, (sender.clone(), neighbors.clone())))
+                        &self
+                            .simulation_controller
+                            .get_drones()
+                            .iter()
+                            .map(|(id, (sender, neighbors, _))| {
+                                (*id, (sender.clone(), neighbors.clone()))
+                            })
                             .collect::<HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)>>(),
                         &self.simulation_controller.get_clients(),
-                        &self.simulation_controller.get_servers()
+                        &self.simulation_controller.get_servers(),
                     );
                     self.topology_needs_update = false;
                 }
-            
+
                 let legend_width = 150.0;
                 let legend_height = 100.0;
-            
-                egui::Window::new("Legend").anchor(egui::Align2::RIGHT_TOP, [-10.0, 40.0]).collapsible(false).resizable(false).default_width(legend_width).default_height(legend_height)
+
+                egui::Window::new("Legend")
+                    .anchor(egui::Align2::RIGHT_TOP, [-10.0, 40.0])
+                    .collapsible(false)
+                    .resizable(false)
+                    .default_width(legend_width)
+                    .default_height(legend_height)
                     .show(ctx, |ui| {
-                        ui.horizontal(|ui| { ui.colored_label(egui::Color32::WHITE, " ● Drone"); });
-                        ui.horizontal(|ui| { ui.colored_label(egui::Color32::RED, " ● Client"); });
-                        ui.horizontal(|ui| { ui.colored_label(egui::Color32::GREEN, " ● Server"); }); 
+                        ui.horizontal(|ui| {
+                            ui.colored_label(egui::Color32::WHITE, " ● Drone");
+                        });
+                        ui.horizontal(|ui| {
+                            ui.colored_label(egui::Color32::RED, " ● Client");
+                        });
+                        ui.horizontal(|ui| {
+                            ui.colored_label(egui::Color32::GREEN, " ● Server");
+                        });
                     });
             }
         }
@@ -446,7 +535,7 @@ impl NetworkTopology {
         &mut self,
         drones: &HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>)>,
         clients: &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)>,
-        servers: &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>, ServerType)>
+        servers: &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>, ServerType)>,
     ) {
         // Keep track of existing node positions
         let mut existing_positions = HashMap::new();
@@ -457,7 +546,13 @@ impl NetworkTopology {
         self.nodes.clear();
         self.connections.clear();
 
-        let center = (400.0, 300.0);  // More centered position
+        let n = drones.len();
+        let center = (300.0, 300.0);
+        let radius = 100.0;
+        let offset = 50.0;
+        let client_offset_x = -20.0; // Move clients slightly left
+        let server_offset_x = 20.0; // Move servers slightly right
+        let center = (400.0, 300.0); // More centered position
         let drone_radius = 150.0;
         let client_radius = 250.0;
         let server_radius = 250.0;
@@ -492,7 +587,7 @@ impl NetworkTopology {
         // Position clients in an outer ring (left side)
         let client_count = clients.len();
         let client_angle_step = if client_count > 0 {
-            std::f32::consts::PI / (client_count as f32 + 1.0)  // Distribute across 180 degrees
+            std::f32::consts::PI / (client_count as f32 + 1.0) // Distribute across 180 degrees
         } else {
             0.0
         };
@@ -528,7 +623,7 @@ impl NetworkTopology {
         // Position servers in an outer ring (right side)
         let server_count = servers.len();
         let server_angle_step = if server_count > 0 {
-            std::f32::consts::PI / (server_count as f32 + 1.0)  // Distribute across 180 degrees
+            std::f32::consts::PI / (server_count as f32 + 1.0) // Distribute across 180 degrees
         } else {
             0.0
         };
@@ -568,7 +663,9 @@ impl NetworkTopology {
                     if let Some(_pos2) = node_positions.get(neighbor_id) {
                         if let (Some(idx1), Some(idx2)) = (
                             self.nodes.iter().position(|n| n.id == node_id.to_string()),
-                            self.nodes.iter().position(|n| n.id == neighbor_id.to_string())
+                            self.nodes
+                                .iter()
+                                .position(|n| n.id == neighbor_id.to_string()),
                         ) {
                             self.connections.push((idx1, idx2));
                         }
@@ -584,7 +681,9 @@ impl NetworkTopology {
                     if let Some(_pos2) = node_positions.get(neighbor_id) {
                         if let (Some(idx1), Some(idx2)) = (
                             self.nodes.iter().position(|n| n.id == node_id.to_string()),
-                            self.nodes.iter().position(|n| n.id == neighbor_id.to_string())
+                            self.nodes
+                                .iter()
+                                .position(|n| n.id == neighbor_id.to_string()),
                         ) {
                             self.connections.push((idx1, idx2));
                         }
@@ -629,7 +728,11 @@ impl NetworkTopology {
             let icon_rect = egui::Rect::from_center_size(center_pos, icon_size);
 
             // Enable click + drag
-            let interact = ui.interact(icon_rect, egui::Id::new(&node.id), egui::Sense::click_and_drag());
+            let interact = ui.interact(
+                icon_rect,
+                egui::Id::new(&node.id),
+                egui::Sense::click_and_drag(),
+            );
 
             // Handle dragging: update position based on mouse delta
             if interact.dragged() {
@@ -658,11 +761,12 @@ impl NetworkTopology {
             }
 
             // Label background + text
-            let label_rect = egui::Rect::from_center_size(
-                center_pos,
-                egui::Vec2::new(32.0, 18.0),
+            let label_rect = egui::Rect::from_center_size(center_pos, egui::Vec2::new(32.0, 18.0));
+            ui.painter().rect_filled(
+                label_rect,
+                4.0,
+                egui::Color32::from_rgba_unmultiplied(0, 0, 0, 180),
             );
-            ui.painter().rect_filled(label_rect, 4.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 180));
             ui.painter().text(
                 center_pos,
                 egui::Align2::CENTER_CENTER,
@@ -671,6 +775,5 @@ impl NetworkTopology {
                 egui::Color32::WHITE,
             );
         }
-
     }
 }

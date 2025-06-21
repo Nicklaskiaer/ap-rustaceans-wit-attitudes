@@ -1,8 +1,10 @@
-use crate::message::message::{DroneSend, MediaResponse, MediaResponseForMessageContent, Message, MessageContent};
+use crate::message::message::{
+    DroneSend, MediaResponse, MediaResponseForMessageContent, Message, MessageContent,
+};
+use chrono::format::parse;
 use crossbeam_channel::Sender;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use chrono::format::parse;
 use wg_2024::controller::DroneCommand;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodResponse, Fragment, NodeType, Packet};
@@ -15,6 +17,11 @@ pub enum ClientServerCommand {
     SendChatMessage(NodeId, String), // used by: Client, Server. client send a chat message to a specific node
     ClientListRequest(NodeId),
     RegistrationRequest(NodeId), // used by: Client. client request to register itself to the server
+
+    RequestImageList(NodeId), // used by: Client. client ask the server for its list of images
+    RequestImage(NodeId, u64), // used by: Client. client ask the server for a specific image
+    ImageResponse(NodeId, u64), // used by: Server
+
     RemoveDrone(NodeId),
     TestCommand, //TODO: remove it
 }
@@ -211,17 +218,17 @@ pub trait NetworkNode {
                 }
                 
                 // Send message sent notification
-                if let Ok(content) = serde_json::to_value(&message.content).and_then(|v| serde_json::from_value::<MediaResponse>(v))
+                if let Ok(content) = serde_json::to_value(&message.content)
+                    .and_then(|v| serde_json::from_value::<MediaResponse>(v))
                 {
-                    let message_content = MessageContent::MediaResponse(MediaResponseForMessageContent::new(content));
+                    let message_content =
+                        MessageContent::MediaResponse(MediaResponseForMessageContent::new(content));
                     self.send_message_sent_to_sc(message_content, target_node_id);
                 } else {
                     if let Some(content) = MessageContent::from_content(message.content) {
                         self.send_message_sent_to_sc(content, target_node_id);
                     }
                 }
-                
-                
             }
             Err(_e) => {
                 debug!(

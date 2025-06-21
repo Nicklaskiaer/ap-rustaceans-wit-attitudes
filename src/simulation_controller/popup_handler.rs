@@ -1,10 +1,11 @@
+use crate::client_server::network_core::{ChatMessage, ContentType, ServerType};
 use crate::simulation_controller::gui::MyApp;
 use crate::simulation_controller::gui_structs::*;
 use chrono::{DateTime, Utc};
 use chrono_tz::Europe::Rome;
 use eframe::egui;
+use std::path::Path;
 use wg_2024::network::NodeId;
-use crate::client_server::network_core::{ChatMessage, ServerType};
 
 pub fn show_popup(app: &mut MyApp, ctx: &egui::Context, name: &str) {
 
@@ -93,10 +94,15 @@ fn show_drone_controls(
 
             if ui.button("Update").clicked() {
                 if (*entry - drop_rate).abs() > f32::EPSILON {
-                    app.simulation_controller.handle_set_packet_drop_rate(node_id, *entry);
+                    app.simulation_controller
+                        .handle_set_packet_drop_rate(node_id, *entry);
                     app.logs_vec.push(LogEntry {
                         timestamp: formatted_time.to_string(),
-                        message: format!("[COMMAND] Updated PDR of Drone {} to {:.2}%", node_id, *entry * 100.0),
+                        message: format!(
+                            "[COMMAND] Updated PDR of Drone {} to {:.2}%",
+                            node_id,
+                            *entry * 100.0
+                        ),
                     });
                 }
             }
@@ -125,7 +131,8 @@ fn show_drone_controls(
             if ui.button("Remove Sender").clicked() {
                 match input_text.parse::<NodeId>() {
                     Ok(sender_id) => {
-                        let message = format!("[COMMAND] Removed sender {} from {}", sender_id, name);
+                        let message =
+                            format!("[COMMAND] Removed sender {} from {}", sender_id, name);
                         app.logs_vec.push(LogEntry {
                             timestamp: formatted_time.to_string(),
                             message,
@@ -172,10 +179,16 @@ fn show_client_controls(
 
     // Navigation bar
     ui.horizontal(|ui| {
-        if ui.selectable_label(*screen == ClientPopupScreen::Chatroom, "Chatroom").clicked() {
+        if ui
+            .selectable_label(*screen == ClientPopupScreen::Chatroom, "Chatroom")
+            .clicked()
+        {
             *screen = ClientPopupScreen::Chatroom;
         }
-        if ui.selectable_label(*screen == ClientPopupScreen::Other, "Images").clicked() {
+        if ui
+            .selectable_label(*screen == ClientPopupScreen::Other, "Images")
+            .clicked()
+        {
             *screen = ClientPopupScreen::Other;
         }
     });
@@ -204,7 +217,13 @@ fn show_client_controls(
                         for (server_id, (_, _, server_type)) in servers {
                             if let ServerType::CommunicationServer = server_type {
                                 let server_id_str = format!("Server {}", server_id);
-                                if ui.selectable_label(selected_server == &server_id_str, &server_id_str).clicked() {
+                                if ui
+                                    .selectable_label(
+                                        selected_server == &server_id_str,
+                                        &server_id_str,
+                                    )
+                                    .clicked()
+                                {
                                     *selected_server = server_id_str;
                                 }
                             }
@@ -221,7 +240,8 @@ fn show_client_controls(
                 // If register is pressed, server id is pushed in vec and request is sent to server.
                 if ui.button("Register").clicked() {
                     if !registered_servers.contains(&server_id_sel) {
-                        app.simulation_controller.handle_registration_request(node_id, server_id_sel.clone());
+                        app.simulation_controller
+                            .handle_registration_request(node_id, server_id_sel.clone());
                     }
                 }
 
@@ -249,7 +269,9 @@ fn show_client_controls(
                     if let Some(servers) = app.registered_servers.get(&node_id) {
                         if servers.contains(&server_id_sel) {
                             display_message = String::from("");
-                            if let Some(message_list) = app.chatrooms_messages.get_mut(&server_id_sel) {
+                            if let Some(message_list) =
+                                app.chatrooms_messages.get_mut(&server_id_sel)
+                            {
                                 for chat_message in message_list {
                                     if chat_message.content.starts_with("Client"){
                                         ui.label(format!("{}", chat_message.content));
@@ -271,7 +293,7 @@ fn show_client_controls(
                 ui.add(
                     egui::TextEdit::singleline(text_input)
                         .desired_width(ui.available_width() - 70.0)
-                        .hint_text("Message")
+                        .hint_text("Message"),
                 );
 
                 ui.add_space(2.0);
@@ -283,7 +305,134 @@ fn show_client_controls(
             });
         }
         ClientPopupScreen::Other => {
-            ui.label("Advanced controls coming soon...");
+            let selected_server_images = app.selected_server.entry(node_id).or_default();
+
+            // Server selection dropdown
+            ui.horizontal(|ui| {
+                ui.label("Select Content Server:");
+                egui::ComboBox::from_label("")
+                    .width(150.0)
+                    .selected_text(if selected_server_images.is_empty() {
+                        "Select Server".to_string()
+                    } else {
+                        selected_server_images.clone()
+                    })
+                    .show_ui(ui, |ui| {
+                        // Get all server IDs and their types
+                        let servers = app.simulation_controller.get_servers();
+
+                        // Filter to only ContentServers with Media type
+                        for (server_id, (_, _, server_type)) in servers {
+                            if let ServerType::ContentServer(content_type) = server_type {
+                                if let ContentType::Media = content_type {
+                                    let server_id_str = format!("Server {}", server_id);
+                                    if ui
+                                        .selectable_label(
+                                            selected_server_images == &server_id_str,
+                                            &server_id_str,
+                                        )
+                                        .clicked()
+                                    {
+                                        *selected_server_images = server_id_str;
+                                    }
+                                }
+                            }
+                        }
+                    });
+            });
+
+            // Get the selected server ID
+            let mut selected_server_id = 0;
+            if let Some(num_str) = selected_server_images.split_whitespace().last() {
+                if let Ok(server_id) = num_str.parse::<u8>() {
+                    selected_server_id = server_id;
+                }
+            }
+
+            ui.separator();
+
+            // Request image list button
+            if ui.button("Request Image List").clicked() && selected_server_id > 0 {
+                app.simulation_controller
+                    .handle_image_list_request(node_id, selected_server_id);
+            }
+
+            // Display available images from the selected server
+            if selected_server_id > 0 {
+                if let Some(image_list) = app.client_image_lists.get(&(node_id, selected_server_id))
+                {
+                    ui.label("Available Images:");
+                    ui.label(format!("{:?}", image_list));
+                } else {
+                    ui.label("No image list available. Click 'Request Image List' to get available images.");
+                }
+            }
+
+            ui.separator();
+
+            // Image request section
+            ui.label("Request Specific Image:");
+            ui.horizontal(|ui| {
+                let image_id_input = app.client_image_id_inputs.entry(node_id).or_default();
+                ui.label("Image ID:");
+                ui.add(egui::DragValue::new(image_id_input).speed(1.0));
+
+                if ui.button("Request Image").clicked() && selected_server_id > 0 {
+                    app.simulation_controller.handle_image_request(
+                        node_id,
+                        selected_server_id,
+                        *image_id_input,
+                    );
+                }
+            });
+
+            ui.separator();
+
+            // Display requested images grid
+            ui.label("Requested Images:");
+            if let Some(image_ids) = app.client_images.get(&node_id) {
+                if image_ids.is_empty() {
+                    ui.label("No images have been requested yet.");
+                } else {
+                    let columns = 3;
+
+                    egui::Grid::new("client_images_grid")
+                        .num_columns(columns)
+                        .spacing([10.0, 10.0])
+                        .show(ui, |ui| {
+                            for (i, image_id) in image_ids.iter().enumerate() {
+                                let image_path =
+                                    format!("server_content/media_files/{}.jpg", image_id);
+
+                                if let Ok(image) = image::open(&Path::new(&image_path)) {
+                                    let image_buffer = image.to_rgba8();
+                                    let (width, height) = image_buffer.dimensions();
+                                    let size = [width as usize, height as usize];
+                                    let texture = ui.ctx().load_texture(
+                                        format!("image_{}", image_id),
+                                        egui::ColorImage::from_rgba_unmultiplied(
+                                            size,
+                                            &image_buffer.into_raw(),
+                                        ),
+                                        egui::TextureOptions::default(),
+                                    );
+                                    ui.add(
+                                        egui::Image::new(&texture)
+                                            .fit_to_exact_size(egui::vec2(100.0, 100.0)),
+                                    );
+                                } else {
+                                    ui.label(format!("Image {} not found", image_id));
+                                }
+
+                                if (i + 1) % columns == 0 {
+                                    ui.end_row();
+                                }
+                            }
+                        });
+                }
+            } else {
+                ui.label("No images available for this client.");
+            }
         }
     }
 

@@ -1,8 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use crate::client_server::network_core::{ChatMessage, ServerType};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use wg_2024::network::NodeId;
-use crate::client_server::network_core::{ChatMessage, ServerType};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound(deserialize = "M: DeserializeOwned"))]
@@ -37,6 +37,7 @@ pub enum MessageContent {
     ChatResponse(ChatResponse),
     MediaRequest(MediaRequest),
     MediaResponse(MediaResponseForMessageContent),
+    MediaListWithServer(NodeId, Vec<u64>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,15 +50,9 @@ pub enum MediaResponseForMessageContent {
 impl MediaResponseForMessageContent {
     pub fn new(media_response: MediaResponse) -> Self {
         match &media_response {
-            MediaResponse::MediaList(_m) => {
-                Self::MediaList(_m.clone())
-            }
-            MediaResponse::Media(_m, _) => {
-                Self::Media(_m.clone())
-            }
-            MediaResponse::NotFound => {
-                Self::NotFound
-            }
+            MediaResponse::MediaList(_m) => Self::MediaList(_m.clone()),
+            MediaResponse::Media(_m, _) => Self::Media(_m.clone()),
+            MediaResponse::NotFound => Self::NotFound,
         }
     }
 }
@@ -86,8 +81,8 @@ impl MessageContent {
             serde_json::to_value(&content).and_then(|v| serde_json::from_value::<MediaRequest>(v))
         {
             Some(MessageContent::MediaRequest(content))
-        } else if let Ok(content) =
-            serde_json::to_value(&content).and_then(|v| serde_json::from_value::<MediaResponseForMessageContent>(v))
+        } else if let Ok(content) = serde_json::to_value(&content)
+            .and_then(|v| serde_json::from_value::<MediaResponseForMessageContent>(v))
         {
             Some(MessageContent::MediaResponse(content))
         } else {
@@ -227,7 +222,7 @@ pub enum ChatResponse {
     MessageFrom { from: NodeId, message: Vec<u8> },
     MessageSent,
     ClientNotRegistered,
-    ClientRegistered(NodeId)
+    ClientRegistered(NodeId),
 }
 
 #[derive(Clone, Debug)]
@@ -252,7 +247,7 @@ impl Response for ChatResponse {
             ChatResponse::MessageFrom { .. } => "MessageFrom".to_string(),
             ChatResponse::MessageSent => "MessageSent".to_string(),
             ChatResponse::ClientNotRegistered => "ClientNotRegistered".to_string(),
-            ChatResponse::ClientRegistered(_) => "ClientRegistered".to_string()
+            ChatResponse::ClientRegistered(_) => "ClientRegistered".to_string(),
         }
     }
 }
