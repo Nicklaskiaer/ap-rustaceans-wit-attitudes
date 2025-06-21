@@ -42,8 +42,6 @@ pub struct Client {
     server_type_map: HashMap<NodeId, Option<ServerType>>,
     session_ids_for_request_server_type: HashSet<u64>,
     assembler_send: Sender<Packet>,
-    // assembler_recv: Receiver<Packet>,
-    // assembler_res_send: Sender<Vec<u8>>,
     assembler_res_recv: Receiver<Vec<u8>>,
 }
 
@@ -60,9 +58,6 @@ impl NetworkNode for Client {
     fn topology_map_mut(&mut self) -> &mut HashSet<(NodeId, Vec<NodeId>)> {
         &mut self.topology_map
     }
-    // fn assembler_send(&self) -> &Sender<Packet> {
-    //     &self.assembler_send
-    // }
 
     fn run(&mut self) {
         debug!("Client: {:?} started and waiting for packets", self.id);
@@ -128,8 +123,6 @@ impl Client {
         server_type_map: HashMap<NodeId, Option<ServerType>>,
         session_ids_for_request_server_type: HashSet<u64>,
         assembler_send: Sender<Packet>,
-        // assembler_recv: Receiver<Packet>,
-        // assembler_res_send: Sender<Vec<u8>>,
         assembler_res_recv: Receiver<Vec<u8>>,
     ) -> Self {
         Self {
@@ -144,8 +137,6 @@ impl Client {
             server_type_map,
             session_ids_for_request_server_type,
             assembler_send,
-            // assembler_recv,
-            // assembler_res_send,
             assembler_res_recv,
         }
     }
@@ -186,6 +177,7 @@ impl Client {
                     DroneCommand::RemoveSender(_id) => {}
                 }
             }
+
             ClientServerCommand::SendChatMessage(node_id, msg) => {
                 debug!("Client: {:?} received SendChatMessage command", self.id);
 
@@ -193,6 +185,11 @@ impl Client {
             }
             ClientServerCommand::StartFloodRequest => {
                 debug!("Client: {:?} received StartFloodRequest command", self.id);
+                
+                // clear the hashmap
+                self.topology_map.clear();
+                self.server_type_map.clear();
+                self.session_ids_for_request_server_type.clear();
 
                 // Generate a unique flood ID using current time
                 let timestamp = std::time::SystemTime::now()
@@ -243,12 +240,6 @@ impl Client {
                 for server_id in self.server_type_map.keys().cloned().collect::<Vec<_>>() {
                     if let Some(None) = self.server_type_map.get(&server_id) {
                         self.send_server_type_request(server_id);
-
-                        // TODO: remove it
-                        // test 11->42
-                        // if self.id == 11 && server_id == 62 {
-                        //     self.send_server_type_request(server_id);
-                        // }
                     }
                 }
             }
@@ -302,6 +293,14 @@ impl Client {
                     self.server_type_map,
                     self.session_ids_for_request_server_type
                 );
+            }
+            ClientServerCommand::ClientListRequest(node_id) => {
+                debug!("Client: {:?} received ClientListRequest command", node_id);
+
+                self.send_client_list_request(node_id);
+            }
+            ClientServerCommand::RemoveDrone(drone_id) => {
+                self.connected_drone_ids.retain(|&id| id != drone_id);
             }
         }
     }
@@ -381,11 +380,10 @@ impl Client {
                     "Client: {:?} received a FloodResponse {:?}",
                     self.id, _flood_response
                 );
-                self.update_topology_with_flood_response(_flood_response);
+                self.update_topology_with_flood_response(_flood_response, true);
 
                 // if it's a server add it to the server_type_map
                 let &(node_id, _node_type) = _flood_response.path_trace.last().unwrap();
-                // TODO: change None not after the flood but after that server is called for the first time
                 if _node_type == NodeType::Server {
                     self.server_type_map.insert(node_id, None);
                 }
@@ -418,14 +416,7 @@ impl Client {
                                 .insert(message.source_id, Some(server_type.clone()));
 
                             // remove the session id from the session_ids
-                            // TODO: Fix do not forget
-                            let remvoed = self
-                                .session_ids_for_request_server_type
-                                .remove(&message.session_id);
-                            debug!(
-                                "session_ids_for_request_server_type is present? {:?}",
-                                remvoed
-                            );
+                            let remvoed = self.session_ids_for_request_server_type.remove(&message.session_id);
                         }
                     }
                 }
@@ -470,6 +461,10 @@ impl Client {
                             self.send_message_received_to_sc(MessageContent::ChatResponse(
                                 ChatResponse::ClientRegistered(*node_id),
                             ));
+                        }
+                        ChatResponse::ClientList(c) => {
+                            debug!("Client: {:?} received a ClientList", self.id);
+                            self.send_message_received_to_sc(MessageContent::ChatResponse(ChatResponse::ClientList(c.clone())));
                         }
                         _ => {}
                     }
@@ -601,6 +596,23 @@ impl Client {
             source_id: self.id,
             session_id,
             content: ChatRequest::Register(self.id),
+        };
+
+        self.send_message_in_fragments(server_id, session_id, message);
+    }
+    
+    fn send_client_list_request(&mut self, server_id: NodeId) {
+        debug!(
+            "Client: {:?} requesting client list to server {:?}",
+            self.id, server_id
+        );
+
+        // Create a registration request with random session ID
+        let session_id = random::<u64>();
+        let message = Message {
+            source_id: self.id,
+            session_id,
+            content: ChatRequest::ClientList,
         };
 
         self.send_message_in_fragments(server_id, session_id, message);

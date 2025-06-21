@@ -7,7 +7,7 @@ use crate::client_server::network_core::{
 use crate::message::message::*;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::random;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use wg_2024::controller::DroneCommand;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, NodeType, Packet, PacketType};
@@ -21,9 +21,7 @@ pub struct CommunicationServer {
     packet_send: HashMap<NodeId, Sender<Packet>>,
     packet_recv: Receiver<Packet>,
     assembler_send: Sender<Packet>,
-    // assembler_recv: Receiver<Packet>,
     assembler_res_recv: Receiver<Vec<u8>>,
-    // assembler_res_send: Sender<Vec<u8>>,
     registered_clients: HashSet<NodeId>,
     messages_stored: Vec<ChatMessage>,
 }
@@ -41,9 +39,6 @@ impl NetworkNode for CommunicationServer {
     fn topology_map_mut(&mut self) -> &mut HashSet<(NodeId, Vec<NodeId>)> {
         &mut self.topology_map
     }
-    // fn assembler_send(&self) -> &Sender<Packet> {
-    //     &self.assembler_send
-    // }
 
     fn run(&mut self) {
         debug!(
@@ -110,8 +105,6 @@ impl CommunicationServer {
         packet_recv: Receiver<Packet>,
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
         assembler_send: Sender<Packet>,
-        // assembler_recv: Receiver<Packet>,
-        // assembler_res_send: Sender<Vec<u8>>,
         assembler_res_recv: Receiver<Vec<u8>>,
         registered_clients: HashSet<NodeId>,
         messages_stored: Vec<ChatMessage>,
@@ -135,15 +128,6 @@ impl CommunicationServer {
 
     fn handle_command(&mut self, command: ClientServerCommand) {
         match command {
-            ClientServerCommand::DroneCmd(drone_cmd) => {
-                // Handle drone command
-                match drone_cmd {
-                    DroneCommand::SetPacketDropRate(_) => {}
-                    DroneCommand::Crash => {}
-                    DroneCommand::AddSender(_id, _sender) => {}
-                    DroneCommand::RemoveSender(_id) => {}
-                }
-            }
             ClientServerCommand::SendChatMessage(_target_id, _msg) => {
                 debug!(
                     "Server: {:?} sending chat message to {:?}: {:?}",
@@ -152,6 +136,9 @@ impl CommunicationServer {
             }
             ClientServerCommand::StartFloodRequest => {
                 debug!("Server: {:?} received StartFloodRequest command", self.id);
+
+                // clear the hashmap
+                self.topology_map.clear();
 
                 // Generate a unique flood ID using current time
                 let timestamp = std::time::SystemTime::now()
@@ -200,9 +187,14 @@ impl CommunicationServer {
                     \n",
                     self.id, self.topology_map, self.registered_clients, self.messages_stored
                 );
+            },
+            ClientServerCommand::ClientListRequest(_) => { /* servers do not need to use it */ },
+            ClientServerCommand::RemoveDrone(drone_id) => {
+                self.connected_drone_ids.retain(|&id| id != drone_id);
             }
         }
     }
+    
     fn handle_packet(&mut self, packet: Packet) {
         match &packet.pack_type {
             PacketType::Nack(_nack) => {
@@ -267,10 +259,11 @@ impl CommunicationServer {
                     "Server: {:?} received a FloodResponse {:?}",
                     self.id, _flood_response
                 );
-                self.update_topology_with_flood_response(_flood_response);
+                self.update_topology_with_flood_response(_flood_response, false);
             }
         }
     }
+    
     fn handle_assembler_data(&mut self, data: Vec<u8>) {
         if let Ok(str_data_raw) = String::from_utf8(data.clone()) {
             debug!(
@@ -395,9 +388,8 @@ impl CommunicationServer {
         }
     }
 
-    fn send_server_type_response(&mut self, client_id: NodeId, _session_id: u64) {
+    fn send_server_type_response(&mut self, client_id: NodeId, session_id: u64) {
         // Create response message with Communication server type
-        let session_id = random::<u64>();
         let message = Message {
             source_id: self.id,
             session_id,

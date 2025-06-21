@@ -15,22 +15,15 @@ pub enum ClientServerCommand {
     RequestFileList(NodeId), // used by: Client. client ask the server for its list of files
     RequestFile(NodeId, u64), // used by: Client. client ask the server for a specific file
     SendChatMessage(NodeId, String), // used by: Client, Server. client send a chat message to a specific node
+    ClientListRequest(NodeId),
     RegistrationRequest(NodeId), // used by: Client. client request to register itself to the server
 
     RequestImageList(NodeId), // used by: Client. client ask the server for its list of images
     RequestImage(NodeId, u64), // used by: Client. client ask the server for a specific image
     ImageResponse(NodeId, u64), // used by: Server
 
+    RemoveDrone(NodeId),
     TestCommand, //TODO: remove it
-
-    // Drone commands
-    DroneCmd(DroneCommand),
-}
-
-impl From<DroneCommand> for ClientServerCommand {
-    fn from(cmd: DroneCommand) -> Self {
-        ClientServerCommand::DroneCmd(cmd)
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,7 +88,7 @@ pub trait NetworkNode {
     fn send_message_received_to_sc(&mut self, content: MessageContent);
 
     // common methods with default implementations
-    fn update_topology_with_flood_response(&mut self, flood_response: &FloodResponse) {
+    fn update_topology_with_flood_response(&mut self, flood_response: &FloodResponse, is_client: bool) {
         let _node_id = self.id();
         let topology_map = self.topology_map_mut();
 
@@ -111,13 +104,19 @@ pub trait NetworkNode {
         if !topology_map.iter().any(|(id, _)| *id == target_node_id) {
             // Case 1: New node entry - add to topology map
             let &(_, node_type) = flood_response.path_trace.last().unwrap();
-            if node_type != NodeType::Drone {
-                // Only add servers and clients to topology map
-                topology_map.insert((target_node_id, new_path));
-                debug!(
-                    "Node {:?}, updated topology_map: {:?}",
-                    _node_id, topology_map
-                );
+            
+            // Only add servers if it's the clients to topology map
+            // or clients if it's the servers to topology map
+            if is_client {
+                if node_type != NodeType::Drone && node_type != NodeType::Client {
+                    topology_map.insert((target_node_id, new_path));
+                    debug!("Client {:?}, updated topology_map: {:?}", _node_id, topology_map);
+                }
+            } else {
+                if node_type != NodeType::Drone && node_type != NodeType::Server {
+                    topology_map.insert((target_node_id, new_path));
+                    debug!("Server {:?}, updated topology_map: {:?}", _node_id, topology_map);
+                }
             }
         } else {
             // Case 2: Existing node - check if new path is better
@@ -217,8 +216,7 @@ pub trait NetworkNode {
 
                     self.try_send_packet_with_target_id(&path[1], &packet);
                 }
-
-                // Send message sent notification
+                
                 // Send message sent notification
                 if let Ok(content) = serde_json::to_value(&message.content)
                     .and_then(|v| serde_json::from_value::<MediaResponse>(v))

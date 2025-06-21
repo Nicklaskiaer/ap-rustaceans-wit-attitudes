@@ -12,8 +12,10 @@ use crate::client_server::network_core::{
 use crate::message::message::{ChatResponse, MediaResponseForMessageContent, MessageContent};
 use crossbeam_channel::Sender;
 use eframe::egui;
-use std::collections::HashMap;
-use wg_2024::packet::PacketType;
+
+use std::collections::{HashMap, HashSet};
+use crate::message::message::{ChatResponse, MessageContent};
+use wg_2024::packet::{Packet, PacketType};
 
 pub struct MyApp {
     pub(crate) simulation_controller: SimulationController,
@@ -28,6 +30,7 @@ pub struct MyApp {
     pub client_message_inputs: HashMap<NodeId, String>,
     pub selected_server: HashMap<NodeId, String>,
     pub client_popup_screens: HashMap<NodeId, ClientPopupScreen>,
+    pub client_list_popups: HashMap<NodeId, bool>,
     topology: NetworkTopology,
     client_texture: Option<egui::TextureHandle>, //Icon for clients in diagram.
     server_texture: Option<egui::TextureHandle>, //Icon for servers in diagram.
@@ -38,6 +41,7 @@ pub struct MyApp {
     pub client_images: HashMap<NodeId, Vec<u64>>, // Maps client ID to list of the image IDs client has downloaded
     pub client_image_id_inputs: HashMap<NodeId, u64>, // Maps client ID to input for requesting images
     pub client_image_lists: HashMap<(NodeId, NodeId), Vec<u64>>, // Maps (client_id, server_id) to list of available images
+    pub(crate) registered_clients: HashSet<NodeId>,
 }
 
 pub struct NetworkTopology {
@@ -73,6 +77,7 @@ impl MyApp {
             client_message_inputs: HashMap::new(),
             selected_server: HashMap::new(),
             client_popup_screens: HashMap::new(),
+            client_list_popups: Default::default(),
             topology: NetworkTopology::new(),
             client_texture: None,
             server_texture: None,
@@ -83,6 +88,7 @@ impl MyApp {
             client_images: HashMap::new(),
             client_image_id_inputs: HashMap::new(),
             client_image_lists: HashMap::new(),
+            registered_clients: HashSet::new(),
         }
     }
 
@@ -140,13 +146,19 @@ impl eframe::App for MyApp {
                         MessageContent::ChatRequest(_) => {}
                         MessageContent::ChatResponse(response_context) => {
                             match response_context {
-                                ChatResponse::ClientList(_) => {}
+                                ChatResponse::ClientList(c) => {
+                                    self.registered_clients.clear();
+
+                                    for clients in c {
+                                        self.registered_clients.insert(clients.clone());
+                                    }
+                                }
                                 ChatResponse::MessageFrom { .. } => {}
                                 ChatResponse::MessageSent => {}
                                 ChatResponse::ClientNotRegistered => {}
                                 ChatResponse::ClientRegistered(server_id) => {
-                                    // Insert the client in the registered_servers.
-                                    self.registered_servers.insert(*receiver, vec![*server_id]);
+                                    // Insert the client in the registered_servers
+                                    self.registered_servers.entry(*receiver).or_insert_with(Vec::new).push(*server_id);
                                 }
                             }
                         }
@@ -362,6 +374,21 @@ impl eframe::App for MyApp {
                                         self.open_popups.insert(drones.clone(), true);
                                     }
                                 }
+
+                                //TODO: remove
+                                ui.separator();
+                                ui.label("Other:");
+                                if ui.button("sc").clicked() {
+                                    debug!(
+                                        "drones: {:?}\nclients: {:?}\nservers: {:?}",
+                                        self.simulation_controller.get_drone_ids(),
+                                        self.simulation_controller.get_client_ids(),
+                                        self.simulation_controller.get_server_ids()
+                                    );
+                                }
+                                if ui.button("flood again").clicked() {
+                                    self.simulation_controller.start_flood_request_for_all();
+                                }
                             });
 
                         egui::CentralPanel::default().show(ctx, |ui| {
@@ -508,6 +535,12 @@ impl NetworkTopology {
         clients: &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>)>,
         servers: &HashMap<NodeId, (Sender<ClientServerCommand>, Vec<NodeId>, ServerType)>,
     ) {
+        // Keep track of existing node positions
+        let mut existing_positions = HashMap::new();
+        for node in &self.nodes {
+            existing_positions.insert(node.id.clone(), node.position);
+        }
+
         self.nodes.clear();
         self.connections.clear();
 
@@ -517,15 +550,27 @@ impl NetworkTopology {
         let offset = 50.0;
         let client_offset_x = -20.0; // Move clients slightly left
         let server_offset_x = 20.0; // Move servers slightly right
+        let center = (400.0, 300.0);  // More centered position
+        let drone_radius = 150.0;
+        let client_radius = 250.0;
+        let server_radius = 250.0;
+        let angle_offset = std::f32::consts::FRAC_PI_4; // 45-degree offset between server and client rings
 
-        let angle_increment = std::f32::consts::TAU / n as f32;
+        // Calculate positions for drones (inner ring)
+        let drone_count = drones.len();
+        let drone_angle_step = if drone_count > 0 {
+            std::f32::consts::TAU / drone_count as f32
+        } else {
+            0.0
+        };
+
         let mut node_positions = HashMap::new();
 
-        //Assign positions to drones
+        // Position drones in a circle
         for (i, (node_id, _)) in drones.iter().enumerate() {
-            let angle = i as f32 * angle_increment;
-            let x = center.0 + radius * angle.cos();
-            let y = center.1 + radius * angle.sin();
+            let angle = i as f32 * drone_angle_step;
+            let x = center.0 + drone_radius * angle.cos();
+            let y = center.1 + drone_radius * angle.sin();
 
             node_positions.insert(*node_id, (x, y));
 
@@ -537,85 +582,89 @@ impl NetworkTopology {
             });
         }
 
-        // Assign positions to clients
-        for (client_id, (_, neighbors)) in clients {
-            if let Some(neighbor_id) = neighbors.first() {
-                if let Some(&(dx, dy)) = node_positions.get(neighbor_id) {
-                    let direction = ((dx - center.0), (dy - center.1));
-                    let norm = (direction.0.powi(2) + direction.1.powi(2)).sqrt();
+        // Position clients in an outer ring (left side)
+        let client_count = clients.len();
+        let client_angle_step = if client_count > 0 {
+            std::f32::consts::PI / (client_count as f32 + 1.0)  // Distribute across 180 degrees
+        } else {
+            0.0
+        };
 
-                    if norm > 0.0 {
-                        let scale = (radius + offset * 2.0) / norm;
-                        let x = center.0 + direction.0 * scale + client_offset_x; // Move client left
-                        let y = center.1 + direction.1 * scale;
-
-                        node_positions.insert(*client_id, (x, y));
-
-                        self.nodes.push(Node {
-                            id: client_id.to_string(),
-                            position: (x, y),
-                            is_client: true,
-                            is_server: false,
-                        });
-                    }
-                }
+        for (i, (client_id, _)) in clients.iter().enumerate() {
+            // Try to maintain manually adjusted positions first
+            if let Some(pos) = existing_positions.get(&client_id.to_string()) {
+                node_positions.insert(*client_id, *pos);
+                self.nodes.push(Node {
+                    id: client_id.to_string(),
+                    position: *pos,
+                    is_client: true,
+                    is_server: false,
+                });
+                continue;
             }
+
+            // Default positioning in left semicircle
+            let angle = std::f32::consts::PI + angle_offset + (i as f32 * client_angle_step);
+            let x = center.0 + client_radius * angle.cos();
+            let y = center.1 + client_radius * angle.sin();
+
+            node_positions.insert(*client_id, (x, y));
+
+            self.nodes.push(Node {
+                id: client_id.to_string(),
+                position: (x, y),
+                is_client: true,
+                is_server: false,
+            });
         }
 
-        // Assign positions to servers
-        for (server_id, (_, neighbors, _)) in servers {
-            if let Some(neighbor_id) = neighbors.first() {
-                if let Some(&(dx, dy)) = node_positions.get(neighbor_id) {
-                    let direction = ((dx - center.0), (dy - center.1));
-                    let norm = (direction.0.powi(2) + direction.1.powi(2)).sqrt();
+        // Position servers in an outer ring (right side)
+        let server_count = servers.len();
+        let server_angle_step = if server_count > 0 {
+            std::f32::consts::PI / (server_count as f32 + 1.0)  // Distribute across 180 degrees
+        } else {
+            0.0
+        };
 
-                    if norm > 0.0 {
-                        let scale = (radius + offset * 2.0) / norm;
-                        let x = center.0 + direction.0 * scale + server_offset_x; // Move server right
-                        let y = center.1 + direction.1 * scale;
-
-                        node_positions.insert(*server_id, (x, y));
-
-                        self.nodes.push(Node {
-                            id: server_id.to_string(),
-                            position: (x, y),
-                            is_client: false,
-                            is_server: true,
-                        });
-                    }
-                }
+        for (i, (server_id, _)) in servers.iter().enumerate() {
+            // Try to maintain manually adjusted positions first
+            if let Some(pos) = existing_positions.get(&server_id.to_string()) {
+                node_positions.insert(*server_id, *pos);
+                self.nodes.push(Node {
+                    id: server_id.to_string(),
+                    position: *pos,
+                    is_client: false,
+                    is_server: true,
+                });
+                continue;
             }
-        }
 
-        //Add connections
-        // for (node_id, (_, neighbors)) in drones.iter().chain(clients.iter()) {
-        //     if let Some(_pos1) = node_positions.get(node_id) {
-        //         for neighbor_id in neighbors {
-        //             if let Some(_pos2) = node_positions.get(neighbor_id) {
-        //                 let idx1 = self.nodes.iter().position(|n| n.id == node_id.to_string()).unwrap();
-        //                 let idx2 = self.nodes.iter().position(|n| n.id == neighbor_id.to_string()).unwrap();
-        //                 self.connections.push((idx1, idx2));
-        //             }
-        //         }
-        //     }
-        // }
+            // Default positioning in right semicircle
+            let angle = angle_offset + (i as f32 * server_angle_step);
+            let x = center.0 + server_radius * angle.cos();
+            let y = center.1 + server_radius * angle.sin();
+
+            node_positions.insert(*server_id, (x, y));
+
+            self.nodes.push(Node {
+                id: server_id.to_string(),
+                position: (x, y),
+                is_client: false,
+                is_server: true,
+            });
+        }
 
         // Add connections for drones
         for (node_id, (_, neighbors)) in drones.iter() {
             if let Some(_pos1) = node_positions.get(node_id) {
                 for neighbor_id in neighbors {
                     if let Some(_pos2) = node_positions.get(neighbor_id) {
-                        let idx1 = self
-                            .nodes
-                            .iter()
-                            .position(|n| n.id == node_id.to_string())
-                            .unwrap();
-                        let idx2 = self
-                            .nodes
-                            .iter()
-                            .position(|n| n.id == neighbor_id.to_string())
-                            .unwrap();
-                        self.connections.push((idx1, idx2));
+                        if let (Some(idx1), Some(idx2)) = (
+                            self.nodes.iter().position(|n| n.id == node_id.to_string()),
+                            self.nodes.iter().position(|n| n.id == neighbor_id.to_string())
+                        ) {
+                            self.connections.push((idx1, idx2));
+                        }
                     }
                 }
             }
@@ -626,17 +675,12 @@ impl NetworkTopology {
             if let Some(_pos1) = node_positions.get(node_id) {
                 for neighbor_id in neighbors {
                     if let Some(_pos2) = node_positions.get(neighbor_id) {
-                        let idx1 = self
-                            .nodes
-                            .iter()
-                            .position(|n| n.id == node_id.to_string())
-                            .unwrap();
-                        let idx2 = self
-                            .nodes
-                            .iter()
-                            .position(|n| n.id == neighbor_id.to_string())
-                            .unwrap();
-                        self.connections.push((idx1, idx2));
+                        if let (Some(idx1), Some(idx2)) = (
+                            self.nodes.iter().position(|n| n.id == node_id.to_string()),
+                            self.nodes.iter().position(|n| n.id == neighbor_id.to_string())
+                        ) {
+                            self.connections.push((idx1, idx2));
+                        }
                     }
                 }
             }

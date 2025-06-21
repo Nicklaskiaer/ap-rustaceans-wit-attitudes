@@ -24,8 +24,6 @@ pub struct ContentServer {
     packet_send: HashMap<NodeId, Sender<Packet>>,
     packet_recv: Receiver<Packet>,
     assembler_send: Sender<Packet>,
-    // assembler_recv: Receiver<Packet>,
-    // assembler_res_send: Sender<Vec<u8>>,
     assembler_res_recv: Receiver<Vec<u8>>,
     content_type: ContentType,
     files: Vec<u64>,
@@ -44,9 +42,6 @@ impl NetworkNode for ContentServer {
     fn topology_map_mut(&mut self) -> &mut HashSet<(NodeId, Vec<NodeId>)> {
         &mut self.topology_map
     }
-    // fn assembler_send(&self) -> &Sender<Packet> {
-    //     &self.assembler_send
-    // }
 
     fn run(&mut self) {
         debug!(
@@ -138,15 +133,6 @@ impl ContentServer {
 
     fn handle_command(&mut self, command: ClientServerCommand) {
         match command {
-            ClientServerCommand::DroneCmd(drone_cmd) => {
-                // Handle drone command
-                match drone_cmd {
-                    DroneCommand::SetPacketDropRate(_) => {}
-                    DroneCommand::Crash => {}
-                    DroneCommand::AddSender(_id, _sender) => {}
-                    DroneCommand::RemoveSender(_id) => {}
-                }
-            }
             ClientServerCommand::SendChatMessage(_node_id, _msg) => {
                 debug!(
                     "Server: {:?} received SendChatMessage command for node {:?}: {:?}",
@@ -155,6 +141,9 @@ impl ContentServer {
             }
             ClientServerCommand::StartFloodRequest => {
                 debug!("Server: {:?} received StartFloodRequest command", self.id);
+
+                // clear the hashmap
+                self.topology_map.clear();
 
                 // Generate a unique flood ID using current time
                 let timestamp = std::time::SystemTime::now()
@@ -244,6 +233,10 @@ impl ContentServer {
                     self.id, self.topology_map, self.content_type, self.files
                 );
             }
+            ClientServerCommand::ClientListRequest(_) => {/* servers do not need to use it */ },
+            ClientServerCommand::RemoveDrone(drone_id) => {
+                self.connected_drone_ids.retain(|&id| id != drone_id);
+            }
         }
     }
     fn handle_packet(&mut self, packet: Packet) {
@@ -310,7 +303,7 @@ impl ContentServer {
                     "Server: {:?} received a FloodResponse {:?}",
                     self.id, _flood_response
                 );
-                self.update_topology_with_flood_response(_flood_response);
+                self.update_topology_with_flood_response(_flood_response, false);
             }
         }
     }
@@ -390,7 +383,6 @@ impl ContentServer {
 
     fn send_server_type_response(&mut self, client_id: NodeId, session_id: u64) {
         // Create response message with Communication server type
-        let session_id = random::<u64>();
         let message = Message {
             source_id: self.id,
             session_id,

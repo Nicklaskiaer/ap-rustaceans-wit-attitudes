@@ -8,6 +8,24 @@ use std::path::Path;
 use wg_2024::network::NodeId;
 
 pub fn show_popup(app: &mut MyApp, ctx: &egui::Context, name: &str) {
+
+    // Early return if this popup shouldn't be open
+    if !*app.open_popups.get(name).unwrap_or(&false) {
+        return;
+    }
+
+    // Early return if this is a drone popup but the drone no longer exists
+    if name.starts_with("Drone") {
+        if let Some(node_id_str) = name.split_whitespace().nth(1) {
+            if let Ok(node_id) = node_id_str.parse::<NodeId>() {
+                if !app.simulation_controller.get_drones().contains_key(&node_id) {
+                    app.open_popups.remove(name);
+                    return;
+                }
+            }
+        }
+    }
+
     let current_time: DateTime<Utc> = Utc::now();
     let italian_time = current_time.with_timezone(&Rome);
     let formatted_time = italian_time.format("%d-%m-%y %H:%M:%S").to_string();
@@ -34,11 +52,7 @@ pub fn show_popup(app: &mut MyApp, ctx: &egui::Context, name: &str) {
                 }
                 // Handle Clients controls
                 else if name.starts_with("Client") {
-                    show_client_controls(app, ui, node_id);
-                }
-                // Handle Server controls
-                else if name.starts_with("Server") {
-                    ui.label("Server controls coming soon...");
+                    show_client_controls(app, ui, node_id, ctx);
                 }
             }
         }
@@ -138,19 +152,27 @@ fn show_drone_controls(
                     timestamp: formatted_time.to_string(),
                     message,
                 });
-                app.simulation_controller
-                    .handle_crash(node_id, neighbors.clone());
+                app.simulation_controller.handle_crash(node_id, neighbors.clone());
+
+                // Close the popup by removing its entry
+                app.open_popups.remove(name);
+
+                // Also clean up any related state
+                app.slider_temp_pdrs.remove(&node_id);
+                app.drone_text_inputs.remove(&node_id);
             }
         }
     }
 }
 
-fn show_client_controls(app: &mut MyApp, ui: &mut egui::Ui, node_id: NodeId) {
+fn show_client_controls(
+    app: &mut MyApp,
+    ui: &mut egui::Ui,
+    node_id: NodeId,
+    ctx: &egui::Context,  // Add this parameter
+) {
     // Track selected screen for this client
-    let screen = app
-        .client_popup_screens
-        .entry(node_id)
-        .or_insert(ClientPopupScreen::Chatroom);
+    let screen = app.client_popup_screens.entry(node_id).or_insert(ClientPopupScreen::Chatroom);
 
     // Track selected server for this client
     let mut server_id_sel: u8 = 0;
@@ -225,8 +247,10 @@ fn show_client_controls(app: &mut MyApp, ui: &mut egui::Ui, node_id: NodeId) {
 
                 // After client has registered to server then "Client List" button is displayed.
                 if registered_servers.contains(&server_id_sel) {
-                    if ui.button("Client List").clicked() {
-                        //todo!(FIND A WAY TO SHOW THE USER THE CLIENTS THAT ARE REGISTERED TO THE CHATROOM)
+                    if ui.button("Client List").clicked(){
+                        // Set the client list popup to open for this client
+                        app.client_list_popups.insert(node_id, true);
+                        app.simulation_controller.handle_client_list_request(node_id, server_id_sel.clone());
                     }
                 }
             });
@@ -240,11 +264,8 @@ fn show_client_controls(app: &mut MyApp, ui: &mut egui::Ui, node_id: NodeId) {
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
 
-                    // debug!("bbbbbbbbbbbb {:?}, {:?}, {:?}", server_id_sel,
-                    //     app.registered_servers.clone(),
-                    //     app.registered_servers.clone().get(&server_id_sel)
-                    // );
                     let mut display_message = String::from("You are not registered to the server!");
+
                     if let Some(servers) = app.registered_servers.get(&node_id) {
                         if servers.contains(&server_id_sel) {
                             display_message = String::from("");
@@ -252,10 +273,11 @@ fn show_client_controls(app: &mut MyApp, ui: &mut egui::Ui, node_id: NodeId) {
                                 app.chatrooms_messages.get_mut(&server_id_sel)
                             {
                                 for chat_message in message_list {
-                                    ui.label(format!(
-                                        "{}: {}",
-                                        chat_message.sender_id, chat_message.content
-                                    ));
+                                    if chat_message.content.starts_with("Client"){
+                                        ui.label(format!("{}", chat_message.content));
+                                    }else {
+                                        ui.label(format!("Client {}: {}", chat_message.sender_id, chat_message.content));
+                                    }
                                 }
                             }
                         }
@@ -277,11 +299,8 @@ fn show_client_controls(app: &mut MyApp, ui: &mut egui::Ui, node_id: NodeId) {
                 ui.add_space(2.0);
 
                 if ui.button("Send").clicked() {
-                    app.simulation_controller.handle_send_chat_message(
-                        node_id,
-                        server_id_sel,
-                        text_input.parse().unwrap(),
-                    )
+                    app.simulation_controller.handle_send_chat_message(node_id, server_id_sel, text_input.parse().unwrap());
+                    text_input.clear();
                 }
             });
         }
@@ -415,5 +434,30 @@ fn show_client_controls(app: &mut MyApp, ui: &mut egui::Ui, node_id: NodeId) {
                 ui.label("No images available for this client.");
             }
         }
+    }
+
+    // Show client list popup if it's open for this client
+    if let Some(true) = app.client_list_popups.get(&node_id) {
+        egui::Window::new(format!("Client List for Client {}", node_id))
+            .resizable(true)
+            .collapsible(true)
+            .default_width(300.0)
+            .show(ctx, |ui| {
+                ui.label("Registered Clients:");
+                ui.separator();
+
+                if app.registered_clients.is_empty() {
+                    ui.label("No clients registered");
+                } else {
+                    for client_id in &app.registered_clients {
+                        ui.label(format!("Client {}", client_id));
+                    }
+                }
+
+                ui.separator();
+                if ui.button("Close").clicked() {
+                    app.client_list_popups.insert(node_id, false);
+                }
+            });
     }
 }
