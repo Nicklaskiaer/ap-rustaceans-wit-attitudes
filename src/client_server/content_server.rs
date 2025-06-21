@@ -419,7 +419,7 @@ impl ContentServer {
                     let message = Message {
                         source_id: self.id,
                         session_id,
-                        content: TextResponse::Text(content),
+                        content: TextResponse::Text((file_id, content)),
                     };
                     debug!(
                         "Server: {:?} sending msg to client {:?}, msg: {:?}",

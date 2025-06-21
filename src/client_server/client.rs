@@ -423,12 +423,20 @@ impl Client {
                     match message.content {
                         TextResponse::TextList(_file_list) => {
                             debug!("Client: {:?} received TextResponse::TextList from {:?} file list: {:?}", self.id, message.source_id, _file_list);
+                            self.send_message_received_to_sc(MessageContent::TextListWithServer(
+                                message.source_id,
+                                _file_list.clone(),
+                            ));
                         }
                         TextResponse::Text(_file) => {
                             debug!(
                                 "Client: {:?} received TextResponse::Text from {:?} file: {:?}",
                                 self.id, message.source_id, _file
                             );
+                            self.send_message_received_to_sc(MessageContent::TextIdWithServer(
+                                message.source_id,
+                                _file.0,
+                            ));
                         }
                         TextResponse::NotFound => {
                             debug!(
@@ -487,6 +495,10 @@ impl Client {
                                 "Client: {:?} received full media from media id {:?}: {:?}",
                                 self.id, message.source_id, media_id
                             );
+                            self.send_message_received_to_sc(MessageContent::MediaIdWithServer(
+                                message.source_id,
+                                media_id,
+                            ));
                         }
                         MediaResponse::NotFound => {
                             self.send_message_received_to_sc(MessageContent::MediaResponse(

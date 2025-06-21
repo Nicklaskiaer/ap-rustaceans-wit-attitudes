@@ -1,4 +1,3 @@
-use crate::simulation_controller::simulation_controller::ClientsDownloadedData;
 use crate::client_server::network_core::{ChatMessage, ContentType, ServerType};
 use crate::simulation_controller::gui::MyApp;
 use crate::simulation_controller::gui_structs::*;
@@ -326,16 +325,9 @@ fn show_client_controls(
                         // Filter to only ContentServers
                         for (server_id, (_, _, server_type)) in servers {
                             if let ServerType::ContentServer(content_type) = server_type {
-                                let mut content_type_str = "".to_string();
-                                match content_type {
-                                    ContentType::Media => {
-                                        content_type_str = "Media".to_string();
-                                        selected_type_option = Some(ContentType::Media);
-                                    },
-                                    ContentType::Text => {
-                                        content_type_str = "Text".to_string();
-                                        selected_type_option = Some(ContentType::Media);
-                                    },
+                                let content_type_str = match content_type {
+                                    ContentType::Media => "Media",
+                                    ContentType::Text => "Text",
                                 };
                                 let server_id_str = format!("Server {} ({})", server_id, content_type_str);
                                 if ui.selectable_label(
@@ -350,11 +342,21 @@ fn show_client_controls(
             });
 
 
-            // Get the selected server ID
+            // Get the selected server ID and content type from the selected string
             let mut selected_server_id = 0;
-            if let Some(num_str) = selected_server_images.split_whitespace().nth(1) {
-                if let Ok(server_id) = num_str.parse::<u8>() {
-                    selected_server_id = server_id;
+            if !selected_server_images.is_empty() {
+                // Extract server ID
+                if let Some(num_str) = selected_server_images.split_whitespace().nth(1) {
+                    if let Ok(server_id) = num_str.parse::<u8>() {
+                        selected_server_id = server_id;
+                    }
+                }
+
+                // Extract content type from the selection string
+                if selected_server_images.contains("(Media)") {
+                    selected_type_option = Some(ContentType::Media);
+                } else if selected_server_images.contains("(Text)") {
+                    selected_type_option = Some(ContentType::Text);
                 }
             }
             ui.separator();
@@ -369,7 +371,7 @@ fn show_client_controls(
 
                         // Display available images from the selected server
                         if selected_server_id > 0 {
-                            match app.clients_downloaded_data.get_know_list(node_id, selected_server_id) {
+                            match app.clients_downloaded_data.get_know_media_list(node_id, selected_server_id) {
                                 None => {
                                     ui.label("No image list available. Click 'Request Image List' to get available images.");
                                 }
@@ -400,7 +402,8 @@ fn show_client_controls(
 
                         // Display requested images grid
                         ui.label("Requested Images:");
-                        if let Some(image_ids) = app.clients_downloaded_data.get_all_know_data(&node_id) {
+                        // app.clients_downloaded_data.get_all_know_data(node_id)
+                        if let Some(image_ids) = app.clients_downloaded_data.get_know_media(node_id, selected_server_id) {
                             if image_ids.is_empty() {
                                 ui.label("No images have been requested yet.");
                             } else {
@@ -443,71 +446,72 @@ fn show_client_controls(
                         } else {
                             ui.label("No images available for this client.");
                         }
-                    }, 
+                    },
                     ContentType::Text => {
-                    // Request text list button
-                    if ui.button("Request Text List").clicked() && selected_server_id > 0 {
-                        app.simulation_controller.handle_text_list_request(node_id, selected_server_id);
-                    }
+                        // Request Text list button
+                        if ui.button("Request Text List").clicked() && selected_server_id > 0 {
+                            app.simulation_controller.handle_text_list_request(node_id, selected_server_id);
+                        }
 
-                    // Display available text from the selected server
-                    if selected_server_id > 0 {
-                        if let Some(file_list) = app.know_content_index.get(&(node_id, selected_server_id))
-                        {
-                            ui.label("Available Files:");
-                            ui.label(format!("{:?}", file_list));
+                        // Display available text from the selected server
+                        if selected_server_id > 0 {
+                            match app.clients_downloaded_data.get_know_text_list(node_id, selected_server_id) {
+                                None => {
+                                    ui.label("No Text list available. Click 'Request Text List' to get available images.");
+                                }
+                                Some(index_list) => {
+                                    ui.label("Available Texts:");
+                                    ui.label(format!("{:?}", index_list));
+                                }
+                            }
+                        }
+                        ui.separator();
+
+                        // Text request section
+                        ui.label("Request Specific Text:");
+                        ui.horizontal(|ui| {
+                            let data_id_input = app.client_data_id_inputs.entry(node_id).or_default();
+                            ui.label("Text ID:");
+                            ui.add(egui::DragValue::new(data_id_input).speed(1.0));
+
+                            if ui.button("Request Text").clicked() && selected_server_id > 0 {
+                                app.simulation_controller.handle_text_request(
+                                    node_id,
+                                    selected_server_id,
+                                    *data_id_input,
+                                );
+                            }
+                        });
+                        ui.separator();
+
+                        // Display requested files
+                        ui.label("Requested Texts:");
+                        // app.clients_downloaded_data.get_all_know_data(node_id)
+                        if let Some(files) = app.clients_downloaded_data.get_know_text(node_id, selected_server_id) {
+                            if files.is_empty() {
+                                ui.label("No Texts have been requested yet.");
+                            } else {
+                                egui::ScrollArea::vertical()
+                                    .max_height(200.0)
+                                    .show(ui, |ui| {
+                                        for file_id in files {
+                                            let file_path = format!("server_content/text_files/{}", file_id);
+                                            ui.collapsing(format!("File {}", file_id), |ui| {
+                                                // Display file content in a scrollable text area
+                                                let mut text = file_path.clone();
+                                                ui.add(
+                                                    egui::TextEdit::multiline(&mut text)
+                                                        .desired_width(ui.available_width())
+                                                        .desired_rows(10)
+                                                );
+                                            });
+                                        }
+                                    });
+                            }
                         } else {
-                            ui.label("No file list available. Click 'Request File List' to get available files.");
+                            ui.label("No Texts available for this client.");
                         }
                     }
-
-                    ui.separator();
-
-                    // File request section
-                    ui.label("Request Specific File:");
-                    ui.horizontal(|ui| {
-                        let file_id_input = app.client_file_id_inputs.entry(node_id).or_default();
-                        ui.label("File ID:");
-                        ui.add(egui::DragValue::new(file_id_input).speed(1.0));
-
-                        if ui.button("Request File").clicked() && selected_server_id > 0 {
-                            app.simulation_controller.handle_file_request(
-                                node_id,
-                                selected_server_id,
-                                *file_id_input,
-                            );
-                        }
-                    });
-
-                    ui.separator();
-
-                    // Display requested files
-                    ui.label("Requested Files:");
-                    if let Some(files) = app.client_files.get(&node_id) {
-                        if files.is_empty() {
-                            ui.label("No files have been requested yet.");
-                        } else {
-                            egui::ScrollArea::vertical()
-                                .max_height(200.0)
-                                .show(ui, |ui| {
-                                    for (file_id, content) in files {
-                                        ui.collapsing(format!("File {}", file_id), |ui| {
-                                            // Display file content in a scrollable text area
-                                            let mut text = content.clone();
-                                            ui.add(
-                                                egui::TextEdit::multiline(&mut text)
-                                                    .desired_width(ui.available_width())
-                                                    .desired_rows(10)
-                                                    .read_only(true)
-                                            );
-                                        });
-                                    }
-                                });
-                        }
-                    } else {
-                        ui.label("No files available for this client.");
-                    }
-                }
                 }
             }
         }

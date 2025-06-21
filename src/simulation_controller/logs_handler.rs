@@ -108,6 +108,18 @@ pub fn logs(app: &mut MyApp, event: Event) {
                 MessageContent::MediaListWithServer(server_id, list) => format!(
                     "[EVENT] MediaListWithServer from {:?}: {:?}",
                     server_id, list
+                ),                
+                MessageContent::MediaIdWithServer(server_id, list) => format!(
+                    "[EVENT] MediaIdWithServer from {:?}: {:?}",
+                    server_id, list
+                ),
+                MessageContent::TextListWithServer(server_id, list) => format!(
+                    "[EVENT] TextListWithServer from {:?}: {:?}",
+                    server_id, list
+                ),
+                MessageContent::TextIdWithServer(server_id, list) => format!(
+                    "[EVENT] TextIdWithServer from {:?}: {:?}",
+                    server_id, list
                 ),
             },
             ClientEvent::MessageReceived { receiver, content } => match content {
@@ -140,6 +152,18 @@ pub fn logs(app: &mut MyApp, event: Event) {
                 }
                 MessageContent::MediaListWithServer(server_id, list) => format!(
                     "[EVENT] MediaListWithServer from {:?}: {:?}",
+                    server_id, list
+                ),
+                MessageContent::MediaIdWithServer(server_id, list) => format!(
+                    "[EVENT] MediaIdWithServer from {:?}: {:?}",
+                    server_id, list
+                ),
+                MessageContent::TextListWithServer(server_id, list) => format!(
+                    "[EVENT] TextListWithServer from {:?}: {:?}",
+                    server_id, list
+                ),
+                MessageContent::TextIdWithServer(server_id, list) => format!(
+                    "[EVENT] TextIdWithServer from {:?}: {:?}",
                     server_id, list
                 ),
             },
@@ -203,6 +227,18 @@ pub fn logs(app: &mut MyApp, event: Event) {
                     "[EVENT] MediaListWithServer from {:?}: {:?}",
                     server_id, list
                 ),
+                MessageContent::MediaIdWithServer(server_id, list) => format!(
+                    "[EVENT] MediaIdWithServer from {:?}: {:?}",
+                    server_id, list
+                ),
+                MessageContent::TextListWithServer(server_id, list) => format!(
+                    "[EVENT] TextListWithServer from {:?}: {:?}",
+                    server_id, list
+                ),
+                MessageContent::TextIdWithServer(server_id, list) => format!(
+                    "[EVENT] TextIdWithServer from {:?}: {:?}",
+                    server_id, list
+                ),
             },
             ServerEvent::MessageReceived { receiver, content } => match content {
                 MessageContent::ServerTypeRequest(_) => {
@@ -234,6 +270,18 @@ pub fn logs(app: &mut MyApp, event: Event) {
                 }
                 MessageContent::MediaListWithServer(server_id, list) => format!(
                     "[EVENT] MediaListWithServer from {:?}: {:?}",
+                    server_id, list
+                ),
+                MessageContent::MediaIdWithServer(server_id, list) => format!(
+                    "[EVENT] MediaIdWithServer from {:?}: {:?}",
+                    server_id, list
+                ),
+                MessageContent::TextListWithServer(server_id, list) => format!(
+                    "[EVENT] TextListWithServer from {:?}: {:?}",
+                    server_id, list
+                ),
+                MessageContent::TextIdWithServer(server_id, list) => format!(
+                    "[EVENT] TextIdWithServer from {:?}: {:?}",
                     server_id, list
                 ),
             },

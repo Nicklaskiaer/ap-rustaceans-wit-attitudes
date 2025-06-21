@@ -7,14 +7,14 @@ use crate::simulation_controller::popup_handler;
 use crate::simulation_controller::simulation_controller::SimulationController;
 
 use crate::client_server::network_core::{
-    ChatMessage, ClientEvent, ClientServerCommand, ContentType, ServerEvent, ServerType,
+    ChatMessage, ClientEvent, ClientServerCommand, ServerEvent, ServerType,
 };
-use crate::message::message::{ChatResponse, MediaResponseForMessageContent, MessageContent, TextResponse};
+use crate::message::message::{ChatResponse, MessageContent};
 use crossbeam_channel::Sender;
 use eframe::egui;
 
 use std::collections::{HashMap, HashSet};
-use wg_2024::packet::{Packet, PacketType};
+use wg_2024::packet::PacketType;
 
 pub struct MyApp {
     pub(crate) simulation_controller: SimulationController,
@@ -138,14 +138,7 @@ impl eframe::App for MyApp {
                         MessageContent::ServerTypeRequest(_) => {}
                         MessageContent::ServerTypeResponse(_) => {}
                         MessageContent::TextRequest(_) => {}
-                        MessageContent::TextResponse(response_context) => {
-                            match &response_context {
-                                TextResponse::TextList(_) => {
-                                }
-                                TextResponse::Text(_) => {}
-                                TextResponse::NotFound => {}
-                            }
-                        }
+                        MessageContent::TextResponse(_) => {}
                         MessageContent::WholeChatVecResponse(_) => { /*not used by client*/ }
                         MessageContent::ChatRequest(_) => {}
                         MessageContent::ChatResponse(response_context) => {
@@ -170,23 +163,18 @@ impl eframe::App for MyApp {
                             }
                         }
                         MessageContent::MediaRequest(_) => {}
-                        MessageContent::MediaResponse(media_response) => {
-                            match media_response {
-                                MediaResponseForMessageContent::Media(media_id) => {
-                                    self.client_images
-                                        .entry(*receiver)
-                                        .or_default()
-                                        .push(media_id.clone());
-                                }
-                                MediaResponseForMessageContent::MediaList(_) => {
-                                    // No-op, handled by MediaListWithServer
-                                }
-                                MediaResponseForMessageContent::NotFound => {}
-                            }
+                        MessageContent::MediaResponse(_) => {}
+                        MessageContent::TextListWithServer(_server_id, content) => {
+                            self.clients_downloaded_data.add_text_list(*receiver, *_server_id, content.iter().cloned().collect::<HashSet<u64>>());
+                        }
+                        MessageContent::TextIdWithServer(_server_id, content) => {
+                            self.clients_downloaded_data.add_text(*receiver, *_server_id, *content);
                         }
                         MessageContent::MediaListWithServer(server_id, media_list) => {
-                            self.client_image_lists
-                                .insert((*receiver, *server_id), media_list.clone());
+                            self.clients_downloaded_data.add_media_list(*receiver, *server_id, media_list.iter().cloned().collect::<HashSet<u64>>());
+                        }
+                        MessageContent::MediaIdWithServer(_server_id, content) => {
+                            self.clients_downloaded_data.add_media(*receiver, *_server_id, *content);
                         }
                     }
                 }
@@ -233,7 +221,10 @@ impl eframe::App for MyApp {
                         MessageContent::ChatResponse(_) => { /*not used by server*/ }
                         MessageContent::MediaRequest(_) => {}
                         MessageContent::MediaResponse(_) => {}
+                        MessageContent::TextListWithServer(_, _) => {}
+                        MessageContent::TextIdWithServer(_, _) => {}
                         MessageContent::MediaListWithServer(_, _) => {}
+                        MessageContent::MediaIdWithServer(_, _) => {}
                     }
                 }
             }
