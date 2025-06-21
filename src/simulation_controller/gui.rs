@@ -14,7 +14,6 @@ use crossbeam_channel::Sender;
 use eframe::egui;
 
 use std::collections::{HashMap, HashSet};
-use crate::message::message::{ChatResponse, MessageContent};
 use wg_2024::packet::{Packet, PacketType};
 
 pub struct MyApp {
@@ -158,7 +157,10 @@ impl eframe::App for MyApp {
                                 ChatResponse::ClientNotRegistered => {}
                                 ChatResponse::ClientRegistered(server_id) => {
                                     // Insert the client in the registered_servers
-                                    self.registered_servers.entry(*receiver).or_insert_with(Vec::new).push(*server_id);
+                                    self.registered_servers
+                                        .entry(*receiver)
+                                        .or_insert_with(Vec::new)
+                                        .push(*server_id);
                                 }
                             }
                         }
@@ -550,7 +552,7 @@ impl NetworkTopology {
         let offset = 50.0;
         let client_offset_x = -20.0; // Move clients slightly left
         let server_offset_x = 20.0; // Move servers slightly right
-        let center = (400.0, 300.0);  // More centered position
+        let center = (400.0, 300.0); // More centered position
         let drone_radius = 150.0;
         let client_radius = 250.0;
         let server_radius = 250.0;
@@ -585,7 +587,7 @@ impl NetworkTopology {
         // Position clients in an outer ring (left side)
         let client_count = clients.len();
         let client_angle_step = if client_count > 0 {
-            std::f32::consts::PI / (client_count as f32 + 1.0)  // Distribute across 180 degrees
+            std::f32::consts::PI / (client_count as f32 + 1.0) // Distribute across 180 degrees
         } else {
             0.0
         };
@@ -621,7 +623,7 @@ impl NetworkTopology {
         // Position servers in an outer ring (right side)
         let server_count = servers.len();
         let server_angle_step = if server_count > 0 {
-            std::f32::consts::PI / (server_count as f32 + 1.0)  // Distribute across 180 degrees
+            std::f32::consts::PI / (server_count as f32 + 1.0) // Distribute across 180 degrees
         } else {
             0.0
         };
@@ -661,7 +663,9 @@ impl NetworkTopology {
                     if let Some(_pos2) = node_positions.get(neighbor_id) {
                         if let (Some(idx1), Some(idx2)) = (
                             self.nodes.iter().position(|n| n.id == node_id.to_string()),
-                            self.nodes.iter().position(|n| n.id == neighbor_id.to_string())
+                            self.nodes
+                                .iter()
+                                .position(|n| n.id == neighbor_id.to_string()),
                         ) {
                             self.connections.push((idx1, idx2));
                         }
@@ -677,7 +681,9 @@ impl NetworkTopology {
                     if let Some(_pos2) = node_positions.get(neighbor_id) {
                         if let (Some(idx1), Some(idx2)) = (
                             self.nodes.iter().position(|n| n.id == node_id.to_string()),
-                            self.nodes.iter().position(|n| n.id == neighbor_id.to_string())
+                            self.nodes
+                                .iter()
+                                .position(|n| n.id == neighbor_id.to_string()),
                         ) {
                             self.connections.push((idx1, idx2));
                         }

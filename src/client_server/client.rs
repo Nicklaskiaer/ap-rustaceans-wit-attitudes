@@ -168,16 +168,6 @@ impl Client {
 impl Client {
     fn handle_command(&mut self, command: ClientServerCommand) {
         match command {
-            ClientServerCommand::DroneCmd(drone_cmd) => {
-                // Handle drone command
-                match drone_cmd {
-                    DroneCommand::SetPacketDropRate(_) => {}
-                    DroneCommand::Crash => {}
-                    DroneCommand::AddSender(_id, _sender) => {}
-                    DroneCommand::RemoveSender(_id) => {}
-                }
-            }
-
             ClientServerCommand::SendChatMessage(node_id, msg) => {
                 debug!("Client: {:?} received SendChatMessage command", self.id);
 
@@ -185,7 +175,7 @@ impl Client {
             }
             ClientServerCommand::StartFloodRequest => {
                 debug!("Client: {:?} received StartFloodRequest command", self.id);
-                
+
                 // clear the hashmap
                 self.topology_map.clear();
                 self.server_type_map.clear();
@@ -416,7 +406,9 @@ impl Client {
                                 .insert(message.source_id, Some(server_type.clone()));
 
                             // remove the session id from the session_ids
-                            let remvoed = self.session_ids_for_request_server_type.remove(&message.session_id);
+                            let remvoed = self
+                                .session_ids_for_request_server_type
+                                .remove(&message.session_id);
                         }
                     }
                 }
@@ -464,7 +456,9 @@ impl Client {
                         }
                         ChatResponse::ClientList(c) => {
                             debug!("Client: {:?} received a ClientList", self.id);
-                            self.send_message_received_to_sc(MessageContent::ChatResponse(ChatResponse::ClientList(c.clone())));
+                            self.send_message_received_to_sc(MessageContent::ChatResponse(
+                                ChatResponse::ClientList(c.clone()),
+                            ));
                         }
                         _ => {}
                     }
@@ -600,7 +594,7 @@ impl Client {
 
         self.send_message_in_fragments(server_id, session_id, message);
     }
-    
+
     fn send_client_list_request(&mut self, server_id: NodeId) {
         debug!(
             "Client: {:?} requesting client list to server {:?}",
