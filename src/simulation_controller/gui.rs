@@ -7,13 +7,13 @@ use crate::simulation_controller::popup_handler;
 use crate::simulation_controller::simulation_controller::SimulationController;
 
 use crate::client_server::network_core::{
-    ChatMessage, ClientEvent, ClientServerCommand, ServerEvent, ServerType,
+    ChatMessage, ClientEvent, ClientServerCommand, ContentType, ServerEvent, ServerType,
 };
 use crate::message::message::{ChatResponse, MediaResponseForMessageContent, MessageContent};
 use crossbeam_channel::Sender;
 use eframe::egui;
 use std::collections::HashMap;
-use wg_2024::packet::{Packet, PacketType};
+use wg_2024::packet::PacketType;
 
 pub struct MyApp {
     pub(crate) simulation_controller: SimulationController,
@@ -37,6 +37,7 @@ pub struct MyApp {
     pub(crate) registered_servers: HashMap<NodeId, Vec<NodeId>>, // Maps client ID to list of servers they're registered with
     pub client_images: HashMap<NodeId, Vec<u64>>, // Maps client ID to list of the image IDs client has downloaded
     pub client_image_id_inputs: HashMap<NodeId, u64>, // Maps client ID to input for requesting images
+    pub client_image_lists: HashMap<(NodeId, NodeId), Vec<u64>>, // Maps (client_id, server_id) to list of available images
 }
 
 pub struct NetworkTopology {
@@ -81,6 +82,7 @@ impl MyApp {
             registered_servers: Default::default(),
             client_images: HashMap::new(),
             client_image_id_inputs: HashMap::new(),
+            client_image_lists: HashMap::new(),
         }
     }
 
@@ -150,17 +152,22 @@ impl eframe::App for MyApp {
                         }
                         MessageContent::MediaRequest(_) => {}
                         MessageContent::MediaResponse(media_response) => {
-                            // Handle media response
                             match media_response {
                                 MediaResponseForMessageContent::Media(media_id) => {
-                                    // Store the media ID in the client's images
                                     self.client_images
                                         .entry(*receiver)
                                         .or_default()
                                         .push(media_id.clone());
                                 }
-                                _ => {}
+                                MediaResponseForMessageContent::MediaList(_) => {
+                                    // No-op, handled by MediaListWithServer
+                                }
+                                MediaResponseForMessageContent::NotFound => {}
                             }
+                        }
+                        MessageContent::MediaListWithServer(server_id, media_list) => {
+                            self.client_image_lists
+                                .insert((*receiver, *server_id), media_list.clone());
                         }
                     }
                 }
@@ -189,7 +196,7 @@ impl eframe::App for MyApp {
                 }
                 ServerEvent::MessageSent { .. } => {}
                 ServerEvent::MessageReceived {
-                    receiver,
+                    receiver: _receiver,
                     content: message_context,
                 } => {
                     match message_context {
@@ -207,6 +214,7 @@ impl eframe::App for MyApp {
                         MessageContent::ChatResponse(_) => { /*not used by server*/ }
                         MessageContent::MediaRequest(_) => {}
                         MessageContent::MediaResponse(_) => {}
+                        MessageContent::MediaListWithServer(_, _) => {}
                     }
                 }
             }
