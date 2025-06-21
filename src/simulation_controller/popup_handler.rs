@@ -386,20 +386,20 @@ fn show_client_controls(app: &mut MyApp, ui: &mut egui::Ui, node_id: NodeId) {
                                     format!("server_content/media_files/{}.jpg", image_id);
 
                                 if let Ok(image) = image::open(&Path::new(&image_path)) {
-                                    let size = [100.0, 100.0];
-
+                                    let image_buffer = image.to_rgba8();
+                                    let (width, height) = image_buffer.dimensions();
+                                    let size = [width as usize, height as usize];
                                     let texture = ui.ctx().load_texture(
                                         format!("image_{}", image_id),
                                         egui::ColorImage::from_rgba_unmultiplied(
-                                            [size[0] as usize, size[1] as usize],
-                                            &image.to_rgba8().into_raw(),
+                                            size,
+                                            &image_buffer.into_raw(),
                                         ),
                                         egui::TextureOptions::default(),
                                     );
-
                                     ui.add(
                                         egui::Image::new(&texture)
-                                            .fit_to_exact_size(egui::vec2(size[0], size[1])),
+                                            .fit_to_exact_size(egui::vec2(100.0, 100.0)),
                                     );
                                 } else {
                                     ui.label(format!("Image {} not found", image_id));

@@ -7,8 +7,8 @@ use crate::client_server::network_core::{
     ClientEvent, ClientServerCommand, ContentType, NetworkNode, ServerType,
 };
 use crate::message::message::{
-    ChatRequest, ChatResponse, MediaRequest, MediaResponse, Message, MessageContent,
-    ServerTypeRequest, ServerTypeResponse, TextRequest, TextResponse,
+    ChatRequest, ChatResponse, MediaRequest, MediaResponse, MediaResponseForMessageContent,
+    Message, MessageContent, ServerTypeRequest, ServerTypeResponse, TextRequest, TextResponse,
 };
 use crossbeam_channel::{after, select_biased, unbounded, Receiver, SendError, Sender};
 use rand::{random, thread_rng, Rng};
@@ -490,13 +490,19 @@ impl Client {
                                 media_list.clone(),
                             ));
                         }
-                        MediaResponse::Media(_media_id, _media) => {
+                        MediaResponse::Media(media_id, _media) => {
+                            self.send_message_received_to_sc(MessageContent::MediaResponse(
+                                MediaResponseForMessageContent::Media(media_id),
+                            ));
                             debug!(
                                 "Client: {:?} received full media from media id {:?}: {:?}",
-                                self.id, message.source_id, _media_id
+                                self.id, message.source_id, media_id
                             );
                         }
                         MediaResponse::NotFound => {
+                            self.send_message_received_to_sc(MessageContent::MediaResponse(
+                                MediaResponseForMessageContent::NotFound,
+                            ));
                             debug!(
                                 "Client: {:?} received NotFound from {:?}",
                                 self.id, message.source_id
