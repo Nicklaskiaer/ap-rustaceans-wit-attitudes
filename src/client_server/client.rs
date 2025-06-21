@@ -437,6 +437,7 @@ impl Client {
                                 message.source_id,
                                 _file.0,
                             ));
+                            self.extract_and_request_images(_file.1);
                         }
                         TextResponse::NotFound => {
                             debug!(
@@ -657,6 +658,33 @@ impl Client {
                     self.id, e
                 );
                 Err(format!("Failed to send packet to assembler: {}", e))
+            }
+        }
+    }
+
+    fn extract_and_request_images(&mut self, text: String) {
+        // Find all media servers
+        let media_servers: Vec<NodeId> = self.server_type_map
+            .iter()
+            .filter_map(|(id, server_type)| {
+                if let Some(ServerType::ContentServer(ContentType::Media)) = server_type {
+                    Some(*id)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Extract and request each image
+        let re = regex::Regex::new(r"\[image_(\d+)\]").unwrap();
+        for cap in re.captures_iter(&text) {
+            if let Some(image_id_str) = cap.get(1) {
+                if let Ok(image_id) = image_id_str.as_str().parse::<u64>() {
+                    // Request the image from all media servers
+                    for server_id in &media_servers {
+                        self.send_image_request(*server_id, image_id);
+                    }
+                }
             }
         }
     }

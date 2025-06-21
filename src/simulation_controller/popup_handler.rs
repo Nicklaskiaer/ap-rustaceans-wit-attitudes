@@ -497,17 +497,120 @@ fn show_client_controls(
                                         for file_id in files {
                                             let file_path = format!("server_content/text_files/{}", file_id);
                                             ui.collapsing(format!("File {}", file_id), |ui| {
-                                                // Display file content in a scrollable text area
-                                                let mut text = file_path.clone();
-                                                ui.add(
-                                                    egui::TextEdit::multiline(&mut text)
-                                                        .desired_width(ui.available_width())
-                                                        .desired_rows(10)
-                                                );
+                                                // Read the content from the file
+                                                match std::fs::read_to_string(&file_path) {
+                                                    Ok(content) => {
+                                                        ui.add(
+                                                            egui::TextEdit::multiline(&mut content.clone())
+                                                                .desired_width(ui.available_width())
+                                                                .desired_rows(10)
+                                                        );
+
+                                                        // Extract image IDs using regex
+                                                        let re = regex::Regex::new(r"\[image_(\d+)\]").unwrap();
+                                                        let mut image_ids = Vec::new();
+
+                                                        for cap in re.captures_iter(&content) {
+                                                            if let Some(id_str) = cap.get(1) {
+                                                                if let Ok(id) = id_str.as_str().parse::<u64>() {
+                                                                    image_ids.push(id);
+                                                                }
+                                                            }
+                                                        }
+
+                                                        // Display images if any were found
+                                                        if !image_ids.is_empty() {
+                                                            ui.separator();
+                                                            ui.label("Referenced Images:");
+
+                                                            let columns = 3;
+                                                            egui::Grid::new(format!("text_images_grid_{}", file_id))
+                                                                .num_columns(columns)
+                                                                .spacing([10.0, 10.0])
+                                                                .show(ui, |ui| {
+                                                                    for (i, image_id) in image_ids.iter().enumerate() {
+                                                                        // Check all servers for the image
+                                                                        let mut found_image = false;
+
+                                                                        // Get all content servers
+                                                                        let servers = app.simulation_controller.get_servers();
+                                                                        for (server_id, (_, _, server_type)) in servers {
+                                                                            // Only check media servers
+                                                                            if let ServerType::ContentServer(ContentType::Media) = server_type {
+                                                                                // Try to get the image from this media server
+                                                                                if let Some(media_id) = app.clients_downloaded_data
+                                                                                    .get_know_media_with_id(node_id, *server_id, *image_id)
+                                                                                {
+                                                                                    let image_path = format!(
+                                                                                        "server_content/media_files/{}.jpg",
+                                                                                        media_id
+                                                                                    );
+
+                                                                                    if let Ok(image) = image::open(&Path::new(&image_path)) {
+                                                                                        let image_buffer = image.to_rgba8();
+                                                                                        let (width, height) = image_buffer.dimensions();
+                                                                                        let size = [width as usize, height as usize];
+                                                                                        let texture = ui.ctx().load_texture(
+                                                                                            format!("text_image_{}_{}", file_id, image_id),
+                                                                                            egui::ColorImage::from_rgba_unmultiplied(
+                                                                                                size,
+                                                                                                &image_buffer.into_raw(),
+                                                                                            ),
+                                                                                            egui::TextureOptions::default(),
+                                                                                        );
+                                                                                        ui.add(
+                                                                                            egui::Image::new(&texture)
+                                                                                                .fit_to_exact_size(egui::vec2(100.0, 100.0)),
+                                                                                        );
+                                                                                        found_image = true;
+                                                                                        break;  // Exit the loop once we've found and displayed the image
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                        }
+
+                                                                        if !found_image {
+                                                                            ui.label(format!("Image {} not available", image_id));
+                                                                        }
+
+                                                                        if (i + 1) % columns == 0 {
+                                                                            ui.end_row();
+                                                                        }
+                                                                    }
+                                                                });
+                                                        }
+                                                    },
+                                                    Err(_) => {
+                                                        ui.label(format!("Error reading file content for ID {}", file_id));
+                                                    }
+                                                }
                                             });
                                         }
                                     });
                             }
+                            //     egui::ScrollArea::vertical()
+                            //         .max_height(200.0)
+                            //         .show(ui, |ui| {
+                            //             for file_id in files {
+                            //                 let file_path = format!("server_content/text_files/{}", file_id);
+                            //                 ui.collapsing(format!("File {}", file_id), |ui| {
+                            //                     // Read the content from the file
+                            //                     match std::fs::read_to_string(&file_path) {
+                            //                         Ok(content) => {
+                            //                             ui.add(
+                            //                                 egui::TextEdit::multiline(&mut content.clone())
+                            //                                     .desired_width(ui.available_width())
+                            //                                     .desired_rows(10)
+                            //                             );
+                            //                         },
+                            //                         Err(_) => {
+                            //                             ui.label(format!("Error reading file content for ID {}", file_id));
+                            //                         }
+                            //                     }
+                            //                 });
+                            //             }
+                            //         });
+                            // }
                         } else {
                             ui.label("No Texts available for this client.");
                         }

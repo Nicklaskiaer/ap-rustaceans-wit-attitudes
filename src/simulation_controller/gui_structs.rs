@@ -147,6 +147,18 @@ impl ClientsDownloadedData {
             }
         }
     }
+
+    pub fn get_know_media_with_id(&self, client_id: NodeId, server_id: NodeId, media_index: u64) -> Option<u64> {
+        self.media.get(&(client_id, server_id))
+            .and_then(|hashset| {
+                if hashset.contains(&media_index) &&
+                    self.known_media.get(&media_index).copied().unwrap_or(false) {
+                    Some(media_index)
+                } else {
+                    None
+                }
+            })
+    }
 }
 
 #[derive(PartialEq)]

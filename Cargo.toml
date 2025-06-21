@@ -15,6 +15,7 @@ eframe = "0.31.1"
 chrono = "0.4"
 chrono-tz = "0.10"
 image = "0.24"
+regex = "1.11.1"
 
 # drones
 rustaceans_wit_attitudes = { git = "https://github.com/Nicklaskiaer/ap-rustaceans-wit-attitudes-drone.git", features = ["debug"] }
