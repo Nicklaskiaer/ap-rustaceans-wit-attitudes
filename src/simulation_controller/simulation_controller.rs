@@ -4,7 +4,7 @@ use crate::client_server::network_core::{
 use crate::simulation_controller::gui::MyApp;
 use crossbeam_channel::{Receiver, Sender};
 use eframe::egui;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
@@ -40,7 +40,7 @@ impl SimulationController {
             packet_channels,
         }
     }
-
+    
     pub fn handle_remove_sender(&self, drone_sender_id: NodeId, drone_id: NodeId) {
         if let Some((drone_sender, _, _)) = self.drones.get(&drone_sender_id) {
             drone_sender
@@ -241,6 +241,22 @@ impl SimulationController {
         if let Some((client_sender, _)) = self.clients.get(&client_id) {
             client_sender
                 .send(ClientServerCommand::RequestImageList(server_id))
+                .unwrap();
+        }
+    }
+
+    pub fn handle_text_list_request(&self, client_id: NodeId, server_id: NodeId) {
+        if let Some((client_sender, _)) = self.clients.get(&client_id) {
+            client_sender
+                .send(ClientServerCommand::RequestTextList(server_id))
+                .unwrap();
+        }
+    }
+
+    pub fn handle_text_request(&self, client_id: NodeId, server_id: NodeId, image_id: u64) {
+        if let Some((client_sender, _)) = self.clients.get(&client_id) {
+            client_sender
+                .send(ClientServerCommand::RequestText(server_id, image_id))
                 .unwrap();
         }
     }

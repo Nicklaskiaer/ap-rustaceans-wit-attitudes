@@ -12,17 +12,18 @@ use wg_2024::packet::{FloodResponse, Fragment, NodeType, Packet};
 pub enum ClientServerCommand {
     StartFloodRequest,               // used by: Client, SText, SMedia, SChat
     RequestServerType, // used by: Client. client will auto call it to itself after few seconds after a StartFloodRequest
-    RequestFileList(NodeId), // used by: Client. client ask the server for its list of files
-    RequestFile(NodeId, u64), // used by: Client. client ask the server for a specific file
     SendChatMessage(NodeId, String), // used by: Client, Server. client send a chat message to a specific node
     ClientListRequest(NodeId),
     RegistrationRequest(NodeId), // used by: Client. client request to register itself to the server
+    RemoveDrone(NodeId),
 
+    RequestTextList(NodeId), // used by: Client. client ask the server for its list of files
+    RequestText(NodeId, u64), // used by: Client. client ask the server for a specific file
+    
     RequestImageList(NodeId), // used by: Client. client ask the server for its list of images
     RequestImage(NodeId, u64), // used by: Client. client ask the server for a specific image
     ImageResponse(NodeId, u64), // used by: Server
-
-    RemoveDrone(NodeId),
+    
     TestCommand, //TODO: remove it
 }
 

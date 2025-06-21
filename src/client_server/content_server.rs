@@ -26,7 +26,7 @@ pub struct ContentServer {
     assembler_send: Sender<Packet>,
     assembler_res_recv: Receiver<Vec<u8>>,
     content_type: ContentType,
-    files: Vec<u64>,
+    texts: Vec<u64>,
 }
 
 impl NetworkNode for ContentServer {
@@ -127,7 +127,7 @@ impl ContentServer {
             // assembler_res_send,
             assembler_res_recv,
             content_type,
-            files,
+            texts: files,
         }
     }
 
@@ -176,8 +176,8 @@ impl ContentServer {
                 }
             }
             ClientServerCommand::RequestServerType => { /* servers do not need to use it */ }
-            ClientServerCommand::RequestFileList(_) => { /* servers do not need to use it */ }
-            ClientServerCommand::RequestFile(_, _) => { /* servers do not need to use it */ }
+            ClientServerCommand::RequestTextList(_) => { /* servers do not need to use it */ }
+            ClientServerCommand::RequestText(_, _) => { /* servers do not need to use it */ }
             ClientServerCommand::RegistrationRequest(_) => { /* this server do not need to use it */
             }
             ClientServerCommand::RequestImage(_, _) => todo!(),
@@ -191,7 +191,7 @@ impl ContentServer {
                 );
 
                 // Check if the image exists
-                if self.files.contains(&image_id) {
+                if self.texts.contains(&image_id) {
                     // Try to read the image content
                     let file_path = format!("server_content/media_files/{}.jpg", image_id);
                     match std::fs::read(&file_path) {
@@ -230,7 +230,7 @@ impl ContentServer {
                     \ncontent_type: {:?}\
                     \nfiles: {:?}\
                     \n",
-                    self.id, self.topology_map, self.content_type, self.files
+                    self.id, self.topology_map, self.content_type, self.texts
                 );
             }
             ClientServerCommand::ClientListRequest(_) => {/* servers do not need to use it */ },
@@ -401,7 +401,7 @@ impl ContentServer {
         let message = Message {
             source_id: self.id,
             session_id,
-            content: TextResponse::TextList(self.files.clone()),
+            content: TextResponse::TextList(self.texts.clone()),
         };
         debug!(
             "Server: {:?} sending msg to client {:?}, msg: {:?}",
@@ -410,7 +410,7 @@ impl ContentServer {
         self.send_message_in_fragments(client_id, session_id, message);
     }
     fn send_text_response_text(&mut self, client_id: NodeId, file_id: u64) {
-        if self.files.contains(&file_id) {
+        if self.texts.contains(&file_id) {
             // Try to read file content
             let file_path = format!("server_content/text_files/{}", file_id);
             match std::fs::read_to_string(&file_path) {
@@ -488,7 +488,7 @@ impl ContentServer {
         let message = Message {
             source_id: self.id,
             session_id,
-            content: MediaResponse::MediaList(self.files.clone()),
+            content: MediaResponse::MediaList(self.texts.clone()),
         };
         debug!(
             "Server: {:?} sending MediaList response to client {:?}, msg: {:?}",
@@ -503,7 +503,7 @@ impl ContentServer {
             self.id, message_id, file_nr
         );
         // Handle Media request
-        if self.files.contains(&file_nr) {
+        if self.texts.contains(&file_nr) {
             let session_id = random::<u64>();
             let message = Message {
                 source_id: self.id,

@@ -238,14 +238,14 @@ impl Client {
 
                 self.send_registration_request(node_id);
             }
-            ClientServerCommand::RequestFileList(node_id) => {
+            ClientServerCommand::RequestTextList(node_id) => {
                 debug!(
                     "Client: {:?} received RequestFileList, Server id: {:?}",
                     self.id, node_id
                 );
                 self.send_text_request_text_list(node_id);
             }
-            ClientServerCommand::RequestFile(node_id, file_id) => {
+            ClientServerCommand::RequestText(node_id, file_id) => {
                 debug!(
                     "Client: {:?} received RequestFile, Server id: {:?} file id: {:?}",
                     self.id, node_id, file_id

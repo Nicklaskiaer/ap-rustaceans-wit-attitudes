@@ -9,7 +9,7 @@ use crate::simulation_controller::simulation_controller::SimulationController;
 use crate::client_server::network_core::{
     ChatMessage, ClientEvent, ClientServerCommand, ContentType, ServerEvent, ServerType,
 };
-use crate::message::message::{ChatResponse, MediaResponseForMessageContent, MessageContent};
+use crate::message::message::{ChatResponse, MediaResponseForMessageContent, MessageContent, TextResponse};
 use crossbeam_channel::Sender;
 use eframe::egui;
 
@@ -37,9 +37,8 @@ pub struct MyApp {
     topology_needs_update: bool,
     pub(crate) chatrooms_messages: HashMap<NodeId, Vec<ChatMessage>>, // Store chatroom messages of every server to be displayed.
     pub(crate) registered_servers: HashMap<NodeId, Vec<NodeId>>, // Maps client ID to list of servers they're registered with
-    pub client_images: HashMap<NodeId, Vec<u64>>, // Maps client ID to list of the image IDs client has downloaded
-    pub client_image_id_inputs: HashMap<NodeId, u64>, // Maps client ID to input for requesting images
-    pub client_image_lists: HashMap<(NodeId, NodeId), Vec<u64>>, // Maps (client_id, server_id) to list of available images
+    pub client_data_id_inputs: HashMap<NodeId, u64>, // Maps client ID to input for requesting data
+    pub clients_downloaded_data: ClientsDownloadedData,
     pub(crate) registered_clients: HashSet<NodeId>,
 }
 
@@ -84,9 +83,8 @@ impl MyApp {
             topology_needs_update: true,
             chatrooms_messages: HashMap::new(),
             registered_servers: Default::default(),
-            client_images: HashMap::new(),
-            client_image_id_inputs: HashMap::new(),
-            client_image_lists: HashMap::new(),
+            client_data_id_inputs: HashMap::new(),
+            clients_downloaded_data: ClientsDownloadedData::new(),
             registered_clients: HashSet::new(),
         }
     }
@@ -140,7 +138,14 @@ impl eframe::App for MyApp {
                         MessageContent::ServerTypeRequest(_) => {}
                         MessageContent::ServerTypeResponse(_) => {}
                         MessageContent::TextRequest(_) => {}
-                        MessageContent::TextResponse(_) => {}
+                        MessageContent::TextResponse(response_context) => {
+                            match &response_context {
+                                TextResponse::TextList(_) => {
+                                }
+                                TextResponse::Text(_) => {}
+                                TextResponse::NotFound => {}
+                            }
+                        }
                         MessageContent::WholeChatVecResponse(_) => { /*not used by client*/ }
                         MessageContent::ChatRequest(_) => {}
                         MessageContent::ChatResponse(response_context) => {

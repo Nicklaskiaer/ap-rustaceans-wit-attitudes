@@ -1,3 +1,4 @@
+use crate::simulation_controller::simulation_controller::ClientsDownloadedData;
 use crate::client_server::network_core::{ChatMessage, ContentType, ServerType};
 use crate::simulation_controller::gui::MyApp;
 use crate::simulation_controller::gui_structs::*;
@@ -186,10 +187,10 @@ fn show_client_controls(
             *screen = ClientPopupScreen::Chatroom;
         }
         if ui
-            .selectable_label(*screen == ClientPopupScreen::Other, "Images")
+            .selectable_label(*screen == ClientPopupScreen::Content, "Content")
             .clicked()
         {
-            *screen = ClientPopupScreen::Other;
+            *screen = ClientPopupScreen::Content;
         }
     });
 
@@ -304,8 +305,9 @@ fn show_client_controls(
                 }
             });
         }
-        ClientPopupScreen::Other => {
+        ClientPopupScreen::Content => {
             let selected_server_images = app.selected_server.entry(node_id).or_default();
+            let mut selected_type_option: Option<ContentType> = None;
 
             // Server selection dropdown
             ui.horizontal(|ui| {
@@ -321,117 +323,192 @@ fn show_client_controls(
                         // Get all server IDs and their types
                         let servers = app.simulation_controller.get_servers();
 
-                        // Filter to only ContentServers with Media type
+                        // Filter to only ContentServers
                         for (server_id, (_, _, server_type)) in servers {
                             if let ServerType::ContentServer(content_type) = server_type {
-                                if let ContentType::Media = content_type {
-                                    let server_id_str = format!("Server {}", server_id);
-                                    if ui
-                                        .selectable_label(
-                                            selected_server_images == &server_id_str,
-                                            &server_id_str,
-                                        )
-                                        .clicked()
-                                    {
-                                        *selected_server_images = server_id_str;
-                                    }
+                                let mut content_type_str = "".to_string();
+                                match content_type {
+                                    ContentType::Media => {
+                                        content_type_str = "Media".to_string();
+                                        selected_type_option = Some(ContentType::Media);
+                                    },
+                                    ContentType::Text => {
+                                        content_type_str = "Text".to_string();
+                                        selected_type_option = Some(ContentType::Media);
+                                    },
+                                };
+                                let server_id_str = format!("Server {} ({})", server_id, content_type_str);
+                                if ui.selectable_label(
+                                    selected_server_images == &server_id_str,
+                                    &server_id_str,
+                                ).clicked() {
+                                    *selected_server_images = server_id_str;
                                 }
                             }
                         }
                     });
             });
 
+
             // Get the selected server ID
             let mut selected_server_id = 0;
-            if let Some(num_str) = selected_server_images.split_whitespace().last() {
+            if let Some(num_str) = selected_server_images.split_whitespace().nth(1) {
                 if let Ok(server_id) = num_str.parse::<u8>() {
                     selected_server_id = server_id;
                 }
             }
-
             ui.separator();
+            
+            if let Some(selected_type) = selected_type_option {
+                match &selected_type {
+                    ContentType::Media => {
+                        // Request image list button
+                        if ui.button("Request Image List").clicked() && selected_server_id > 0 {
+                            app.simulation_controller.handle_image_list_request(node_id, selected_server_id);
+                        }
 
-            // Request image list button
-            if ui.button("Request Image List").clicked() && selected_server_id > 0 {
-                app.simulation_controller
-                    .handle_image_list_request(node_id, selected_server_id);
-            }
-
-            // Display available images from the selected server
-            if selected_server_id > 0 {
-                if let Some(image_list) = app.client_image_lists.get(&(node_id, selected_server_id))
-                {
-                    ui.label("Available Images:");
-                    ui.label(format!("{:?}", image_list));
-                } else {
-                    ui.label("No image list available. Click 'Request Image List' to get available images.");
-                }
-            }
-
-            ui.separator();
-
-            // Image request section
-            ui.label("Request Specific Image:");
-            ui.horizontal(|ui| {
-                let image_id_input = app.client_image_id_inputs.entry(node_id).or_default();
-                ui.label("Image ID:");
-                ui.add(egui::DragValue::new(image_id_input).speed(1.0));
-
-                if ui.button("Request Image").clicked() && selected_server_id > 0 {
-                    app.simulation_controller.handle_image_request(
-                        node_id,
-                        selected_server_id,
-                        *image_id_input,
-                    );
-                }
-            });
-
-            ui.separator();
-
-            // Display requested images grid
-            ui.label("Requested Images:");
-            if let Some(image_ids) = app.client_images.get(&node_id) {
-                if image_ids.is_empty() {
-                    ui.label("No images have been requested yet.");
-                } else {
-                    let columns = 3;
-
-                    egui::Grid::new("client_images_grid")
-                        .num_columns(columns)
-                        .spacing([10.0, 10.0])
-                        .show(ui, |ui| {
-                            for (i, image_id) in image_ids.iter().enumerate() {
-                                let image_path =
-                                    format!("server_content/media_files/{}.jpg", image_id);
-
-                                if let Ok(image) = image::open(&Path::new(&image_path)) {
-                                    let image_buffer = image.to_rgba8();
-                                    let (width, height) = image_buffer.dimensions();
-                                    let size = [width as usize, height as usize];
-                                    let texture = ui.ctx().load_texture(
-                                        format!("image_{}", image_id),
-                                        egui::ColorImage::from_rgba_unmultiplied(
-                                            size,
-                                            &image_buffer.into_raw(),
-                                        ),
-                                        egui::TextureOptions::default(),
-                                    );
-                                    ui.add(
-                                        egui::Image::new(&texture)
-                                            .fit_to_exact_size(egui::vec2(100.0, 100.0)),
-                                    );
-                                } else {
-                                    ui.label(format!("Image {} not found", image_id));
+                        // Display available images from the selected server
+                        if selected_server_id > 0 {
+                            match app.clients_downloaded_data.get_know_list(node_id, selected_server_id) {
+                                None => {
+                                    ui.label("No image list available. Click 'Request Image List' to get available images.");
                                 }
-
-                                if (i + 1) % columns == 0 {
-                                    ui.end_row();
+                                Some(index_list) => {
+                                    ui.label("Available Images:");
+                                    ui.label(format!("{:?}", index_list));
                                 }
                             }
+                        }
+                        ui.separator();
+
+                        // Image request section
+                        ui.label("Request Specific Image:");
+                        ui.horizontal(|ui| {
+                            let data_id_input = app.client_data_id_inputs.entry(node_id).or_default();
+                            ui.label("Image ID:");
+                            ui.add(egui::DragValue::new(data_id_input).speed(1.0));
+
+                            if ui.button("Request Image").clicked() && selected_server_id > 0 {
+                                app.simulation_controller.handle_image_request(
+                                    node_id,
+                                    selected_server_id,
+                                    *data_id_input,
+                                );
+                            }
                         });
+                        ui.separator();
+
+                        // Display requested images grid
+                        ui.label("Requested Images:");
+                        if let Some(image_ids) = app.clients_downloaded_data.get_all_know_data(&node_id) {
+                            if image_ids.is_empty() {
+                                ui.label("No images have been requested yet.");
+                            } else {
+                                let columns = 3;
+
+                                egui::Grid::new("client_images_grid")
+                                    .num_columns(columns)
+                                    .spacing([10.0, 10.0])
+                                    .show(ui, |ui| {
+                                        for (i, image_id) in image_ids.iter().enumerate() {
+                                            let image_path =
+                                                format!("server_content/media_files/{}.jpg", image_id);
+
+                                            if let Ok(image) = image::open(&Path::new(&image_path)) {
+                                                let image_buffer = image.to_rgba8();
+                                                let (width, height) = image_buffer.dimensions();
+                                                let size = [width as usize, height as usize];
+                                                let texture = ui.ctx().load_texture(
+                                                    format!("image_{}", image_id),
+                                                    egui::ColorImage::from_rgba_unmultiplied(
+                                                        size,
+                                                        &image_buffer.into_raw(),
+                                                    ),
+                                                    egui::TextureOptions::default(),
+                                                );
+                                                ui.add(
+                                                    egui::Image::new(&texture)
+                                                        .fit_to_exact_size(egui::vec2(100.0, 100.0)),
+                                                );
+                                            } else {
+                                                ui.label(format!("Image {} not found", image_id));
+                                            }
+
+                                            if (i + 1) % columns == 0 {
+                                                ui.end_row();
+                                            }
+                                        }
+                                    });
+                            }
+                        } else {
+                            ui.label("No images available for this client.");
+                        }
+                    }, 
+                    ContentType::Text => {
+                    // Request text list button
+                    if ui.button("Request Text List").clicked() && selected_server_id > 0 {
+                        app.simulation_controller.handle_text_list_request(node_id, selected_server_id);
+                    }
+
+                    // Display available text from the selected server
+                    if selected_server_id > 0 {
+                        if let Some(file_list) = app.know_content_index.get(&(node_id, selected_server_id))
+                        {
+                            ui.label("Available Files:");
+                            ui.label(format!("{:?}", file_list));
+                        } else {
+                            ui.label("No file list available. Click 'Request File List' to get available files.");
+                        }
+                    }
+
+                    ui.separator();
+
+                    // File request section
+                    ui.label("Request Specific File:");
+                    ui.horizontal(|ui| {
+                        let file_id_input = app.client_file_id_inputs.entry(node_id).or_default();
+                        ui.label("File ID:");
+                        ui.add(egui::DragValue::new(file_id_input).speed(1.0));
+
+                        if ui.button("Request File").clicked() && selected_server_id > 0 {
+                            app.simulation_controller.handle_file_request(
+                                node_id,
+                                selected_server_id,
+                                *file_id_input,
+                            );
+                        }
+                    });
+
+                    ui.separator();
+
+                    // Display requested files
+                    ui.label("Requested Files:");
+                    if let Some(files) = app.client_files.get(&node_id) {
+                        if files.is_empty() {
+                            ui.label("No files have been requested yet.");
+                        } else {
+                            egui::ScrollArea::vertical()
+                                .max_height(200.0)
+                                .show(ui, |ui| {
+                                    for (file_id, content) in files {
+                                        ui.collapsing(format!("File {}", file_id), |ui| {
+                                            // Display file content in a scrollable text area
+                                            let mut text = content.clone();
+                                            ui.add(
+                                                egui::TextEdit::multiline(&mut text)
+                                                    .desired_width(ui.available_width())
+                                                    .desired_rows(10)
+                                                    .read_only(true)
+                                            );
+                                        });
+                                    }
+                                });
+                        }
+                    } else {
+                        ui.label("No files available for this client.");
+                    }
                 }
-            } else {
-                ui.label("No images available for this client.");
+                }
             }
         }
     }

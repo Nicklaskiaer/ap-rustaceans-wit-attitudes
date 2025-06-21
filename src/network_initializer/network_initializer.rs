@@ -93,32 +93,32 @@ pub fn main() {
             .collect();
 
         // test
-        thread::spawn(move || { 
-            let mut drone = RustaceansWitAttitudesDrone::new(
-                drone.id,
-                node_event_send_drone,
-                controller_drone_recv,
-                packet_recv,
-                packet_send,
-                drone.pdr,
-            );
-            drone.run();
-        });
+        // thread::spawn(move || { 
+        //     let mut drone = RustaceansWitAttitudesDrone::new(
+        //         drone.id,
+        //         node_event_send_drone,
+        //         controller_drone_recv,
+        //         packet_recv,
+        //         packet_send,
+        //         drone.pdr,
+        //     );
+        //     drone.run();
+        // });
 
         
         
         // spawn
-        // thread::spawn(move || {
-        //     if i < 10 {
-        //         let mut drone = create_drone(drone.id, node_event_send_drone, controller_drone_recv, packet_recv, packet_send, drone.pdr, i);
-        //         drone.run();
-        //     } else {
-        //         let mut rng = thread_rng();
-        //         let random_i = rng.gen_range(0..10);
-        //         let mut drone = create_drone(drone.id, node_event_send_drone, controller_drone_recv, packet_recv, packet_send, drone.pdr, random_i);
-        //         drone.run();
-        //     }
-        // });
+        thread::spawn(move || {
+            if i < 10 {
+                let mut drone = create_drone(drone.id, node_event_send_drone, controller_drone_recv, packet_recv, packet_send, drone.pdr, i);
+                drone.run();
+            } else {
+                let mut rng = thread_rng();
+                let random_i = rng.gen_range(0..10);
+                let mut drone = create_drone(drone.id, node_event_send_drone, controller_drone_recv, packet_recv, packet_send, drone.pdr, random_i);
+                drone.run();
+            }
+        });
     }
 
     // INITIALIZE CLIENTS

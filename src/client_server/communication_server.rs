@@ -171,8 +171,8 @@ impl CommunicationServer {
                 }
             }
             ClientServerCommand::RequestServerType => { /* servers do not need to use it */ }
-            ClientServerCommand::RequestFileList(_) => { /* servers do not need to use it */ }
-            ClientServerCommand::RequestFile(_, _) => { /* servers do not need to use it */ }
+            ClientServerCommand::RequestTextList(_) => { /* servers do not need to use it */ }
+            ClientServerCommand::RequestText(_, _) => { /* servers do not need to use it */ }
             ClientServerCommand::RegistrationRequest(_) => { /* this server not need to use it */ }
             ClientServerCommand::ImageResponse(_, _) => { /* this server doesnt need to use it */ }
             ClientServerCommand::RequestImage(_, _) => { /* this server doesnt need to use it */ }
