@@ -18,6 +18,9 @@ use wg_2024::packet::{
     FloodRequest, NodeType, Packet, PacketType,
 };
 
+const MAX_FAILED_TRY: u8 = 50;
+const FLOOD_DELAY: u64 = 300;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerTypeWithSessionId {
     SessionId,
@@ -35,7 +38,7 @@ pub struct Client {
     packet_recv: Receiver<Packet>,
     topology_map: HashSet<(NodeId, Vec<NodeId>)>,
     server_type_map: HashMap<NodeId, Option<ServerType>>,
-    session_ids_for_request_server_type: HashSet<u64>,
+    failed_server_type: (HashSet<u64>, HashMap<NodeId, u8>), // (failed server type session id, (NodeId, n. failures))
     assembler_send: Sender<Packet>,
     assembler_res_recv: Receiver<Vec<u8>>,
 }
@@ -116,7 +119,7 @@ impl Client {
         packet_recv: Receiver<Packet>,
         topology_map: HashSet<(NodeId, Vec<NodeId>)>,
         server_type_map: HashMap<NodeId, Option<ServerType>>,
-        session_ids_for_request_server_type: HashSet<u64>,
+        session_ids_for_request_server_type: (HashSet<u64>, HashMap<NodeId, u8>),
         assembler_send: Sender<Packet>,
         assembler_res_recv: Receiver<Vec<u8>>,
     ) -> Self {
@@ -130,7 +133,7 @@ impl Client {
             packet_send,
             topology_map,
             server_type_map,
-            session_ids_for_request_server_type,
+            failed_server_type: session_ids_for_request_server_type,
             assembler_send,
             assembler_res_recv,
         }
@@ -169,7 +172,8 @@ impl Client {
                 // clear the hashmap
                 self.topology_map.clear();
                 self.server_type_map.clear();
-                self.session_ids_for_request_server_type.clear();
+                self.failed_server_type.0.clear();
+                self.failed_server_type.1.clear();
 
                 // Generate a unique flood ID using current time
                 let timestamp = std::time::SystemTime::now()
@@ -204,7 +208,7 @@ impl Client {
                 // Spawn thread to wait and then send RequestServerType
                 let controller_send_itself = self.controller_send_itself.clone();
                 thread::spawn(move || {
-                    thread::sleep(std::time::Duration::from_secs(3));
+                    thread::sleep(std::time::Duration::from_millis(FLOOD_DELAY));
                     controller_send_itself
                         .send(ClientServerCommand::RequestServerType)
                         .ok();
@@ -228,7 +232,7 @@ impl Client {
                     self.id,
                     self.topology_map,
                     self.server_type_map,
-                    self.session_ids_for_request_server_type
+                    self.failed_server_type
                 );
             },
             
@@ -244,9 +248,27 @@ impl Client {
                 );
 
                 // Query all servers in the server_type_map that have None as their type
+                let mut keep_trying = false;
                 for server_id in self.server_type_map.keys().cloned().collect::<Vec<_>>() {
                     if let Some(None) = self.server_type_map.get(&server_id) {
                         self.send_server_type_request(server_id);
+                        keep_trying = true;
+                    }
+                }
+                
+                if keep_trying {
+                    let max_failures = self.failed_server_type.1.values().cloned().max().unwrap_or(0);
+                    if max_failures > MAX_FAILED_TRY {
+                        self.handle_broken_drone();
+                    } else {
+                        // Spawn thread to wait and then send RequestServerType
+                        let controller_send_itself = self.controller_send_itself.clone();
+                        thread::spawn(move || {
+                            thread::sleep(std::time::Duration::from_millis(FLOOD_DELAY));
+                            controller_send_itself
+                                .send(ClientServerCommand::RequestServerType)
+                                .ok();
+                        });
                     }
                 }
             },
@@ -296,13 +318,15 @@ impl Client {
         match &packet.pack_type {
             PacketType::Nack(_nack) => {
                 debug!("Client: {:?} received a Nack {:?}", self.id, _nack);
-
+                
                 // If a request server type was dropped, a new one will be created
-                if self
-                    .session_ids_for_request_server_type
-                    .contains(&packet.session_id)
-                {
+                if self.failed_server_type.0.contains(&packet.session_id) {
                     if let Some(server_id) = packet.routing_header.destination() {
+                        if let Some(node_id) = packet.routing_header.hops.first() {
+                            // if present increase the node_id value by 1 else add the node_id with value 0
+                            *self.failed_server_type.1.entry(*node_id).or_insert(0) += 1;
+                        }
+                        
                         self.send_server_type_request(server_id);
                     }
                 }
@@ -401,7 +425,7 @@ impl Client {
                             self.server_type_map.insert(message.source_id, Some(server_type.clone()));
 
                             // remove the session id from the session_ids
-                            self.session_ids_for_request_server_type.remove(&message.session_id);
+                            self.failed_server_type.0.remove(&message.session_id);
                         }
                     }
                 }
@@ -522,7 +546,7 @@ impl Client {
             session_id,
             content: ServerTypeRequest::GetServerType,
         };
-        self.session_ids_for_request_server_type.insert(session_id);
+        self.failed_server_type.0.insert(session_id);
         debug!(
             "Server: {:?} sending msg to client {:?}, msg: {:?}",
             self.id, server_id, message
@@ -679,6 +703,19 @@ impl Client {
                     }
                 }
             }
+        }
+    }
+
+    fn handle_broken_drone(&mut self) {
+        // Find the node_id with the highest failure count
+        let worst_node = self.failed_server_type.1
+            .iter()
+            .max_by_key(|(_, &count)| count)
+            .map(|(node_id, _)| *node_id);
+
+        if let Some(node_id) = worst_node {
+            debug!("Client: {:?} detected broken drone: {:?}", self.id, node_id);
+            self.controller_send.send(ClientEvent::BrokenDroneDetected(node_id)).ok();
         }
     }
 }

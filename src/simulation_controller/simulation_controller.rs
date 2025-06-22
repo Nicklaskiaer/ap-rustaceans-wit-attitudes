@@ -195,6 +195,31 @@ impl SimulationController {
         }
     }
 
+    pub fn handle_broken_drone(&mut self, drone_id: NodeId) {
+        // Get the drone's data before removing it
+        if let Some((_, neighbors, _)) = self.drones.get_mut(&drone_id).cloned() {
+            debug!("Handling broken drone {} with {} neighbors...", drone_id, neighbors.len());
+
+            // Remove connections from all neighbors to the broken drone
+            for neighbor_id in neighbors.clone() {
+                let node1_removed_node2 = self.try_remove_connection(drone_id, neighbor_id);
+                if node1_removed_node2 {
+                    self.update_neighbor_list(drone_id, neighbor_id, false);
+                    debug!("did {} removed {}? {}", drone_id, neighbor_id, node1_removed_node2);
+                }
+                
+                let node2_removed_node1 = self.try_remove_connection(neighbor_id, drone_id);
+                if node2_removed_node1 {
+                    self.update_neighbor_list(neighbor_id, drone_id, false);
+                    debug!("did {} removed {}? {}", neighbor_id, drone_id, node2_removed_node1);
+                }
+            }
+
+            // self.drones.remove(&drone_id);
+            self.start_flood_request_for_all();
+        }
+    }
+
     pub fn get_drone_ids(&self) -> Vec<String> {
         self.drones
             .keys()
