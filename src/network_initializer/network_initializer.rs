@@ -188,10 +188,8 @@ pub fn main(config_path: String){
                 packet_recv,
                 HashSet::new(),
                 HashMap::new(),
-                HashSet::new(),
+                (HashSet::new(), HashMap::new()),
                 assembler_send,
-                // assembler_recv,
-                // assembler_send_res,
                 assembler_recv_res,
             );
 

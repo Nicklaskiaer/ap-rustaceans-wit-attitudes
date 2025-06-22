@@ -178,6 +178,9 @@ impl eframe::App for MyApp {
                         }
                     }
                 }
+                ClientEvent::BrokenDroneDetected(node_id) => {
+                    self.simulation_controller.handle_broken_drone(*node_id);
+                }
             }
             self.logs(Event::Client(event));
         }

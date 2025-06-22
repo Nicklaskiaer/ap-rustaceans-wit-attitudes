@@ -79,6 +79,9 @@ pub fn logs(app: &mut MyApp, event: Event) {
             ClientEvent::MessageReceived { receiver, content } => {
                 format!("[MESSAGE] Received by Client: {}, content: {:?}", receiver, content)
             }
+            ClientEvent::BrokenDroneDetected(drone_id) => {
+                format!("[MESSAGE] Found Broken Drone, id: {}", drone_id)
+            }
         },
 
         Event::Server(server_event) => match server_event {

@@ -63,6 +63,7 @@ pub enum ClientEvent {
         receiver: NodeId,
         content: MessageContent,
     },
+    BrokenDroneDetected(NodeId),
 }
 
 #[derive(Debug, Clone)]
