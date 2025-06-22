@@ -14,7 +14,7 @@ use wg_2024::packet::{FloodRequest, NodeType, Packet, PacketType};
 pub struct ContentServer {
     id: NodeId,
     topology_map: HashSet<(NodeId, Vec<NodeId>)>,
-    connected_drone_ids: Vec<NodeId>,
+    connected_drone_ids: HashSet<NodeId>,
     controller_send: Sender<ServerEvent>,
     controller_recv: Receiver<ClientServerCommand>,
     packet_send: HashMap<NodeId, Sender<Packet>>,
@@ -97,7 +97,7 @@ impl NetworkNode for ContentServer {
 impl ContentServer {
     pub fn new(
         id: NodeId,
-        connected_drone_ids: Vec<NodeId>,
+        connected_drone_ids: HashSet<NodeId>,
         controller_send: Sender<ServerEvent>,
         controller_recv: Receiver<ClientServerCommand>,
         packet_send: HashMap<NodeId, Sender<Packet>>,
@@ -160,6 +160,10 @@ impl ContentServer {
                     // Try to send packet
                     self.try_send_packet_with_target_id(drone_id, &flood_request);
                 }
+            },
+            ClientServerCommand::AddDrone(drone_id, sender) => {
+                self.connected_drone_ids.insert(drone_id);
+                self.packet_send.insert(drone_id, sender);
             },
             ClientServerCommand::RemoveDrone(drone_id) => {
                 self.connected_drone_ids.retain(|&id| id != drone_id);

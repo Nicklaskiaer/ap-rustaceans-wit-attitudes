@@ -40,82 +40,129 @@ impl SimulationController {
         }
     }
     
-    pub fn handle_remove_sender(&mut self, drone_sender_id: NodeId, drone_id: NodeId) -> bool {
-        // drone A remove drone B
-        let mut a_added_b = false;
-        if let Some((drone_sender, neighbors, _)) = self.drones.get_mut(&drone_sender_id) {
-            // Send command to drone A to remove drone B
-            match drone_sender.send(DroneCommand::RemoveSender(drone_id)) {
-                Ok(_) => {
-                    // Remove drone_id from the neighbor list
-                    neighbors.retain(|&id| id != drone_id);
-                    a_added_b = true; 
+    fn try_add_connection(&self, from_id: NodeId, to_id: NodeId) -> bool {
+        let mut success = false;
+        
+        if let Some((sender, _, _)) = self.drones.get(&from_id) {
+            if let Some((packet_sender, _)) = self.packet_channels.get(&to_id) {
+                match sender.send(DroneCommand::AddSender(to_id, packet_sender.clone())) {
+                    Ok(_) => success = true,
+                    Err(_) => return false,
                 }
-                Err(_) => { a_added_b = false; }
+            }
+        }
+        else if let Some((sender, _)) = self.clients.get(&from_id) {
+            if let Some((packet_sender, _)) = self.packet_channels.get(&to_id) {
+                match sender.send(ClientServerCommand::AddDrone(to_id, packet_sender.clone())) {
+                    Ok(_) => success = true,
+                    Err(_) => return false,
+                }
+            }
+        }
+        else if let Some((sender, _, _)) = self.servers.get(&from_id) {
+            if let Some((packet_sender, _)) = self.packet_channels.get(&to_id) {
+                match sender.send(ClientServerCommand::AddDrone(to_id, packet_sender.clone())) {
+                    Ok(_) => success = true,
+                    Err(_) => return false,
+                }
             }
         }
 
-        // drone B remove drone A
-        let mut b_added_a = false;
-        if let Some((drone_sender, neighbors, _)) = self.drones.get_mut(&drone_id) {
-            // Send command to drone B to remove drone A
-            match drone_sender.send(DroneCommand::RemoveSender(drone_sender_id)) {
+        success
+    }
+    fn try_remove_connection(&mut self, from_id: NodeId, to_id: NodeId) -> bool {
+        let mut success = false;
+        
+        if let Some((sender, neighbors, _)) = self.drones.get_mut(&from_id) {
+            match sender.send(DroneCommand::RemoveSender(to_id)) {
                 Ok(_) => {
-                    // Remove drone_sender_id from the neighbor list
-                    neighbors.retain(|&id| id != drone_sender_id);
-                    b_added_a = true; 
+                    neighbors.retain(|&id| id != to_id);
+                    success = true;
                 }
-                Err(_) => { b_added_a = false; }
+                Err(_) => return false,
             }
         }
+        else if let Some((sender, neighbors)) = self.clients.get_mut(&from_id) {
+            match sender.send(ClientServerCommand::RemoveDrone(to_id)) {
+                Ok(_) => {
+                    neighbors.retain(|&id| id != to_id);
+                    success = true;
+                }
+                Err(_) => return false,
+            }
+        }
+        else if let Some((sender, neighbors, _)) = self.servers.get_mut(&from_id) {
+            match sender.send(ClientServerCommand::RemoveDrone(to_id)) {
+                Ok(_) => {
+                    neighbors.retain(|&id| id != to_id);
+                    success = true;
+                }
+                Err(_) => return false,
+            }
+        }
+
+        success
+    }
+    fn update_neighbor_list(&mut self, node_id: NodeId, neighbor_id: NodeId, should_add: bool) {
+        // Update drone neighbors
+        if let Some((_, neighbors, _)) = self.drones.get_mut(&node_id) {
+            if should_add {
+                if !neighbors.contains(&neighbor_id) {
+                    neighbors.push(neighbor_id);
+                }
+            } else {
+                neighbors.retain(|&id| id != neighbor_id);
+            }
+        }
+        // Update client neighbors
+        else if let Some((_, neighbors)) = self.clients.get_mut(&node_id) {
+            if should_add {
+                if !neighbors.contains(&neighbor_id) {
+                    neighbors.push(neighbor_id);
+                }
+            } else {
+                neighbors.retain(|&id| id != neighbor_id);
+            }
+        }
+        // Update server neighbors
+        else if let Some((_, neighbors, _)) = self.servers.get_mut(&node_id) {
+            if should_add {
+                if !neighbors.contains(&neighbor_id) {
+                    neighbors.push(neighbor_id);
+                }
+            } else {
+                neighbors.retain(|&id| id != neighbor_id);
+            }
+        }
+    }
+    
+    pub fn handle_add_sender(&mut self, node1_id: NodeId, node2_id: NodeId) -> bool {
+        let node1_added_node2 = self.try_add_connection(node1_id, node2_id);
+        debug!("did {} added {}? {}", node1_id, node2_id, node1_added_node2);
+        let node2_added_node1 = self.try_add_connection(node2_id, node1_id);
+        debug!("did {} added {}? {}", node2_id, node1_id, node2_added_node1);
         
-        if a_added_b && b_added_a {
+        
+        if node1_added_node2 && node2_added_node1 {
+            self.update_neighbor_list(node1_id, node2_id, true);
+            self.update_neighbor_list(node2_id, node1_id, true);
+
             self.start_flood_request_for_all();
             return true;
         }
         false
     }
+    
+    pub fn handle_remove_sender(&mut self, node1_id: NodeId, node2_id: NodeId) -> bool {
+        let node1_removed_node2 = self.try_remove_connection(node1_id, node2_id);
+        debug!("did {} removed {}? {}", node1_id, node2_id, node1_removed_node2);
+        let node2_removed_node1 = self.try_remove_connection(node2_id, node1_id);
+        debug!("did {} removed {}? {}", node2_id, node1_id, node2_removed_node1);
 
-    pub fn handle_add_sender(&mut self, drone_sender_id: NodeId, drone_id: NodeId) -> bool {
-        // drone A adds drone B
-        let mut a_added_b = false;
-        if let Some((drone_sender, _, _)) = self.drones.get(&drone_sender_id) {
-            if let Some((sender_to_add, _)) = self.packet_channels.get(&drone_id) {
-                match drone_sender.send(DroneCommand::AddSender(drone_id, sender_to_add.clone())) {
-                    Ok(_) => { a_added_b = true; }
-                    Err(_) => { a_added_b = false; }
-                }
-            }
-        }
-
-        // drone B adds drone A
-        let mut b_added_a = false;
-        if a_added_b {
-            if let Some((drone_sender, _, _)) = self.drones.get(&drone_id) {
-                if let Some((sender_to_add, _)) = self.packet_channels.get(&drone_sender_id) {
-                    match drone_sender.send(DroneCommand::AddSender(drone_sender_id, sender_to_add.clone())) {
-                        Ok(_) => { b_added_a = true; }
-                        Err(_) => { b_added_a = false; }
-                    }
-                }
-            }
-        }
-
-        // Update topology
-        if a_added_b && b_added_a {
-            // Update drone A's neighbors
-            if let Some((_, neighbors, _)) = self.drones.get_mut(&drone_sender_id) {
-                if !neighbors.contains(&drone_id) {
-                    neighbors.push(drone_id);
-                }
-            }
-
-            // Update drone B's neighbors
-            if let Some((_, neighbors, _)) = self.drones.get_mut(&drone_id) {
-                if !neighbors.contains(&drone_sender_id) {
-                    neighbors.push(drone_sender_id);
-                }
-            }
+        if node1_removed_node2 && node2_removed_node1 {
+            self.update_neighbor_list(node1_id, node2_id, false);
+            self.update_neighbor_list(node2_id, node1_id, false);
+            
             self.start_flood_request_for_all();
             return true;
         }
@@ -134,38 +181,16 @@ impl SimulationController {
         if let Some((drone_sender, neighbors, _)) = self.drones.get(&drone_sender_id).cloned() {
             debug!("Crashing drone {} with {} neighbors...", drone_sender_id, neighbors.len());
 
-            // send RemoveSender commands to all neighbors
+            // Remove connections from all neighbors to the crashing drone
             for &neighbor_id in &neighbors {
-                if let Some((neighbor_sender, neighbor_list, _)) = self.drones.get_mut(&neighbor_id) {
-                    // Update neighbor's list
-                    neighbor_list.retain(|&id| id != drone_sender_id);
-
-                    // Send RemoveSender command
-                    neighbor_sender.send(DroneCommand::RemoveSender(drone_sender_id)).unwrap();
-                }
-
-                if let Some((neighbor_sender, neighbor_list)) = self.clients.get_mut(&neighbor_id) {
-                    // Update neighbor's list
-                    neighbor_list.retain(|&id| id != drone_sender_id);
-
-                    // Send RemoveSender command
-                    neighbor_sender.send(ClientServerCommand::RemoveDrone(drone_sender_id)).unwrap();
-                }
-
-                if let Some((neighbor_sender, neighbor_list, _)) = self.servers.get_mut(&neighbor_id) {
-                    // Update neighbor's list
-                    neighbor_list.retain(|&id| id != drone_sender_id);
-
-                    // Send RemoveSender command
-                    neighbor_sender.send(ClientServerCommand::RemoveDrone(drone_sender_id)).unwrap();
-                }
+                self.try_remove_connection(neighbor_id, drone_sender_id);
             }
 
-            // send the Crash command to the drone and remove it
+            // Send the Crash command to the drone and remove it
             drone_sender.send(DroneCommand::Crash).unwrap();
             self.drones.remove(&drone_sender_id);
-            
-            // initialize another flooding
+
+            // Initialize another flooding
             self.start_flood_request_for_all();
         }
     }

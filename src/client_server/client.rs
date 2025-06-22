@@ -27,7 +27,7 @@ pub enum ServerTypeWithSessionId {
 
 pub struct Client {
     id: NodeId,
-    connected_drone_ids: Vec<NodeId>,
+    connected_drone_ids: HashSet<NodeId>,
     controller_send: Sender<ClientEvent>,
     controller_send_itself: Sender<ClientServerCommand>, // sender to itself (used for delayed commands)
     controller_recv: Receiver<ClientServerCommand>,
@@ -108,7 +108,7 @@ impl NetworkNode for Client {
 impl Client {
     pub fn new(
         id: NodeId,
-        connected_drone_ids: Vec<NodeId>,
+        connected_drone_ids: HashSet<NodeId>,
         controller_send: Sender<ClientEvent>,
         controller_send_itself: Sender<ClientServerCommand>,
         controller_recv: Receiver<ClientServerCommand>,
@@ -209,6 +209,10 @@ impl Client {
                         .send(ClientServerCommand::RequestServerType)
                         .ok();
                 });
+            },
+            ClientServerCommand::AddDrone(drone_id, sender) => {
+                self.connected_drone_ids.insert(drone_id);
+                self.packet_send.insert(drone_id, sender);
             },
             ClientServerCommand::RemoveDrone(drone_id) => {
                 self.connected_drone_ids.retain(|&id| id != drone_id);
