@@ -1,7 +1,7 @@
 use crate::client_server::network_core::{ChatMessage, ServerType};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use wg_2024::network::NodeId;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

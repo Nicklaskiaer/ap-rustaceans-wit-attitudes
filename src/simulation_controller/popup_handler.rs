@@ -1,4 +1,4 @@
-use crate::client_server::network_core::{ChatMessage, ContentType, ServerType};
+use crate::client_server::network_core::{ContentType, ServerType};
 use crate::simulation_controller::gui::MyApp;
 use crate::simulation_controller::gui_structs::*;
 use chrono::{DateTime, Utc};
@@ -117,6 +117,9 @@ fn show_drone_controls(
             if ui.button("Add Sender").clicked() {
                 match input_text.parse::<NodeId>() {
                     Ok(sender_id) => {
+                        if app.simulation_controller.handle_add_sender(node_id, sender_id) {
+                            app.topology_needs_update = true;
+                        }
                         let message = format!("[COMMAND] Added sender {} to {}", sender_id, name);
                         app.logs_vec.push(LogEntry {
                             timestamp: formatted_time.to_string(),
@@ -131,6 +134,9 @@ fn show_drone_controls(
             if ui.button("Remove Sender").clicked() {
                 match input_text.parse::<NodeId>() {
                     Ok(sender_id) => {
+                        if app.simulation_controller.handle_remove_sender(node_id, sender_id) {
+                            app.topology_needs_update = true;
+                        }
                         let message =
                             format!("[COMMAND] Removed sender {} from {}", sender_id, name);
                         app.logs_vec.push(LogEntry {
@@ -146,13 +152,13 @@ fn show_drone_controls(
 
         // Handle Crash button
         if ui.button("Crash").clicked() {
-            if let Some((_, neighbors, _)) = app.simulation_controller.get_drones().get(&node_id) {
+            if let Some((_, _, _)) = app.simulation_controller.get_drones().get(&node_id) {
                 let message = format!("[COMMAND] Crashing {}", name);
                 app.logs_vec.push(LogEntry {
                     timestamp: formatted_time.to_string(),
                     message,
                 });
-                app.simulation_controller.handle_crash(node_id, neighbors.clone());
+                app.simulation_controller.handle_crash(node_id);
 
                 // Close the popup by removing its entry
                 app.open_popups.remove(name);
@@ -507,7 +513,7 @@ fn show_client_controls(
                                                         );
 
                                                         // Extract image IDs using regex
-                                                        let re = regex::Regex::new(r"\[image_(\d+)\]").unwrap();
+                                                        let re = regex::Regex::new(r"\[image_(\d+)]").unwrap();
                                                         let mut image_ids = Vec::new();
 
                                                         for cap in re.captures_iter(&content) {

@@ -18,18 +18,19 @@ image = "0.24"
 regex = "1.11.1"
 
 # drones
-rustaceans_wit_attitudes = { git = "https://github.com/Nicklaskiaer/ap-rustaceans-wit-attitudes-drone.git", features = ["debug"] }
+rustaceans_wit_attitudes = { git = "https://github.com/Nicklaskiaer/ap-rustaceans-wit-attitudes-drone.git" }
 skylink = { git = "https://github.com/Suge42/Skylink_drone.git" }
 bagel_bomber = { git = "https://github.com/daw-dev/bagel-bomber.git" }
 TrustDrone = { git = "https://github.com/Beto-prog/TrustDone", package = "drone" }
 rustastic-drone = { git = "https://github.com/Rustastic/RustasticDrone.git" }
 lockheedrustin-drone = { git = "https://github.com/Lockheed-Rustin/drone.git" }
 rf_drone = { git = "https://github.com/RustAndFurious/RF_drone.git" }
-LeDron_James = { git = "https://github.com/anass03/LeDron_James.git", features = ["log"] }
+LeDron_James = { git = "https://github.com/anass03/LeDron_James.git" }
 rolling_drone = { git = "https://github.com/giorebecchi/RollingDrone.git"}
 rustafarian-drone = { git = "https://github.com/Rustafarian-Unitn/rustafarian-drone"}
 
 [features]
-debug = [] # cargo run --features debug
-testing = [] # cargo run --features testing
-# both cargo run --features "debug testing"
+debug = ["rustaceans_wit_attitudes/debug"] # cargo run --features debug
+all_drones = [] # cargo run --features all_drones
+# cargo run --features "debug all_drones"
+# cargo run --features "debug all_drones" -- path/to/custom/config.toml

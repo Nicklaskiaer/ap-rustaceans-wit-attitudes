@@ -1,30 +1,27 @@
 use crate::message::message::{
     DroneSend, MediaResponse, MediaResponseForMessageContent, Message, MessageContent,
 };
-use chrono::format::parse;
 use crossbeam_channel::Sender;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use wg_2024::controller::DroneCommand;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodResponse, Fragment, NodeType, Packet};
 
 pub enum ClientServerCommand {
-    StartFloodRequest,               // used by: Client, SText, SMedia, SChat
-    RequestServerType, // used by: Client. client will auto call it to itself after few seconds after a StartFloodRequest
-    SendChatMessage(NodeId, String), // used by: Client, Server. client send a chat message to a specific node
-    ClientListRequest(NodeId),
-    RegistrationRequest(NodeId), // used by: Client. client request to register itself to the server
+    // shared
+    StartFloodRequest,
     RemoveDrone(NodeId),
-
-    RequestTextList(NodeId), // used by: Client. client ask the server for its list of files
-    RequestText(NodeId, u64), // used by: Client. client ask the server for a specific file
+    PrintAllNodeData,
     
-    RequestImageList(NodeId), // used by: Client. client ask the server for its list of images
-    RequestImage(NodeId, u64), // used by: Client. client ask the server for a specific image
-    ImageResponse(NodeId, u64), // used by: Server
-    
-    TestCommand, //TODO: remove it
+    // client only
+    RequestServerType, // client will auto call it to itself after few seconds after a StartFloodRequest
+    SendChatMessage(NodeId, String), // client send a chat message to a specific node
+    ClientListRequest(NodeId), // client request the list of client connected to the chatroom
+    RegistrationRequest(NodeId), // client request to register itself to the server
+    RequestTextList(NodeId), // client ask the server for its list of files
+    RequestText(NodeId, u64), // client ask the server for a specific file
+    RequestImageList(NodeId), // client ask the server for its list of images
+    RequestImage(NodeId, u64), // client ask the server for a specific image
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

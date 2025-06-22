@@ -174,8 +174,8 @@ pub enum ClientPopupScreen {
 }
 
 pub struct LogFilters {
-    pub show_events: bool,
-    pub show_commands: bool,
+    pub show_packet_events: bool,
+    pub show_command_events: bool,
     pub show_drones: bool,
     pub show_clients: bool,
     pub show_servers: bool,
@@ -185,8 +185,8 @@ pub struct LogFilters {
 impl Default for LogFilters {
     fn default() -> Self {
         Self{
-            show_events: true,
-            show_commands: true,
+            show_packet_events: true,
+            show_command_events: true,
             show_drones: true,
             show_clients: true,
             show_servers: true,

@@ -1,8 +1,6 @@
 #[cfg(feature = "debug")]
 use crate::debug;
-use std::any::Any;
 
-use crate::assembler::assembler::Assembler;
 use crate::client_server::network_core::{
     ClientEvent, ClientServerCommand, ContentType, NetworkNode, ServerType,
 };
@@ -10,17 +8,14 @@ use crate::message::message::{
     ChatRequest, ChatResponse, MediaRequest, MediaResponse, MediaResponseForMessageContent,
     Message, MessageContent, ServerTypeRequest, ServerTypeResponse, TextRequest, TextResponse,
 };
-use crossbeam_channel::{after, select_biased, unbounded, Receiver, SendError, Sender};
-use rand::{random, thread_rng, Rng};
+use crossbeam_channel::{select_biased, Receiver, Sender};
+use rand::random;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::thread;
-use std::thread::ThreadId;
-use wg_2024::controller::DroneCommand;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
-use wg_2024::packet;
 use wg_2024::packet::{
-    Ack, FloodRequest, FloodResponse, Fragment, NackType, NodeType, Packet, PacketType,
+    FloodRequest, NodeType, Packet, PacketType,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,11 +163,6 @@ impl Client {
 impl Client {
     fn handle_command(&mut self, command: ClientServerCommand) {
         match command {
-            ClientServerCommand::SendChatMessage(node_id, msg) => {
-                debug!("Client: {:?} received SendChatMessage command", self.id);
-
-                self.send_chat_message(node_id, msg);
-            }
             ClientServerCommand::StartFloodRequest => {
                 debug!("Client: {:?} received StartFloodRequest command", self.id);
 
@@ -219,58 +209,11 @@ impl Client {
                         .send(ClientServerCommand::RequestServerType)
                         .ok();
                 });
-            }
-            ClientServerCommand::RequestServerType => {
-                debug!(
-                    "Client: {:?} received RequestServerType command, servers found: {:?}",
-                    self.id, self.server_type_map
-                );
-
-                // Query all servers in the server_type_map that have None as their type
-                for server_id in self.server_type_map.keys().cloned().collect::<Vec<_>>() {
-                    if let Some(None) = self.server_type_map.get(&server_id) {
-                        self.send_server_type_request(server_id);
-                    }
-                }
-            }
-            ClientServerCommand::RegistrationRequest(node_id) => {
-                debug!("Client: {:?} received RegistrationRequest command", node_id);
-
-                self.send_registration_request(node_id);
-            }
-            ClientServerCommand::RequestTextList(node_id) => {
-                debug!(
-                    "Client: {:?} received RequestFileList, Server id: {:?}",
-                    self.id, node_id
-                );
-                self.send_text_request_text_list(node_id);
-            }
-            ClientServerCommand::RequestText(node_id, file_id) => {
-                debug!(
-                    "Client: {:?} received RequestFile, Server id: {:?} file id: {:?}",
-                    self.id, node_id, file_id
-                );
-                self.send_text_request_text(node_id, file_id);
-            }
-            ClientServerCommand::RequestImage(node_id, image_id) => {
-                debug!(
-                    "Client: {:?} received RequestImage, Server id: {:?} image id: {:?}",
-                    self.id, node_id, image_id
-                );
-                self.send_image_request(node_id, image_id);
-            }
-            ClientServerCommand::ImageResponse(_, _) => {
-                debug!("Client: {:?} received ImageResponse command", self.id);
-            }
-            ClientServerCommand::RequestImageList(node_id) => {
-                debug!(
-                    "Client: {:?} received RequestImageList command, Server id: {:?}",
-                    self.id, node_id
-                );
-                self.send_image_list_request(node_id);
-            }
-
-            ClientServerCommand::TestCommand => {
+            },
+            ClientServerCommand::RemoveDrone(drone_id) => {
+                self.connected_drone_ids.retain(|&id| id != drone_id);
+            },
+            ClientServerCommand::PrintAllNodeData => {
                 debug!(
                     "\n\
                     \nClient: {:?}\
@@ -283,15 +226,64 @@ impl Client {
                     self.server_type_map,
                     self.session_ids_for_request_server_type
                 );
-            }
+            },
+            
+            ClientServerCommand::SendChatMessage(node_id, msg) => {
+                debug!("Client: {:?} received SendChatMessage command", self.id);
+
+                self.send_chat_message(node_id, msg);
+            },
+            ClientServerCommand::RequestServerType => {
+                debug!(
+                    "Client: {:?} received RequestServerType command, servers found: {:?}",
+                    self.id, self.server_type_map
+                );
+
+                // Query all servers in the server_type_map that have None as their type
+                for server_id in self.server_type_map.keys().cloned().collect::<Vec<_>>() {
+                    if let Some(None) = self.server_type_map.get(&server_id) {
+                        self.send_server_type_request(server_id);
+                    }
+                }
+            },
+            ClientServerCommand::RegistrationRequest(node_id) => {
+                debug!("Client: {:?} received RegistrationRequest command", node_id);
+
+                self.send_registration_request(node_id);
+            },
+            ClientServerCommand::RequestTextList(node_id) => {
+                debug!(
+                    "Client: {:?} received RequestFileList, Server id: {:?}",
+                    self.id, node_id
+                );
+                self.send_text_request_text_list(node_id);
+            },
+            ClientServerCommand::RequestText(node_id, file_id) => {
+                debug!(
+                    "Client: {:?} received RequestFile, Server id: {:?} file id: {:?}",
+                    self.id, node_id, file_id
+                );
+                self.send_text_request_text(node_id, file_id);
+            },
+            ClientServerCommand::RequestImage(node_id, image_id) => {
+                debug!(
+                    "Client: {:?} received RequestImage, Server id: {:?} image id: {:?}",
+                    self.id, node_id, image_id
+                );
+                self.send_image_request(node_id, image_id);
+            },
+            ClientServerCommand::RequestImageList(node_id) => {
+                debug!(
+                    "Client: {:?} received RequestImageList command, Server id: {:?}",
+                    self.id, node_id
+                );
+                self.send_image_list_request(node_id);
+            },
             ClientServerCommand::ClientListRequest(node_id) => {
                 debug!("Client: {:?} received ClientListRequest command", node_id);
 
                 self.send_client_list_request(node_id);
-            }
-            ClientServerCommand::RemoveDrone(drone_id) => {
-                self.connected_drone_ids.retain(|&id| id != drone_id);
-            }
+            },
         }
     }
     fn handle_packet(&mut self, packet: Packet) {
@@ -402,13 +394,10 @@ impl Client {
                                 "Client: {:?} received server type {:?} from {:?}",
                                 self.id, server_type, message.source_id
                             );
-                            self.server_type_map
-                                .insert(message.source_id, Some(server_type.clone()));
+                            self.server_type_map.insert(message.source_id, Some(server_type.clone()));
 
                             // remove the session id from the session_ids
-                            let remvoed = self
-                                .session_ids_for_request_server_type
-                                .remove(&message.session_id);
+                            self.session_ids_for_request_server_type.remove(&message.session_id);
                         }
                     }
                 }
@@ -676,7 +665,7 @@ impl Client {
             .collect();
 
         // Extract and request each image
-        let re = regex::Regex::new(r"\[image_(\d+)\]").unwrap();
+        let re = regex::Regex::new(r"\[image_(\d+)]").unwrap();
         for cap in re.captures_iter(&text) {
             if let Some(image_id_str) = cap.get(1) {
                 if let Ok(image_id) = image_id_str.as_str().parse::<u64>() {

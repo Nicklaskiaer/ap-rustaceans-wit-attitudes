@@ -13,17 +13,8 @@ use crate::simulation_controller::simulation_controller::{
 };
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use rand::seq::SliceRandom;
-use rand::{thread_rng, Rng};
+use rand::{thread_rng};
 use rustaceans_wit_attitudes::RustaceansWitAttitudesDrone;
-use skylink::SkyLinkDrone;
-use bagel_bomber::BagelBomber;
-use TrustDrone::TrustDrone as TrsDrone;
-use rustastic_drone::RustasticDrone;
-use lockheedrustin_drone::LockheedRustin;
-use rf_drone::RustAndFurious;
-use LeDron_James::Drone as LeDron_James_Drone;
-use rolling_drone::RollingDrone;
-use rustafarian_drone::RustafarianDrone;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::{fs, thread};
@@ -33,21 +24,28 @@ use wg_2024::drone::Drone;
 use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
 
+#[cfg(feature = "all_drones")]
+use rand::{Rng};
+#[cfg(feature = "all_drones")]
+use {
+    bagel_bomber::BagelBomber,
+    lockheedrustin_drone::LockheedRustin,
+    rf_drone::RustAndFurious,
+    rolling_drone::RollingDrone,
+    rustafarian_drone::RustafarianDrone,
+    rustastic_drone::RustasticDrone,
+    skylink::SkyLinkDrone,
+    LeDron_James::Drone as LeDron_James_Drone,
+    TrustDrone::TrustDrone as TrsDrone,
+};
+
+
 const NUM_CONTENT_SERVERS: usize = 4;
 
-pub fn main() {
+pub fn main(config_path: String){
     // let current_path = env::current_dir().expect("Unable to get current directory");
     // println!("Current path: {:?}", current_path);
-    let config;
-    #[cfg(feature = "testing")]
-    {
-        config = parse_config("src/test_config.toml");
-    }
-
-    #[cfg(not(feature = "testing"))]
-    {
-        config = parse_config("src/config.toml");
-    }
+    let config = parse_config(&config_path);
 
     // check for errors in the toml
     check_toml_validity(&config);
@@ -92,33 +90,38 @@ pub fn main() {
             .map(|id| (id, packet_channels[&id].0.clone()))
             .collect();
 
-        // test
-        // thread::spawn(move || { 
-        //     let mut drone = RustaceansWitAttitudesDrone::new(
-        //         drone.id,
-        //         node_event_send_drone,
-        //         controller_drone_recv,
-        //         packet_recv,
-        //         packet_send,
-        //         drone.pdr,
-        //     );
-        //     drone.run();
-        // });
+        #[cfg(not(feature = "all_drones"))]
+        {
+            // spawn
+            thread::spawn(move || {
+                let mut drone = RustaceansWitAttitudesDrone::new(
+                    drone.id,
+                    node_event_send_drone,
+                    controller_drone_recv,
+                    packet_recv,
+                    packet_send,
+                    drone.pdr,
+                );
+                drone.run();
+            });
+        }
 
-        
-        
-        // spawn
-        thread::spawn(move || {
-            if i < 10 {
-                let mut drone = create_drone(drone.id, node_event_send_drone, controller_drone_recv, packet_recv, packet_send, drone.pdr, i);
-                drone.run();
-            } else {
-                let mut rng = thread_rng();
-                let random_i = rng.gen_range(0..10);
-                let mut drone = create_drone(drone.id, node_event_send_drone, controller_drone_recv, packet_recv, packet_send, drone.pdr, random_i);
-                drone.run();
-            }
-        });
+
+        #[cfg(feature = "all_drones")]
+        {
+            // spawn
+            thread::spawn(move || {
+                if i < 10 {
+                    let mut drone = create_drone(drone.id, node_event_send_drone, controller_drone_recv, packet_recv, packet_send, drone.pdr, i);
+                    drone.run();
+                } else {
+                    let mut rng = thread_rng();
+                    let random_i = rng.gen_range(0..10);
+                    let mut drone = create_drone(drone.id, node_event_send_drone, controller_drone_recv, packet_recv, packet_send, drone.pdr, random_i);
+                    drone.run();
+                }
+            });
+        }
     }
 
     // INITIALIZE CLIENTS
@@ -393,6 +396,7 @@ pub fn main() {
     simulation_controller_main(sc).expect("GUI panicked!");
 }
 
+#[cfg(feature = "all_drones")]
 fn create_drone(
     id: NodeId,
     node_event_send_drone: Sender<DroneEvent>,

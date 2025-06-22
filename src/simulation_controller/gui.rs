@@ -34,7 +34,7 @@ pub struct MyApp {
     client_texture: Option<egui::TextureHandle>, //Icon for clients in diagram.
     server_texture: Option<egui::TextureHandle>, //Icon for servers in diagram.
     drone_texture: Option<egui::TextureHandle>,  //Icon for drones in diagram.
-    topology_needs_update: bool,
+    pub(crate) topology_needs_update: bool,
     pub(crate) chatrooms_messages: HashMap<NodeId, Vec<ChatMessage>>, // Store chatroom messages of every server to be displayed.
     pub(crate) registered_servers: HashMap<NodeId, Vec<NodeId>>, // Maps client ID to list of servers they're registered with
     pub client_data_id_inputs: HashMap<NodeId, u64>, // Maps client ID to input for requesting data
@@ -337,29 +337,32 @@ impl eframe::App for MyApp {
                                     if ui.button(client).clicked() {
                                         self.open_popups.insert(client.clone(), true);
 
-                                        //TODO: remove
-                                        // trigger test command
-                                        if let Some(node_id_str) = client.split_whitespace().nth(1)
+                                        #[cfg(feature = "debug")]
                                         {
-                                            if let Ok(node_id) = node_id_str.parse::<NodeId>() {
-                                                self.simulation_controller
-                                                    .handle_test_command(node_id);
+                                            if let Some(node_id_str) = client.split_whitespace().nth(1)
+                                            {
+                                                if let Ok(node_id) = node_id_str.parse::<NodeId>() {
+                                                    self.simulation_controller
+                                                        .handle_print_all_node_data_command(node_id);
+                                                }
                                             }
                                         }
                                     }
                                 }
 
-                                //TODO: remove
-                                ui.separator();
-                                ui.label("Servers:");
-                                for server in &self.simulation_controller.get_server_ids() {
-                                    if ui.button(server).clicked() {
-                                        // trigger test command
-                                        if let Some(node_id_str) = server.split_whitespace().nth(1)
-                                        {
-                                            if let Ok(node_id) = node_id_str.parse::<NodeId>() {
-                                                self.simulation_controller
-                                                    .handle_test_command(node_id);
+                                #[cfg(feature = "debug")]
+                                {
+                                    ui.separator();
+                                    ui.label("Servers:");
+                                    for server in &self.simulation_controller.get_server_ids() {
+                                        if ui.button(server).clicked() {
+                                            // trigger test command
+                                            if let Some(node_id_str) = server.split_whitespace().nth(1)
+                                            {
+                                                if let Ok(node_id) = node_id_str.parse::<NodeId>() {
+                                                    self.simulation_controller
+                                                        .handle_print_all_node_data_command(node_id);
+                                                }
                                             }
                                         }
                                     }
@@ -373,19 +376,21 @@ impl eframe::App for MyApp {
                                     }
                                 }
 
-                                //TODO: remove
-                                ui.separator();
-                                ui.label("Other:");
-                                if ui.button("sc").clicked() {
-                                    debug!(
-                                        "drones: {:?}\nclients: {:?}\nservers: {:?}",
-                                        self.simulation_controller.get_drone_ids(),
-                                        self.simulation_controller.get_client_ids(),
-                                        self.simulation_controller.get_server_ids()
-                                    );
-                                }
-                                if ui.button("flood again").clicked() {
-                                    self.simulation_controller.start_flood_request_for_all();
+                                #[cfg(feature = "debug")]
+                                {
+                                    ui.separator();
+                                    ui.label("Other:");
+                                    if ui.button("sc").clicked() {
+                                        debug!(
+                                            "drones: {:?}\nclients: {:?}\nservers: {:?}",
+                                            self.simulation_controller.get_drone_ids(),
+                                            self.simulation_controller.get_client_ids(),
+                                            self.simulation_controller.get_server_ids()
+                                        );
+                                    }
+                                    if ui.button("flood again").clicked() {
+                                        self.simulation_controller.start_flood_request_for_all();
+                                    }
                                 }
                             });
 
@@ -407,8 +412,8 @@ impl eframe::App for MyApp {
                                 ui.heading("Log Filters");
                                 ui.separator();
 
-                                ui.checkbox(&mut self.log_filters.show_events, "Show Events");
-                                ui.checkbox(&mut self.log_filters.show_commands, "Show Commands");
+                                ui.checkbox(&mut self.log_filters.show_packet_events, "Show Events");
+                                ui.checkbox(&mut self.log_filters.show_command_events, "Show Commands");
 
                                 ui.separator();
 
@@ -428,18 +433,18 @@ impl eframe::App for MyApp {
                                 for log in logs_handler::filtered_logs(self) {
                                     let mut text_parts: Vec<egui::RichText> = Vec::new();
 
-                                    if log.message.starts_with("[EVENT]") {
+                                    if log.message.starts_with("[PACKET]") {
                                         text_parts.push(
-                                            egui::RichText::new("[EVENT]")
+                                            egui::RichText::new("[PACKET]")
                                                 .color(egui::Color32::GREEN),
                                         );
                                         text_parts.push(
                                             egui::RichText::new(&log.message[7..])
                                                 .color(egui::Color32::WHITE),
                                         );
-                                    } else if log.message.starts_with("[COMMAND]") {
+                                    } else if log.message.starts_with("[MESSAGE]") {
                                         text_parts.push(
-                                            egui::RichText::new("[COMMAND]")
+                                            egui::RichText::new("[MESSAGE]")
                                                 .color(egui::Color32::BLUE),
                                         );
                                         text_parts.push(
@@ -542,12 +547,12 @@ impl NetworkTopology {
         self.nodes.clear();
         self.connections.clear();
 
-        let n = drones.len();
-        let center = (300.0, 300.0);
-        let radius = 100.0;
-        let offset = 50.0;
-        let client_offset_x = -20.0; // Move clients slightly left
-        let server_offset_x = 20.0; // Move servers slightly right
+        // let n = drones.len();
+        // let center = (300.0, 300.0);
+        // let radius = 100.0;
+        // let offset = 50.0;
+        // let client_offset_x = -20.0; // Move clients slightly left
+        // let server_offset_x = 20.0; // Move servers slightly right
         let center = (400.0, 300.0); // More centered position
         let drone_radius = 150.0;
         let client_radius = 250.0;
