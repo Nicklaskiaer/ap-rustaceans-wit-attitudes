@@ -11,6 +11,7 @@ pub enum ClientServerCommand {
     // shared
     StartFloodRequest,
     RemoveDrone(NodeId),
+    AddDrone(NodeId, Sender<Packet>),
     PrintAllNodeData,
     
     // client only

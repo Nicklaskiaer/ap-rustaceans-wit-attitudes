@@ -180,7 +180,7 @@ pub fn main(config_path: String){
         thread::spawn(move || {
             let mut client = Client::new(
                 client.id,
-                client.connected_drone_ids,
+                HashSet::from_iter(client.connected_drone_ids.iter().cloned()),
                 node_event_send_client,
                 controller_client_send,
                 controller_client_recv,
@@ -342,15 +342,13 @@ pub fn main(config_path: String){
                 thread::spawn(move || {
                     let mut server = ContentServer::new(
                         server.id,
-                        server.connected_drone_ids,
+                        HashSet::from_iter(server.connected_drone_ids.iter().cloned()),
                         node_event_send_server,
                         controller_server_recv,
                         packet_send,
                         packet_recv.clone(),
                         HashSet::new(),
                         assembler_send,
-                        // assembler_recv,
-                        // assembler_send_res,
                         assembler_recv_res,
                         content_type_clone,
                         files_clone,
@@ -362,15 +360,13 @@ pub fn main(config_path: String){
                 thread::spawn(move || {
                     let mut server = CommunicationServer::new(
                         server.id,
-                        server.connected_drone_ids,
+                        HashSet::from_iter(server.connected_drone_ids.iter().cloned()),
                         node_event_send_server,
                         controller_server_recv,
                         packet_send,
                         packet_recv.clone(),
                         HashSet::new(),
                         assembler_send,
-                        // assembler_recv,
-                        // assembler_send_res,
                         assembler_recv_res,
                         HashSet::new(),
                         Vec::new(),
