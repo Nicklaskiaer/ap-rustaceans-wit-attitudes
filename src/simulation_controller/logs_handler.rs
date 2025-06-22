@@ -3,7 +3,6 @@ use wg_2024::controller::DroneEvent;
 use crate::simulation_controller::gui_structs::*;
 
 use crate::client_server::network_core::{ClientEvent, ServerEvent};
-use crate::message::message::MessageContent;
 use crate::simulation_controller::gui::MyApp;
 use chrono::{DateTime, Utc};
 use chrono_tz::Europe::Rome;
@@ -18,7 +17,7 @@ pub fn logs(app: &mut MyApp, event: Event) {
         Event::Drone(drone_event) => match drone_event {
             DroneEvent::PacketSent(packet) => {
                 format!(
-                    "[EVENT] Packet Sent to Node {}.",
+                    "[PACKET] Sent to Drone {}.",
                     packet
                         .routing_header
                         .hops
@@ -29,7 +28,7 @@ pub fn logs(app: &mut MyApp, event: Event) {
             }
             DroneEvent::PacketDropped(packet) => {
                 format!(
-                    "[EVENT] Packet Dropped to Node {}",
+                    "[PACKET] Dropped by Drone {}",
                     packet
                         .routing_header
                         .hops
@@ -40,7 +39,7 @@ pub fn logs(app: &mut MyApp, event: Event) {
             }
             DroneEvent::ControllerShortcut(packet) => {
                 format!(
-                    "[EVENT] Packet Routed through Controller by Node {}.",
+                    "[PACKET] Routed through Controller by Drone {}.",
                     packet
                         .routing_header
                         .hops
@@ -54,7 +53,7 @@ pub fn logs(app: &mut MyApp, event: Event) {
         Event::Client(client_event) => match client_event {
             ClientEvent::PacketSent(packet) => {
                 format!(
-                    "[EVENT] Packet Sent by Client {}",
+                    "[PACKET] Sent by Client {}",
                     packet
                         .routing_header
                         .hops
@@ -65,7 +64,7 @@ pub fn logs(app: &mut MyApp, event: Event) {
             }
             ClientEvent::PacketReceived(packet) => {
                 format!(
-                    "[EVENT] Packet Received by Client: {}.",
+                    "[PACKET] Received by Client: {}.",
                     packet
                         .routing_header
                         .hops
@@ -74,81 +73,18 @@ pub fn logs(app: &mut MyApp, event: Event) {
                         .unwrap_or_else(|| "None".to_string()) // Handle the None case.
                 )
             }
-            ClientEvent::MessageSent { from, to, content } => match content {
-                MessageContent::ServerTypeRequest(_) => {
-                    format!("[EVENT] ServerTypeRequest sent by {:?} to {:?}.", from, to)
-                }
-                MessageContent::ServerTypeResponse(_) => {
-                    format!("[EVENT] ServerTypeResponse sent by {:?} to {:?}.", from, to)
-                }
-                MessageContent::TextRequest(_) => {
-                    format!("[EVENT] TextRequest sent by {:?} to {:?}.", from, to)
-                }
-                MessageContent::TextResponse(_) => {
-                    format!("[EVENT] TextResponse sent by {:?} to {:?}.", from, to)
-                }
-                MessageContent::WholeChatVecResponse(_) => {
-                    format!(
-                        "[EVENT] WholeChatVecResponse sent by {:?} to {:?}.",
-                        from, to
-                    )
-                }
-                MessageContent::ChatRequest(_) => {
-                    format!("[EVENT] ChatRequest sent by {:?} to {:?}.", from, to)
-                }
-                MessageContent::ChatResponse(_) => {
-                    format!("[EVENT] ChatResponse sent by {:?} to {:?}.", from, to)
-                }
-                MessageContent::MediaRequest(_) => {
-                    format!("[EVENT] MediaRequest sent by {:?} to {:?}.", from, to)
-                }
-                MessageContent::MediaResponse(_) => {
-                    format!("[EVENT] MediaResponse sent by {:?} to {:?}.", from, to)
-                }
-                MessageContent::MediaListWithServer(server_id, list) => format!(
-                    "[EVENT] MediaListWithServer from {:?}: {:?}",
-                    server_id, list
-                ),
-            },
-            ClientEvent::MessageReceived { receiver, content } => match content {
-                MessageContent::ServerTypeRequest(_) => {
-                    format!("[EVENT] ServerTypeRequest received by {:?}.", receiver)
-                }
-                MessageContent::ServerTypeResponse(_) => {
-                    format!("[EVENT] ServerTypeResponse received by {:?}.", receiver)
-                }
-                MessageContent::TextRequest(_) => {
-                    format!("[EVENT] TextRequest received by {:?}.", receiver)
-                }
-                MessageContent::TextResponse(_) => {
-                    format!("[EVENT] TextResponse received by {:?}.", receiver)
-                }
-                MessageContent::WholeChatVecResponse(_) => {
-                    format!("[EVENT] WholeChatVecResponse received by {:?}.", receiver)
-                }
-                MessageContent::ChatRequest(_) => {
-                    format!("[EVENT] ChatRequest received by {:?}.", receiver)
-                }
-                MessageContent::ChatResponse(_) => {
-                    format!("[EVENT] ChatResponse received by {:?}.", receiver)
-                }
-                MessageContent::MediaRequest(_) => {
-                    format!("[EVENT] MediaRequest received by {:?}.", receiver)
-                }
-                MessageContent::MediaResponse(_) => {
-                    format!("[EVENT] MediaResponse received by {:?}.", receiver)
-                }
-                MessageContent::MediaListWithServer(server_id, list) => format!(
-                    "[EVENT] MediaListWithServer from {:?}: {:?}",
-                    server_id, list
-                ),
-            },
+            ClientEvent::MessageSent { from, to, content } => {
+                format!("[MESSAGE] Sent by Client: {} to {}, content: {:?}", from, to, content)
+            }
+            ClientEvent::MessageReceived { receiver, content } => {
+                format!("[MESSAGE] Received by Client: {}, content: {:?}", receiver, content)
+            }
         },
 
         Event::Server(server_event) => match server_event {
             ServerEvent::PacketSent(packet) => {
                 format!(
-                    "[EVENT] Packet Sent by Server: {}.",
+                    "[PACKET] Sent by Server: {}",
                     packet
                         .routing_header
                         .hops
@@ -159,7 +95,7 @@ pub fn logs(app: &mut MyApp, event: Event) {
             }
             ServerEvent::PacketReceived(packet) => {
                 format!(
-                    "[EVENT] Packet Received by Server: {}.",
+                    "[PACKET] Received by Server: {}",
                     packet
                         .routing_header
                         .hops
@@ -168,75 +104,12 @@ pub fn logs(app: &mut MyApp, event: Event) {
                         .unwrap_or_else(|| "None".to_string()) // Handle the None case.
                 )
             }
-            ServerEvent::MessageSent { from, to, content } => match content {
-                MessageContent::ServerTypeRequest(_) => {
-                    format!("[EVENT] ServerTypeRequest sent by {:?} to {:?}.", from, to)
-                }
-                MessageContent::ServerTypeResponse(_) => {
-                    format!("[EVENT] ServerTypeResponse sent by {:?} to {:?}.", from, to)
-                }
-                MessageContent::TextRequest(_) => {
-                    format!("[EVENT] TextRequest sent by {:?} to {:?}.", from, to)
-                }
-                MessageContent::TextResponse(_) => {
-                    format!("[EVENT] TextResponse sent by {:?} to {:?}.", from, to)
-                }
-                MessageContent::WholeChatVecResponse(_) => {
-                    format!(
-                        "[EVENT] WholeChatVecResponse sent by {:?} to {:?}.",
-                        from, to
-                    )
-                }
-                MessageContent::ChatRequest(_) => {
-                    format!("[EVENT] ChatRequest sent by {:?} to {:?}.", from, to)
-                }
-                MessageContent::ChatResponse(_) => {
-                    format!("[EVENT] ChatResponse sent by {:?} to {:?}.", from, to)
-                }
-                MessageContent::MediaRequest(_) => {
-                    format!("[EVENT] MediaRequest sent by {:?} to {:?}.", from, to)
-                }
-                MessageContent::MediaResponse(_) => {
-                    format!("[EVENT] MediaResponse sent by {:?} to {:?}.", from, to)
-                }
-                MessageContent::MediaListWithServer(server_id, list) => format!(
-                    "[EVENT] MediaListWithServer from {:?}: {:?}",
-                    server_id, list
-                ),
-            },
-            ServerEvent::MessageReceived { receiver, content } => match content {
-                MessageContent::ServerTypeRequest(_) => {
-                    format!("[EVENT] ServerTypeRequest received by {:?}.", receiver)
-                }
-                MessageContent::ServerTypeResponse(_) => {
-                    format!("[EVENT] ServerTypeResponse received by {:?}.", receiver)
-                }
-                MessageContent::TextRequest(_) => {
-                    format!("[EVENT] TextRequest received by {:?}.", receiver)
-                }
-                MessageContent::TextResponse(_) => {
-                    format!("[EVENT] TextResponse received by {:?}.", receiver)
-                }
-                MessageContent::WholeChatVecResponse(_) => {
-                    format!("[EVENT] WholeChatVecResponse received by {:?}.", receiver)
-                }
-                MessageContent::ChatRequest(_) => {
-                    format!("[EVENT] ChatRequest received by {:?}.", receiver)
-                }
-                MessageContent::ChatResponse(_) => {
-                    format!("[EVENT] ChatResponse received by {:?}.", receiver)
-                }
-                MessageContent::MediaRequest(_) => {
-                    format!("[EVENT] MediaRequest received by {:?}.", receiver)
-                }
-                MessageContent::MediaResponse(_) => {
-                    format!("[EVENT] MediaResponse received by {:?}.", receiver)
-                }
-                MessageContent::MediaListWithServer(server_id, list) => format!(
-                    "[EVENT] MediaListWithServer from {:?}: {:?}",
-                    server_id, list
-                ),
-            },
+            ServerEvent::MessageSent { from, to, content } => {
+                format!("[MESSAGE] Sent by Server: {} to {}, content: {:?}", from, to, content)
+            }
+            ServerEvent::MessageReceived { receiver, content } => {
+                format!("[MESSAGE] Received by Server: {}, content: {:?}", receiver, content)
+            }
         },
     };
 
@@ -253,8 +126,8 @@ pub fn filtered_logs(app: &mut MyApp) -> Vec<&LogEntry> {
         .filter(|log| {
             // Filter by log type
             let matches_type = match log.message.split_whitespace().next() {
-                Some("[EVENT]") => app.log_filters.show_events,
-                Some("[COMMAND]") => app.log_filters.show_commands,
+                Some("[PACKET]") => app.log_filters.show_packet_events,
+                Some("[MESSAGE]") => app.log_filters.show_command_events,
                 _ => true,
             };
 

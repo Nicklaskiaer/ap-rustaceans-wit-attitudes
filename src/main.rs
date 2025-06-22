@@ -1,3 +1,5 @@
+use std::env;
+
 #[cfg(feature = "debug")]
 #[macro_export]
 macro_rules! debug {
@@ -13,13 +15,17 @@ macro_rules! debug {
 mod network_initializer;
 mod simulation_controller;
 mod message;
-mod test_fragments;
 mod assembler;
-mod testing;
 mod client_server;
 
 fn main() {
     debug!("Running in Debug mode");
-    network_initializer::network_initializer::main();
-    // simulation_controller::simulation_controller::main().expect("GUI panicked!");
+
+    // Get config file path from command line arguments or use default
+    let config_path = env::args()
+        .nth(1)
+        .unwrap_or_else(|| "src/config.toml".to_string());
+
+    debug!("Using configuration file: {}", config_path);
+    network_initializer::network_initializer::main(config_path);
 }

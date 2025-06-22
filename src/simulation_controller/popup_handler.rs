@@ -1,4 +1,4 @@
-use crate::client_server::network_core::{ChatMessage, ContentType, ServerType};
+use crate::client_server::network_core::{ContentType, ServerType};
 use crate::simulation_controller::gui::MyApp;
 use crate::simulation_controller::gui_structs::*;
 use chrono::{DateTime, Utc};
@@ -117,6 +117,9 @@ fn show_drone_controls(
             if ui.button("Add Sender").clicked() {
                 match input_text.parse::<NodeId>() {
                     Ok(sender_id) => {
+                        if app.simulation_controller.handle_add_sender(node_id, sender_id) {
+                            app.topology_needs_update = true;
+                        }
                         let message = format!("[COMMAND] Added sender {} to {}", sender_id, name);
                         app.logs_vec.push(LogEntry {
                             timestamp: formatted_time.to_string(),
@@ -131,6 +134,9 @@ fn show_drone_controls(
             if ui.button("Remove Sender").clicked() {
                 match input_text.parse::<NodeId>() {
                     Ok(sender_id) => {
+                        if app.simulation_controller.handle_remove_sender(node_id, sender_id) {
+                            app.topology_needs_update = true;
+                        }
                         let message =
                             format!("[COMMAND] Removed sender {} from {}", sender_id, name);
                         app.logs_vec.push(LogEntry {
@@ -146,13 +152,13 @@ fn show_drone_controls(
 
         // Handle Crash button
         if ui.button("Crash").clicked() {
-            if let Some((_, neighbors, _)) = app.simulation_controller.get_drones().get(&node_id) {
+            if let Some((_, _, _)) = app.simulation_controller.get_drones().get(&node_id) {
                 let message = format!("[COMMAND] Crashing {}", name);
                 app.logs_vec.push(LogEntry {
                     timestamp: formatted_time.to_string(),
                     message,
                 });
-                app.simulation_controller.handle_crash(node_id, neighbors.clone());
+                app.simulation_controller.handle_crash(node_id);
 
                 // Close the popup by removing its entry
                 app.open_popups.remove(name);
@@ -186,10 +192,10 @@ fn show_client_controls(
             *screen = ClientPopupScreen::Chatroom;
         }
         if ui
-            .selectable_label(*screen == ClientPopupScreen::Other, "Images")
+            .selectable_label(*screen == ClientPopupScreen::Content, "Content")
             .clicked()
         {
-            *screen = ClientPopupScreen::Other;
+            *screen = ClientPopupScreen::Content;
         }
     });
 
@@ -304,8 +310,9 @@ fn show_client_controls(
                 }
             });
         }
-        ClientPopupScreen::Other => {
+        ClientPopupScreen::Content => {
             let selected_server_images = app.selected_server.entry(node_id).or_default();
+            let mut selected_type_option: Option<ContentType> = None;
 
             // Server selection dropdown
             ui.horizontal(|ui| {
@@ -321,117 +328,300 @@ fn show_client_controls(
                         // Get all server IDs and their types
                         let servers = app.simulation_controller.get_servers();
 
-                        // Filter to only ContentServers with Media type
+                        // Filter to only ContentServers
                         for (server_id, (_, _, server_type)) in servers {
                             if let ServerType::ContentServer(content_type) = server_type {
-                                if let ContentType::Media = content_type {
-                                    let server_id_str = format!("Server {}", server_id);
-                                    if ui
-                                        .selectable_label(
-                                            selected_server_images == &server_id_str,
-                                            &server_id_str,
-                                        )
-                                        .clicked()
-                                    {
-                                        *selected_server_images = server_id_str;
-                                    }
+                                let content_type_str = match content_type {
+                                    ContentType::Media => "Media",
+                                    ContentType::Text => "Text",
+                                };
+                                let server_id_str = format!("Server {} ({})", server_id, content_type_str);
+                                if ui.selectable_label(
+                                    selected_server_images == &server_id_str,
+                                    &server_id_str,
+                                ).clicked() {
+                                    *selected_server_images = server_id_str;
                                 }
                             }
                         }
                     });
             });
 
-            // Get the selected server ID
+
+            // Get the selected server ID and content type from the selected string
             let mut selected_server_id = 0;
-            if let Some(num_str) = selected_server_images.split_whitespace().last() {
-                if let Ok(server_id) = num_str.parse::<u8>() {
-                    selected_server_id = server_id;
+            if !selected_server_images.is_empty() {
+                // Extract server ID
+                if let Some(num_str) = selected_server_images.split_whitespace().nth(1) {
+                    if let Ok(server_id) = num_str.parse::<u8>() {
+                        selected_server_id = server_id;
+                    }
+                }
+
+                // Extract content type from the selection string
+                if selected_server_images.contains("(Media)") {
+                    selected_type_option = Some(ContentType::Media);
+                } else if selected_server_images.contains("(Text)") {
+                    selected_type_option = Some(ContentType::Text);
                 }
             }
-
             ui.separator();
+            
+            if let Some(selected_type) = selected_type_option {
+                match &selected_type {
+                    ContentType::Media => {
+                        // Request image list button
+                        if ui.button("Request Image List").clicked() && selected_server_id > 0 {
+                            app.simulation_controller.handle_image_list_request(node_id, selected_server_id);
+                        }
 
-            // Request image list button
-            if ui.button("Request Image List").clicked() && selected_server_id > 0 {
-                app.simulation_controller
-                    .handle_image_list_request(node_id, selected_server_id);
-            }
-
-            // Display available images from the selected server
-            if selected_server_id > 0 {
-                if let Some(image_list) = app.client_image_lists.get(&(node_id, selected_server_id))
-                {
-                    ui.label("Available Images:");
-                    ui.label(format!("{:?}", image_list));
-                } else {
-                    ui.label("No image list available. Click 'Request Image List' to get available images.");
-                }
-            }
-
-            ui.separator();
-
-            // Image request section
-            ui.label("Request Specific Image:");
-            ui.horizontal(|ui| {
-                let image_id_input = app.client_image_id_inputs.entry(node_id).or_default();
-                ui.label("Image ID:");
-                ui.add(egui::DragValue::new(image_id_input).speed(1.0));
-
-                if ui.button("Request Image").clicked() && selected_server_id > 0 {
-                    app.simulation_controller.handle_image_request(
-                        node_id,
-                        selected_server_id,
-                        *image_id_input,
-                    );
-                }
-            });
-
-            ui.separator();
-
-            // Display requested images grid
-            ui.label("Requested Images:");
-            if let Some(image_ids) = app.client_images.get(&node_id) {
-                if image_ids.is_empty() {
-                    ui.label("No images have been requested yet.");
-                } else {
-                    let columns = 3;
-
-                    egui::Grid::new("client_images_grid")
-                        .num_columns(columns)
-                        .spacing([10.0, 10.0])
-                        .show(ui, |ui| {
-                            for (i, image_id) in image_ids.iter().enumerate() {
-                                let image_path =
-                                    format!("server_content/media_files/{}.jpg", image_id);
-
-                                if let Ok(image) = image::open(&Path::new(&image_path)) {
-                                    let image_buffer = image.to_rgba8();
-                                    let (width, height) = image_buffer.dimensions();
-                                    let size = [width as usize, height as usize];
-                                    let texture = ui.ctx().load_texture(
-                                        format!("image_{}", image_id),
-                                        egui::ColorImage::from_rgba_unmultiplied(
-                                            size,
-                                            &image_buffer.into_raw(),
-                                        ),
-                                        egui::TextureOptions::default(),
-                                    );
-                                    ui.add(
-                                        egui::Image::new(&texture)
-                                            .fit_to_exact_size(egui::vec2(100.0, 100.0)),
-                                    );
-                                } else {
-                                    ui.label(format!("Image {} not found", image_id));
+                        // Display available images from the selected server
+                        if selected_server_id > 0 {
+                            match app.clients_downloaded_data.get_know_media_list(node_id, selected_server_id) {
+                                None => {
+                                    ui.label("No image list available. Click 'Request Image List' to get available images.");
                                 }
-
-                                if (i + 1) % columns == 0 {
-                                    ui.end_row();
+                                Some(index_list) => {
+                                    ui.label("Available Images:");
+                                    ui.label(format!("{:?}", index_list));
                                 }
                             }
+                        }
+                        ui.separator();
+
+                        // Image request section
+                        ui.label("Request Specific Image:");
+                        ui.horizontal(|ui| {
+                            let data_id_input = app.client_data_id_inputs.entry(node_id).or_default();
+                            ui.label("Image ID:");
+                            ui.add(egui::DragValue::new(data_id_input).speed(1.0));
+
+                            if ui.button("Request Image").clicked() && selected_server_id > 0 {
+                                app.simulation_controller.handle_image_request(
+                                    node_id,
+                                    selected_server_id,
+                                    *data_id_input,
+                                );
+                            }
                         });
+                        ui.separator();
+
+                        // Display requested images grid
+                        ui.label("Requested Images:");
+                        // app.clients_downloaded_data.get_all_know_data(node_id)
+                        if let Some(image_ids) = app.clients_downloaded_data.get_know_media(node_id, selected_server_id) {
+                            if image_ids.is_empty() {
+                                ui.label("No images have been requested yet.");
+                            } else {
+                                let columns = 3;
+
+                                egui::Grid::new("client_images_grid")
+                                    .num_columns(columns)
+                                    .spacing([10.0, 10.0])
+                                    .show(ui, |ui| {
+                                        for (i, image_id) in image_ids.iter().enumerate() {
+                                            let image_path =
+                                                format!("server_content/media_files/{}.jpg", image_id);
+
+                                            if let Ok(image) = image::open(&Path::new(&image_path)) {
+                                                let image_buffer = image.to_rgba8();
+                                                let (width, height) = image_buffer.dimensions();
+                                                let size = [width as usize, height as usize];
+                                                let texture = ui.ctx().load_texture(
+                                                    format!("image_{}", image_id),
+                                                    egui::ColorImage::from_rgba_unmultiplied(
+                                                        size,
+                                                        &image_buffer.into_raw(),
+                                                    ),
+                                                    egui::TextureOptions::default(),
+                                                );
+                                                ui.add(
+                                                    egui::Image::new(&texture)
+                                                        .fit_to_exact_size(egui::vec2(100.0, 100.0)),
+                                                );
+                                            } else {
+                                                ui.label(format!("Image {} not found", image_id));
+                                            }
+
+                                            if (i + 1) % columns == 0 {
+                                                ui.end_row();
+                                            }
+                                        }
+                                    });
+                            }
+                        } else {
+                            ui.label("No images available for this client.");
+                        }
+                    },
+                    ContentType::Text => {
+                        // Request Text list button
+                        if ui.button("Request Text List").clicked() && selected_server_id > 0 {
+                            app.simulation_controller.handle_text_list_request(node_id, selected_server_id);
+                        }
+
+                        // Display available text from the selected server
+                        if selected_server_id > 0 {
+                            match app.clients_downloaded_data.get_know_text_list(node_id, selected_server_id) {
+                                None => {
+                                    ui.label("No Text list available. Click 'Request Text List' to get available images.");
+                                }
+                                Some(index_list) => {
+                                    ui.label("Available Texts:");
+                                    ui.label(format!("{:?}", index_list));
+                                }
+                            }
+                        }
+                        ui.separator();
+
+                        // Text request section
+                        ui.label("Request Specific Text:");
+                        ui.horizontal(|ui| {
+                            let data_id_input = app.client_data_id_inputs.entry(node_id).or_default();
+                            ui.label("Text ID:");
+                            ui.add(egui::DragValue::new(data_id_input).speed(1.0));
+
+                            if ui.button("Request Text").clicked() && selected_server_id > 0 {
+                                app.simulation_controller.handle_text_request(
+                                    node_id,
+                                    selected_server_id,
+                                    *data_id_input,
+                                );
+                            }
+                        });
+                        ui.separator();
+
+                        // Display requested files
+                        ui.label("Requested Texts:");
+                        // app.clients_downloaded_data.get_all_know_data(node_id)
+                        if let Some(files) = app.clients_downloaded_data.get_know_text(node_id, selected_server_id) {
+                            if files.is_empty() {
+                                ui.label("No Texts have been requested yet.");
+                            } else {
+                                egui::ScrollArea::vertical()
+                                    .max_height(200.0)
+                                    .show(ui, |ui| {
+                                        for file_id in files {
+                                            let file_path = format!("server_content/text_files/{}", file_id);
+                                            ui.collapsing(format!("File {}", file_id), |ui| {
+                                                // Read the content from the file
+                                                match std::fs::read_to_string(&file_path) {
+                                                    Ok(content) => {
+                                                        ui.add(
+                                                            egui::TextEdit::multiline(&mut content.clone())
+                                                                .desired_width(ui.available_width())
+                                                                .desired_rows(10)
+                                                        );
+
+                                                        // Extract image IDs using regex
+                                                        let re = regex::Regex::new(r"\[image_(\d+)]").unwrap();
+                                                        let mut image_ids = Vec::new();
+
+                                                        for cap in re.captures_iter(&content) {
+                                                            if let Some(id_str) = cap.get(1) {
+                                                                if let Ok(id) = id_str.as_str().parse::<u64>() {
+                                                                    image_ids.push(id);
+                                                                }
+                                                            }
+                                                        }
+
+                                                        // Display images if any were found
+                                                        if !image_ids.is_empty() {
+                                                            ui.separator();
+                                                            ui.label("Referenced Images:");
+
+                                                            let columns = 3;
+                                                            egui::Grid::new(format!("text_images_grid_{}", file_id))
+                                                                .num_columns(columns)
+                                                                .spacing([10.0, 10.0])
+                                                                .show(ui, |ui| {
+                                                                    for (i, image_id) in image_ids.iter().enumerate() {
+                                                                        // Check all servers for the image
+                                                                        let mut found_image = false;
+
+                                                                        // Get all content servers
+                                                                        let servers = app.simulation_controller.get_servers();
+                                                                        for (server_id, (_, _, server_type)) in servers {
+                                                                            // Only check media servers
+                                                                            if let ServerType::ContentServer(ContentType::Media) = server_type {
+                                                                                // Try to get the image from this media server
+                                                                                if let Some(media_id) = app.clients_downloaded_data
+                                                                                    .get_know_media_with_id(node_id, *server_id, *image_id)
+                                                                                {
+                                                                                    let image_path = format!(
+                                                                                        "server_content/media_files/{}.jpg",
+                                                                                        media_id
+                                                                                    );
+
+                                                                                    if let Ok(image) = image::open(&Path::new(&image_path)) {
+                                                                                        let image_buffer = image.to_rgba8();
+                                                                                        let (width, height) = image_buffer.dimensions();
+                                                                                        let size = [width as usize, height as usize];
+                                                                                        let texture = ui.ctx().load_texture(
+                                                                                            format!("text_image_{}_{}", file_id, image_id),
+                                                                                            egui::ColorImage::from_rgba_unmultiplied(
+                                                                                                size,
+                                                                                                &image_buffer.into_raw(),
+                                                                                            ),
+                                                                                            egui::TextureOptions::default(),
+                                                                                        );
+                                                                                        ui.add(
+                                                                                            egui::Image::new(&texture)
+                                                                                                .fit_to_exact_size(egui::vec2(100.0, 100.0)),
+                                                                                        );
+                                                                                        found_image = true;
+                                                                                        break;  // Exit the loop once we've found and displayed the image
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                        }
+
+                                                                        if !found_image {
+                                                                            ui.label(format!("Image {} not available", image_id));
+                                                                        }
+
+                                                                        if (i + 1) % columns == 0 {
+                                                                            ui.end_row();
+                                                                        }
+                                                                    }
+                                                                });
+                                                        }
+                                                    },
+                                                    Err(_) => {
+                                                        ui.label(format!("Error reading file content for ID {}", file_id));
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    });
+                            }
+                            //     egui::ScrollArea::vertical()
+                            //         .max_height(200.0)
+                            //         .show(ui, |ui| {
+                            //             for file_id in files {
+                            //                 let file_path = format!("server_content/text_files/{}", file_id);
+                            //                 ui.collapsing(format!("File {}", file_id), |ui| {
+                            //                     // Read the content from the file
+                            //                     match std::fs::read_to_string(&file_path) {
+                            //                         Ok(content) => {
+                            //                             ui.add(
+                            //                                 egui::TextEdit::multiline(&mut content.clone())
+                            //                                     .desired_width(ui.available_width())
+                            //                                     .desired_rows(10)
+                            //                             );
+                            //                         },
+                            //                         Err(_) => {
+                            //                             ui.label(format!("Error reading file content for ID {}", file_id));
+                            //                         }
+                            //                     }
+                            //                 });
+                            //             }
+                            //         });
+                            // }
+                        } else {
+                            ui.label("No Texts available for this client.");
+                        }
+                    }
                 }
-            } else {
-                ui.label("No images available for this client.");
             }
         }
     }

@@ -8,7 +8,6 @@ use std::collections::HashMap;
 use wg_2024::controller::{DroneCommand, DroneEvent};
 use wg_2024::network::NodeId;
 use wg_2024::packet::Packet;
-use crate::message::message::MessageContent::ChatRequest;
 
 pub struct SimulationController {
     drones: HashMap<NodeId, (Sender<DroneCommand>, Vec<NodeId>, f32)>,
@@ -40,38 +39,97 @@ impl SimulationController {
             packet_channels,
         }
     }
-
-    pub fn handle_remove_sender(&self, drone_sender_id: NodeId, drone_id: NodeId) {
-        if let Some((drone_sender, _, _)) = self.drones.get(&drone_sender_id) {
-            drone_sender
-                .send(DroneCommand::RemoveSender(drone_id))
-                .unwrap();
+    
+    pub fn handle_remove_sender(&mut self, drone_sender_id: NodeId, drone_id: NodeId) -> bool {
+        // drone A remove drone B
+        let mut a_added_b = false;
+        if let Some((drone_sender, neighbors, _)) = self.drones.get_mut(&drone_sender_id) {
+            // Send command to drone A to remove drone B
+            match drone_sender.send(DroneCommand::RemoveSender(drone_id)) {
+                Ok(_) => {
+                    // Remove drone_id from the neighbor list
+                    neighbors.retain(|&id| id != drone_id);
+                    a_added_b = true; 
+                }
+                Err(_) => { a_added_b = false; }
+            }
         }
+
+        // drone B remove drone A
+        let mut b_added_a = false;
+        if let Some((drone_sender, neighbors, _)) = self.drones.get_mut(&drone_id) {
+            // Send command to drone B to remove drone A
+            match drone_sender.send(DroneCommand::RemoveSender(drone_sender_id)) {
+                Ok(_) => {
+                    // Remove drone_sender_id from the neighbor list
+                    neighbors.retain(|&id| id != drone_sender_id);
+                    b_added_a = true; 
+                }
+                Err(_) => { b_added_a = false; }
+            }
+        }
+        
+        if a_added_b && b_added_a {
+            self.start_flood_request_for_all();
+            return true;
+        }
+        false
     }
 
-    pub fn handle_add_sender(
-        &self,
-        drone_sender_id: NodeId,
-        drone_id: NodeId,
-        drone_packet: Sender<Packet>,
-    ) {
+    pub fn handle_add_sender(&mut self, drone_sender_id: NodeId, drone_id: NodeId) -> bool {
+        // drone A adds drone B
+        let mut a_added_b = false;
         if let Some((drone_sender, _, _)) = self.drones.get(&drone_sender_id) {
-            drone_sender
-                .send(DroneCommand::AddSender(drone_id, drone_packet))
-                .unwrap();
+            if let Some((sender_to_add, _)) = self.packet_channels.get(&drone_id) {
+                match drone_sender.send(DroneCommand::AddSender(drone_id, sender_to_add.clone())) {
+                    Ok(_) => { a_added_b = true; }
+                    Err(_) => { a_added_b = false; }
+                }
+            }
         }
+
+        // drone B adds drone A
+        let mut b_added_a = false;
+        if a_added_b {
+            if let Some((drone_sender, _, _)) = self.drones.get(&drone_id) {
+                if let Some((sender_to_add, _)) = self.packet_channels.get(&drone_sender_id) {
+                    match drone_sender.send(DroneCommand::AddSender(drone_sender_id, sender_to_add.clone())) {
+                        Ok(_) => { b_added_a = true; }
+                        Err(_) => { b_added_a = false; }
+                    }
+                }
+            }
+        }
+
+        // Update topology
+        if a_added_b && b_added_a {
+            // Update drone A's neighbors
+            if let Some((_, neighbors, _)) = self.drones.get_mut(&drone_sender_id) {
+                if !neighbors.contains(&drone_id) {
+                    neighbors.push(drone_id);
+                }
+            }
+
+            // Update drone B's neighbors
+            if let Some((_, neighbors, _)) = self.drones.get_mut(&drone_id) {
+                if !neighbors.contains(&drone_sender_id) {
+                    neighbors.push(drone_sender_id);
+                }
+            }
+            self.start_flood_request_for_all();
+            return true;
+        }
+        false
     }
 
     pub fn handle_set_packet_drop_rate(&mut self, drone_sender_id: NodeId, drop_rate: f32) {
         if let Some((drone_sender, _, stored_rate)) = self.drones.get_mut(&drone_sender_id) {
             *stored_rate = drop_rate;
-            drone_sender
-                .send(DroneCommand::SetPacketDropRate(drop_rate))
-                .unwrap();
+            drone_sender.send(DroneCommand::SetPacketDropRate(drop_rate)).unwrap();
         }
     }
 
-    pub fn handle_crash(&mut self, drone_sender_id: NodeId, neighbors: Vec<NodeId>) {
+    pub fn handle_crash(&mut self, drone_sender_id: NodeId) {
         // Get the drone's data before removing it
         if let Some((drone_sender, neighbors, _)) = self.drones.get(&drone_sender_id).cloned() {
             debug!("Crashing drone {} with {} neighbors...", drone_sender_id, neighbors.len());
@@ -111,38 +169,6 @@ impl SimulationController {
             self.start_flood_request_for_all();
         }
     }
-
-    // pub fn handle_crash(&mut self, drone_sender_id: NodeId, neighbors: Vec<NodeId>) {
-    //     let crashed_drone_sender = self
-    //         .drones
-    //         .get(&drone_sender_id)
-    //         .map(|(sender, _, _)| sender.clone());
-    // 
-    //     if let Some((_sender, _, _)) = self.drones.remove(&drone_sender_id) {
-    //         debug!("Removing {} from network...", drone_sender_id);
-    //     }
-    // 
-    //     for neighbor in neighbors {
-    //         if let Some((neighbor_drone_sender, neighbor_list, _)) = self.drones.get_mut(&neighbor)
-    //         {
-    //             // Remove the crashed drone from the neighbor's list
-    //             neighbor_list.retain(|&id| id != drone_sender_id);
-    // 
-    //             // Send remove command to the neighbor
-    //             neighbor_drone_sender
-    //                 .send(DroneCommand::RemoveSender(drone_sender_id))
-    //                 .unwrap();
-    //         }
-    //     }
-    // 
-    //     //Send the crash command after removing the drone
-    //     if let Some(sender) = crashed_drone_sender {
-    //         sender.send(DroneCommand::Crash).unwrap();
-    //     }
-    // 
-    //     // initialize another flooding
-    //     self.start_flood_request_for_all();
-    // }
 
     pub fn get_drone_ids(&self) -> Vec<String> {
         self.drones
@@ -245,16 +271,32 @@ impl SimulationController {
         }
     }
 
-    pub fn handle_test_command(&self, node_id: NodeId) {
+    pub fn handle_text_list_request(&self, client_id: NodeId, server_id: NodeId) {
+        if let Some((client_sender, _)) = self.clients.get(&client_id) {
+            client_sender
+                .send(ClientServerCommand::RequestTextList(server_id))
+                .unwrap();
+        }
+    }
+
+    pub fn handle_text_request(&self, client_id: NodeId, server_id: NodeId, image_id: u64) {
+        if let Some((client_sender, _)) = self.clients.get(&client_id) {
+            client_sender
+                .send(ClientServerCommand::RequestText(server_id, image_id))
+                .unwrap();
+        }
+    }
+    
+    pub fn handle_print_all_node_data_command(&self, node_id: NodeId) {
         if let Some((client_sender, _)) = self.clients.get(&node_id) {
             client_sender
-                .send(ClientServerCommand::TestCommand)
+                .send(ClientServerCommand::PrintAllNodeData)
                 .unwrap();
         }
 
         if let Some((server_sender, _, _)) = self.servers.get(&node_id) {
             server_sender
-                .send(ClientServerCommand::TestCommand)
+                .send(ClientServerCommand::PrintAllNodeData)
                 .unwrap();
         }
     }
@@ -263,11 +305,6 @@ impl SimulationController {
 pub fn simulation_controller_main(sc: SimulationController) -> Result<(), eframe::Error> {
     // Setup Client and Server
     sc.start_flood_request_for_all();
-
-    #[cfg(feature = "testing")]
-    {
-        crate::testing::run_tests(&sc);
-    }
 
     // start GUI
     let native_options = eframe::NativeOptions::default();

@@ -8,7 +8,6 @@ use crate::message::message::*;
 use crossbeam_channel::{select_biased, Receiver, Sender};
 use rand::random;
 use std::collections::{HashMap, HashSet};
-use wg_2024::controller::DroneCommand;
 use wg_2024::network::{NodeId, SourceRoutingHeader};
 use wg_2024::packet::{FloodRequest, NodeType, Packet, PacketType};
 
@@ -118,8 +117,6 @@ impl CommunicationServer {
             packet_send,
             topology_map,
             assembler_send,
-            // assembler_recv,
-            // assembler_res_send,
             assembler_res_recv,
             registered_clients,
             messages_stored,
@@ -128,12 +125,6 @@ impl CommunicationServer {
 
     fn handle_command(&mut self, command: ClientServerCommand) {
         match command {
-            ClientServerCommand::SendChatMessage(_target_id, _msg) => {
-                debug!(
-                    "Server: {:?} sending chat message to {:?}: {:?}",
-                    self.id, _target_id, _msg
-                );
-            }
             ClientServerCommand::StartFloodRequest => {
                 debug!("Server: {:?} received StartFloodRequest command", self.id);
 
@@ -170,14 +161,10 @@ impl CommunicationServer {
                     self.try_send_packet_with_target_id(drone_id, &flood_request);
                 }
             }
-            ClientServerCommand::RequestServerType => { /* servers do not need to use it */ }
-            ClientServerCommand::RequestFileList(_) => { /* servers do not need to use it */ }
-            ClientServerCommand::RequestFile(_, _) => { /* servers do not need to use it */ }
-            ClientServerCommand::RegistrationRequest(_) => { /* this server not need to use it */ }
-            ClientServerCommand::ImageResponse(_, _) => { /* this server doesnt need to use it */ }
-            ClientServerCommand::RequestImage(_, _) => { /* this server doesnt need to use it */ }
-            ClientServerCommand::RequestImageList(_) => { /* this server doesnt need to use it */ }
-            ClientServerCommand::TestCommand => {
+            ClientServerCommand::RemoveDrone(drone_id) => {
+                self.connected_drone_ids.retain(|&id| id != drone_id);
+            },
+            ClientServerCommand::PrintAllNodeData => {
                 debug!(
                     "\n\
                     \nChat Server: {:?}\
@@ -188,10 +175,7 @@ impl CommunicationServer {
                     self.id, self.topology_map, self.registered_clients, self.messages_stored
                 );
             },
-            ClientServerCommand::ClientListRequest(_) => { /* servers do not need to use it */ },
-            ClientServerCommand::RemoveDrone(drone_id) => {
-                self.connected_drone_ids.retain(|&id| id != drone_id);
-            }
+            _ => {}
         }
     }
     

@@ -1,7 +1,7 @@
 use crate::client_server::network_core::{ChatMessage, ServerType};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use wg_2024::network::NodeId;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,12 +32,15 @@ pub enum MessageContent {
     ServerTypeResponse(ServerTypeResponse),
     TextRequest(TextRequest),
     TextResponse(TextResponse),
+    TextListWithServer(NodeId, Vec<u64>),
+    TextIdWithServer(NodeId, u64),
     WholeChatVecResponse(Chatroom),
     ChatRequest(ChatRequest),
     ChatResponse(ChatResponse),
     MediaRequest(MediaRequest),
     MediaResponse(MediaResponseForMessageContent),
     MediaListWithServer(NodeId, Vec<u64>),
+    MediaIdWithServer(NodeId, u64),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,9 +171,11 @@ impl Request for ChatRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TextResponse {
     TextList(Vec<u64>),
-    Text(String),
+    Text(TextAndId),
     NotFound,
 }
+
+type TextAndId = (u64, String);
 
 impl DroneSend for TextResponse {
     fn stringify(&self) -> String {
